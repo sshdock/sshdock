@@ -20,6 +20,13 @@ type Domain struct {
 	Port        int
 }
 
+type Backend interface {
+	CreateApp(name string) (App, string, error)
+	ListApps() ([]App, error)
+	GetApp(name string) (App, error)
+	AttachDomain(domain Domain) error
+}
+
 type MemoryBackend struct {
 	gitHost string
 	apps    map[string]App
@@ -48,7 +55,7 @@ func (b *MemoryBackend) CreateApp(name string) (App, string, error) {
 	return model, fmt.Sprintf("git@%s:%s", b.gitHost, name), nil
 }
 
-func (b *MemoryBackend) ListApps() []App {
+func (b *MemoryBackend) ListApps() ([]App, error) {
 	names := make([]string, 0, len(b.apps))
 	for name := range b.apps {
 		names = append(names, name)
@@ -60,7 +67,7 @@ func (b *MemoryBackend) ListApps() []App {
 		apps = append(apps, b.apps[name])
 	}
 
-	return apps
+	return apps, nil
 }
 
 func (b *MemoryBackend) GetApp(name string) (App, error) {
@@ -82,11 +89,11 @@ func (b *MemoryBackend) AttachDomain(domain Domain) error {
 }
 
 type Runner struct {
-	backend *MemoryBackend
+	backend Backend
 	version string
 }
 
-func NewRunner(backend *MemoryBackend, version string) *Runner {
+func NewRunner(backend Backend, version string) *Runner {
 	return &Runner{backend: backend, version: version}
 }
 
@@ -124,7 +131,11 @@ func (r *Runner) runApps(args []string, stdout io.Writer, stderr io.Writer) int 
 	}
 
 	if len(args) == 1 && args[0] == "list" {
-		apps := r.backend.ListApps()
+		apps, err := r.backend.ListApps()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
 		if len(apps) == 0 {
 			fmt.Fprintln(stdout, "no apps")
 			return 0

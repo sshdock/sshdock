@@ -86,7 +86,19 @@ Attach a domain:
 rhumbase domains attach my-app web example.com --port 3000
 ```
 
-Expected result:
+Current MVP state:
+
+- `rhumbase` persists app and domain metadata in SQLite.
+- Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
+- Real Docker Compose deployment, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
+
+```bash
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains attach my-app web example.com --port 3000
+```
+
+Target result when runtime milestones are complete:
 
 - Code is received through Git
 - Compose file is detected

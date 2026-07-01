@@ -89,6 +89,9 @@ func hookRunnerFromEnv() (compose.Runner, error) {
 	if runner == "" || runner == "fake" {
 		return &compose.FakeRunner{}, nil
 	}
+	if runner == "docker" {
+		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
+	}
 
 	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
 }

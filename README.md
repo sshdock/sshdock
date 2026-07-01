@@ -91,8 +91,9 @@ Current MVP state:
 - `rhumbase` persists app and domain metadata in SQLite.
 - `rhumbase apps create` creates a local bare Git repository and installs a `post-receive` hook.
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
+- `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Real Docker Compose deployment, Caddy reloads, SSH transport, and SSH dashboard sessions are still later runtime milestones.
+- Caddy reloads, SSH transport, and SSH dashboard sessions are still later runtime milestones.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
@@ -257,6 +258,18 @@ Smoke test:
 make smoke
 ```
 
+Real Git-hook e2e with fake Compose:
+
+```bash
+make e2e
+```
+
+Opt-in real Docker Compose e2e:
+
+```bash
+make e2e-docker
+```
+
 Full CI:
 
 ```bash
@@ -288,7 +301,7 @@ Use fake adapters for:
 - Store fixtures
 - TUI view models
 
-Integration tests can be added later after the fake harness is stable.
+Integration tests are tiered. `make e2e` uses real local Git with fake Compose, while `make e2e-docker` also uses the local Docker daemon.
 
 ## Docs
 

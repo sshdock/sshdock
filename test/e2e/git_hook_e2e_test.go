@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/store"
 )
@@ -114,6 +115,84 @@ func TestGitHookEndToEnd(t *testing.T) {
 	}
 }
 
+func TestGitHookDockerComposeEndToEnd(t *testing.T) {
+	if os.Getenv("RHUMBASE_E2E_DOCKER") != "1" {
+		t.Skip("set RHUMBASE_E2E_DOCKER=1 to run the Docker Compose e2e test")
+	}
+	requireGit(t)
+	requireDocker(t)
+
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll bin: %v", err)
+	}
+
+	rhumbasePath := filepath.Join(binDir, "rhumbase")
+	rhumbasedPath := filepath.Join(binDir, "rhumbased")
+	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
+	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+
+	appName := "docker-app"
+	projectName := compose.ProjectName(appName)
+	dataDir := filepath.Join(tmp, "data")
+	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "docker")
+	cfg := config.LoadFromEnv()
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll data dir: %v", err)
+	}
+	t.Cleanup(func() {
+		composePath := filepath.Join(cfg.AppWorktreePath(appName), "compose.yml")
+		if _, err := os.Stat(composePath); err == nil {
+			_ = runCommandNoFail(filepath.Dir(composePath), nil, "docker", "compose", "-f", composePath, "-p", projectName, "down", "-v", "--remove-orphans")
+		}
+	})
+
+	env := append(os.Environ(),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_DATA_DIR="+dataDir,
+		"RHUMBASE_COMPOSE_RUNNER=docker",
+	)
+	runCommand(t, root, env, rhumbasePath, "apps", "create", appName)
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll source: %v", err)
+	}
+	runGit(t, sourceDir, nil, "init")
+	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
+	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "checkout", "-b", "main")
+	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: nginx:alpine\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile compose: %v", err)
+	}
+	runGit(t, sourceDir, nil, "add", "compose.yml")
+	runGit(t, sourceDir, nil, "commit", "-m", "initial docker compose app")
+	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
+	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
+
+	runGit(t, sourceDir, env, "push", "prod", "main")
+
+	status, err := deploymentStatus(cfg.SQLiteDBPath, "dep_"+shortSHA(commitSHA))
+	if err != nil {
+		t.Fatalf("deploymentStatus: %v", err)
+	}
+	if status != string(app.DeploymentStatusSucceeded) {
+		t.Fatalf("deployment status = %q", status)
+	}
+
+	composePath := filepath.Join(cfg.AppWorktreePath(appName), "compose.yml")
+	output := runCommand(t, filepath.Dir(composePath), nil, "docker", "compose", "-f", composePath, "-p", projectName, "ps", "--format", "json")
+	if !strings.Contains(output, `"Service":"web"`) && !strings.Contains(output, `"Name":"web"`) {
+		t.Fatalf("docker compose ps output missing web service:\n%s", output)
+	}
+	if !strings.Contains(output, `"State":"running"`) {
+		t.Fatalf("docker compose ps output missing running state:\n%s", output)
+	}
+}
+
 type releaseRow struct {
 	ID        string
 	CommitSHA string
@@ -162,6 +241,15 @@ func requireGit(t *testing.T) {
 	}
 }
 
+func requireDocker(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatalf("docker is required for Docker e2e test: %v", err)
+	}
+	runCommand(t, "", nil, "docker", "version")
+	runCommand(t, "", nil, "docker", "compose", "version")
+}
+
 func runGit(t *testing.T, dir string, env []string, args ...string) {
 	t.Helper()
 	runCommand(t, dir, env, "git", args...)
@@ -183,6 +271,16 @@ func runCommand(t *testing.T, dir string, env []string, name string, args ...str
 	if err != nil {
 		t.Fatalf("%s %s failed: %v\n%s", name, strings.Join(args, " "), err, output)
 	}
+	return string(output)
+}
+
+func runCommandNoFail(dir string, env []string, name string, args ...string) string {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = env
+	}
+	output, _ := cmd.CombinedOutput()
 	return string(output)
 }
 

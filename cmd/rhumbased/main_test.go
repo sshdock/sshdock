@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"testing"
+
+	"github.com/iketiunn/rumbase/internal/compose"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -22,5 +24,17 @@ func TestRunVersion(t *testing.T) {
 
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "docker")
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("hookRunnerFromEnv: %v", err)
+	}
+	if _, ok := runner.(*compose.DockerRunner); !ok {
+		t.Fatalf("runner = %T, want *compose.DockerRunner", runner)
 	}
 }

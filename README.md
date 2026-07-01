@@ -89,8 +89,10 @@ rhumbase domains attach my-app web example.com --port 3000
 Current MVP state:
 
 - `rhumbase` persists app and domain metadata in SQLite.
+- `rhumbase apps create` creates a local bare Git repository and installs a `post-receive` hook.
+- Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Real Docker Compose deployment, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
+- Real Docker Compose deployment, Caddy reloads, SSH transport, and SSH dashboard sessions are still later runtime milestones.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app

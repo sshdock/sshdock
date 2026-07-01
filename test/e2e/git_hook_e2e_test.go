@@ -10,11 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/store"
 )
 
@@ -29,7 +27,9 @@ func TestGitHookEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
+	rhumbasePath := filepath.Join(binDir, "rhumbase")
 	rhumbasedPath := filepath.Join(binDir, "rhumbased")
+	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
 	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
 
 	dataDir := filepath.Join(tmp, "data")
@@ -40,34 +40,40 @@ func TestGitHookEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll data dir: %v", err)
 	}
 
+	env := append(os.Environ(),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_DATA_DIR="+dataDir,
+		"RHUMBASE_COMPOSE_RUNNER=fake",
+	)
+	runCommand(t, root, env, rhumbasePath, "apps", "create", "my-app")
+
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}
-	if err := sqlite.CreateApp(ctx, app.App{
-		ID:           "my-app",
-		Name:         "my-app",
-		NodeID:       "local",
-		RepoPath:     cfg.AppRepoPath("my-app"),
-		WorktreePath: cfg.AppWorktreePath("my-app"),
-		Status:       app.AppStatusCreated,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("CreateApp: %v", err)
+	createdApp, err := sqlite.GetApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("GetApp: %v", err)
 	}
 	if err := sqlite.Close(); err != nil {
-		t.Fatalf("Close setup store: %v", err)
+		t.Fatalf("Close app store: %v", err)
+	}
+	if createdApp.RepoPath != cfg.AppRepoPath("my-app") {
+		t.Fatalf("app repo path = %q, want %q", createdApp.RepoPath, cfg.AppRepoPath("my-app"))
 	}
 
-	manager := gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
-		AppsDir:  cfg.AppsDir,
-		GitHost:  "server",
-		Executor: gitrecv.LocalGitExecutor{},
-	})
-	repo, err := manager.SetupBareRepo(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("SetupBareRepo: %v", err)
+	repoPath := cfg.AppRepoPath("my-app")
+	if info, err := os.Stat(repoPath); err != nil {
+		t.Fatalf("stat repo: %v", err)
+	} else if !info.IsDir() {
+		t.Fatalf("repo path is not a directory: %s", repoPath)
+	}
+
+	hookPath := filepath.Join(repoPath, "hooks", "post-receive")
+	if info, err := os.Stat(hookPath); err != nil {
+		t.Fatalf("stat hook: %v", err)
+	} else if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("hook is not executable: %v", info.Mode().Perm())
 	}
 
 	sourceDir := filepath.Join(tmp, "source")
@@ -84,13 +90,8 @@ func TestGitHookEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial compose app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	runGit(t, sourceDir, nil, "remote", "add", "prod", repo.Path)
+	runGit(t, sourceDir, nil, "remote", "add", "prod", repoPath)
 
-	env := append(os.Environ(),
-		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
-	)
 	runGit(t, sourceDir, env, "push", "prod", "main")
 
 	releases, err := listReleases(cfg.SQLiteDBPath, "my-app")

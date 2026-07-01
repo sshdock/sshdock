@@ -10,6 +10,7 @@ import (
 
 	"github.com/iketiunn/rumbase/internal/cli"
 	"github.com/iketiunn/rumbase/internal/config"
+	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/store"
 	"github.com/iketiunn/rumbase/internal/version"
 )
@@ -49,6 +50,11 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		NodeID:  cfg.NodeID,
 		AppsDir: cfg.AppsDir,
 		GitHost: "server",
+		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
+			AppsDir:  cfg.AppsDir,
+			GitHost:  "server",
+			Executor: gitrecv.LocalGitExecutor{},
+		}),
 	})
 	runner := cli.NewRunner(backend, version.String())
 	return runner.Run(args, stdout, stderr)

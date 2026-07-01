@@ -10,22 +10,29 @@ import (
 	"time"
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/store"
 )
 
+type ReceiveRepoSetupper interface {
+	SetupBareRepo(ctx context.Context, appName string) (gitrecv.BareRepo, error)
+}
+
 type StoreBackendConfig struct {
-	NodeID  string
-	AppsDir string
-	GitHost string
-	Now     func() time.Time
+	NodeID       string
+	AppsDir      string
+	GitHost      string
+	RepoSetupper ReceiveRepoSetupper
+	Now          func() time.Time
 }
 
 type StoreBackend struct {
-	store   store.Store
-	nodeID  string
-	appsDir string
-	gitHost string
-	now     func() time.Time
+	store        store.Store
+	nodeID       string
+	appsDir      string
+	gitHost      string
+	repoSetupper ReceiveRepoSetupper
+	now          func() time.Time
 }
 
 func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *StoreBackend {
@@ -40,11 +47,12 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 	}
 
 	return &StoreBackend{
-		store:   persistentStore,
-		nodeID:  cfg.NodeID,
-		appsDir: cfg.AppsDir,
-		gitHost: cfg.GitHost,
-		now:     cfg.Now,
+		store:        persistentStore,
+		nodeID:       cfg.NodeID,
+		appsDir:      cfg.AppsDir,
+		gitHost:      cfg.GitHost,
+		repoSetupper: cfg.RepoSetupper,
+		now:          cfg.Now,
 	}
 }
 
@@ -56,12 +64,30 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 		return App{}, "", fmt.Errorf("check app %q: %w", name, err)
 	}
 
+	repo := gitrecv.BareRepo{
+		Path:      filepath.Join(b.appsDir, name, "repo.git"),
+		RemoteURL: fmt.Sprintf("git@%s:%s", b.gitHost, name),
+	}
+	if b.repoSetupper != nil {
+		var err error
+		repo, err = b.repoSetupper.SetupBareRepo(ctx, name)
+		if err != nil {
+			return App{}, "", fmt.Errorf("set up receive repo for app %q: %w", name, err)
+		}
+		if repo.Path == "" {
+			repo.Path = filepath.Join(b.appsDir, name, "repo.git")
+		}
+		if repo.RemoteURL == "" {
+			repo.RemoteURL = fmt.Sprintf("git@%s:%s", b.gitHost, name)
+		}
+	}
+
 	now := b.now()
 	model := appmodel.App{
 		ID:           name,
 		Name:         name,
 		NodeID:       b.nodeID,
-		RepoPath:     filepath.Join(b.appsDir, name, "repo.git"),
+		RepoPath:     repo.Path,
 		WorktreePath: filepath.Join(b.appsDir, name, "worktree"),
 		Status:       appmodel.AppStatusCreated,
 		CreatedAt:    now,
@@ -71,7 +97,7 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 		return App{}, "", fmt.Errorf("create app %q: %w", name, err)
 	}
 
-	return cliApp(model), fmt.Sprintf("git@%s:%s", b.gitHost, name), nil
+	return cliApp(model), repo.RemoteURL, nil
 }
 
 func (b *StoreBackend) ListApps() ([]App, error) {

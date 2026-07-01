@@ -4,7 +4,7 @@ APP_NAME := rhumbase
 DAEMON_NAME := rhumbased
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -21,6 +21,9 @@ test:
 
 smoke:
 	go test ./test/harness -run TestSmoke -v
+
+e2e:
+	go test -tags e2e ./test/e2e -run TestGitHookEndToEnd -v
 
 ci: check-tools fmt lint test smoke build
 

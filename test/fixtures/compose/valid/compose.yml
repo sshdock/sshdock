@@ -1,0 +1,22 @@
+services:
+  api:
+    image: example/api:latest
+    environment:
+      PORT: "3000"
+    env_file:
+      - .env
+    depends_on:
+      - web
+    expose:
+      - "3000"
+    restart: unless-stopped
+  web:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - web-data:/data
+    healthcheck:
+      test: ["CMD", "true"]
+volumes:
+  web-data:

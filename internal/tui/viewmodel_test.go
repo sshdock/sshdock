@@ -1,0 +1,83 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/compose"
+)
+
+func TestNewAppListView(t *testing.T) {
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	apps := []app.App{
+		{ID: "app_1", Name: "my-app", NodeID: "local", Status: app.AppStatusHealthy},
+	}
+	latest := map[string]app.Release{
+		"app_1": {ID: "rel_1", AppID: "app_1", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+	}
+	domains := map[string][]app.Domain{
+		"app_1": {
+			{ID: "dom_1", AppID: "app_1", DomainName: "example.com"},
+			{ID: "dom_2", AppID: "app_1", DomainName: "www.example.com"},
+		},
+	}
+
+	view := NewAppListView(apps, latest, domains)
+
+	if len(view.Items) != 1 {
+		t.Fatalf("items = %#v", view.Items)
+	}
+	item := view.Items[0]
+	if item.Name != "my-app" || item.Status != "healthy" || item.NodeID != "local" {
+		t.Fatalf("item = %#v", item)
+	}
+	if item.LatestReleaseStatus != "succeeded" {
+		t.Fatalf("LatestReleaseStatus = %q", item.LatestReleaseStatus)
+	}
+	if item.DomainCount != 2 {
+		t.Fatalf("DomainCount = %d", item.DomainCount)
+	}
+}
+
+func TestNewAppDetailView(t *testing.T) {
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	model := app.App{ID: "app_1", Name: "my-app", NodeID: "local", Status: app.AppStatusHealthy}
+	services := []compose.ServiceStatus{{Name: "web", State: "running"}}
+	domains := []app.Domain{{ID: "dom_1", AppID: "app_1", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true}}
+	releases := []app.Release{{ID: "rel_1", AppID: "app_1", CommitSHA: "abc123", ComposePath: "compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now}}
+	deployments := []app.Deployment{{ID: "dep_1", AppID: "app_1", ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}}
+
+	view := NewAppDetailView(model, services, domains, releases, deployments)
+
+	if view.App.Name != "my-app" || view.App.Status != "healthy" {
+		t.Fatalf("app view = %#v", view.App)
+	}
+	if len(view.Services) != 1 || view.Services[0].Name != "web" || view.Services[0].State != "running" {
+		t.Fatalf("services = %#v", view.Services)
+	}
+	if len(view.Domains) != 1 || view.Domains[0].DomainName != "example.com" || view.Domains[0].Target != "web:3000" {
+		t.Fatalf("domains = %#v", view.Domains)
+	}
+	if len(view.Releases) != 1 || view.Releases[0].CommitSHA != "abc123" || view.Releases[0].Status != "succeeded" {
+		t.Fatalf("releases = %#v", view.Releases)
+	}
+	if len(view.Deployments) != 1 || view.Deployments[0].Status != "succeeded" {
+		t.Fatalf("deployments = %#v", view.Deployments)
+	}
+	if len(view.Actions) == 0 {
+		t.Fatal("expected basic action labels")
+	}
+}
+
+func TestNewLogsView(t *testing.T) {
+	view := NewLogsView("app_1", "web", "first\nsecond\n")
+
+	if view.AppID != "app_1" || view.ServiceName != "web" {
+		t.Fatalf("logs view = %#v", view)
+	}
+	if strings.Join(view.Lines, ",") != "first,second" {
+		t.Fatalf("Lines = %#v", view.Lines)
+	}
+}

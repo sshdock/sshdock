@@ -1,0 +1,31 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/iketiunn/rumbase/internal/app"
+)
+
+var ErrNotFound = errors.New("not found")
+
+type Store interface {
+	CreateApp(ctx context.Context, model app.App) error
+	GetApp(ctx context.Context, id string) (app.App, error)
+	ListApps(ctx context.Context) ([]app.App, error)
+	CreateRelease(ctx context.Context, model app.Release) error
+	GetRelease(ctx context.Context, id string) (app.Release, error)
+	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
+	CreateDeployment(ctx context.Context, model app.Deployment) error
+	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
+	AttachDomain(ctx context.Context, model app.Domain) error
+	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
+	CreateEvent(ctx context.Context, model app.Event) error
+	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
+}
+
+func notFound(kind string, id string) error {
+	return fmt.Errorf("%s %q: %w", kind, id, ErrNotFound)
+}

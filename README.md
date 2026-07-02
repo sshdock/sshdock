@@ -56,22 +56,23 @@ Rhumbase is not:
 
 ## Example Workflow
 
-Create an app:
+Configure the server Git host and authorize your key:
 
 ```bash
-rhumbase apps create my-app
+rhumbase server domain set rhumbase.example.com
+echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
 ```
 
 Add the Git remote:
 
 ```bash
-git remote add prod git@server:my-app
+git remote add rhumbase git@rhumbase.example.com:my-app.git
 ```
 
 Deploy:
 
 ```bash
-git push prod main
+git push rhumbase main
 ```
 
 Open the dashboard:
@@ -93,13 +94,27 @@ Current MVP state:
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Caddy reloads, SSH transport, and SSH dashboard sessions are still later runtime milestones.
+- Push-to-create SSH transport, SSH key management, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains attach my-app web example.com --port 3000
 ```
+
+Manual app creation remains available for scripting and debugging:
+
+```bash
+rhumbase apps create my-app
+```
+
+The v0 Git URL format is intentionally flat:
+
+```text
+git@<server-domain>:<app>.git
+```
+
+Namespace paths such as `git@<server-domain>:<owner>/<repo>.git` are future work because they require owner-aware SSH key authorization.
 
 Target result when runtime milestones are complete:
 

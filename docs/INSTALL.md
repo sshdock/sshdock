@@ -36,6 +36,23 @@ Rhumbase v0 requires:
 
 The installer must check each dependency and print actionable errors when something is missing.
 
+## Target Bootstrap Flow
+
+The intended install experience should be close to:
+
+```bash
+wget -O bootstrap.sh <rhumbase-install-url>
+sudo RHUMBASE_TAG=<version> bash bootstrap.sh
+
+rhumbase server domain set rhumbase.example.com
+echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
+
+git remote add rhumbase git@rhumbase.example.com:my-app.git
+git push rhumbase main
+```
+
+The first authorized push to `my-app.git` should create the app automatically. `rhumbase apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
+
 ## Docker Requirement
 
 The install flow should verify:
@@ -101,6 +118,31 @@ ssh dashboard@server
 The install flow should ensure this user exists or clearly instruct the administrator how to create it.
 
 The dashboard user should not expose a web admin panel.
+
+## SSH Git Receive User
+
+The install flow should configure an SSH entry point for Git pushes.
+
+Expected Git remote format for v0:
+
+```text
+git@<server-domain>:<app>.git
+```
+
+The SSH key authorization model for v0 is single-admin/deploy-key oriented:
+
+- Authorized keys may deploy any app on the single node.
+- First push to a missing flat app name creates that app.
+- Paths containing `/`, such as `<owner>/<repo>.git`, are rejected in v0.
+- Namespace ownership can be added later by mapping SSH keys to owners or admin roles before authorizing `owner/repo` paths.
+
+The Git SSH entry point should run a forced command equivalent to:
+
+```text
+rhumbased git-receive
+```
+
+`rhumbased git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, creates the app if needed, and then streams the push into the app's bare repository.
 
 ## systemd Service
 

@@ -150,6 +150,70 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	}
 }
 
+func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: cleanupWarningRunner{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	status := queryDeploymentStatus(t, dbPath, "dep_abc123")
+	if status != string(app.DeploymentStatusSucceeded) {
+		t.Fatalf("deployment status = %q", status)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "cleanup.failed", "deploy.succeeded"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+	if !strings.Contains(events[1].Message, "rhumbase/my-app/web:old-1") || !strings.Contains(events[1].Message, "image is in use") {
+		t.Fatalf("cleanup event = %#v", events[1])
+	}
+}
+
+type cleanupWarningRunner struct{}
+
+func (cleanupWarningRunner) Validate(context.Context, string) (compose.ValidationResult, error) {
+	return compose.ValidationResult{}, nil
+}
+
+func (cleanupWarningRunner) Deploy(ctx context.Context, request compose.DeployRequest) error {
+	return request.CleanupRecorder.RecordCleanupFailure(ctx, compose.CleanupFailure{
+		AppName:      request.AppName,
+		ServiceName:  "web",
+		CommitSHA:    "old-1",
+		Image:        "rhumbase/my-app/web:old-1",
+		ErrorMessage: "image is in use",
+	})
+}
+
+func (cleanupWarningRunner) Restart(context.Context, compose.RestartRequest) error {
+	return nil
+}
+
+func (cleanupWarningRunner) Status(context.Context, compose.StatusRequest) ([]compose.ServiceStatus, error) {
+	return nil, nil
+}
+
+func (cleanupWarningRunner) Logs(context.Context, compose.LogsRequest) (string, error) {
+	return "", nil
+}
+
 func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.SQLiteStore {
 	t.Helper()
 

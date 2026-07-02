@@ -97,6 +97,38 @@ func TestDockerRunnerUpdatesLatestOnlyAfterUpSucceeds(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, `services:
+  web:
+    build: .
+`)
+	executor := &recordingExecutor{FailAt: 5, Err: errors.New("image is in use")}
+	recorder := &recordingCleanupRecorder{}
+	runner := NewDockerRunner(executor)
+
+	err := runner.Deploy(ctx, DeployRequest{
+		AppName:               "my-app",
+		ProjectDir:            projectDir,
+		ComposePath:           composePath,
+		CommitSHA:             "abc123",
+		SuccessfulReleaseSHAs: []string{"prev-1", "prev-2", "prev-3", "prev-4", "prev-5", "old-1"},
+		CleanupRecorder:       recorder,
+	})
+	if err != nil {
+		t.Fatalf("Deploy error = %v, want nil cleanup warning", err)
+	}
+	if len(recorder.Failures) != 1 {
+		t.Fatalf("cleanup failures = %#v", recorder.Failures)
+	}
+	failure := recorder.Failures[0]
+	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "old-1" || failure.Image != "rhumbase/my-app/web:old-1" || failure.ErrorMessage != "image is in use" {
+		t.Fatalf("cleanup failure = %#v", failure)
+	}
+}
+
 func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
@@ -160,6 +192,15 @@ type recordingExecutor struct {
 	Outputs  []string
 	FailAt   int
 	Err      error
+}
+
+type recordingCleanupRecorder struct {
+	Failures []CleanupFailure
+}
+
+func (r *recordingCleanupRecorder) RecordCleanupFailure(_ context.Context, failure CleanupFailure) error {
+	r.Failures = append(r.Failures, failure)
+	return nil
 }
 
 func (r *recordingExecutor) Run(_ context.Context, command Command) (string, error) {

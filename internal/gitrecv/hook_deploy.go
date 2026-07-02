@@ -150,6 +150,12 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		CommitSHA:    event.CommitSHA,
 		ProjectName:  compose.ProjectName(event.AppName),
 		KeepReleases: 5,
+		CleanupRecorder: cleanupEventRecorder{
+			store:        h.store,
+			appID:        event.AppName,
+			deploymentID: deploymentID,
+			now:          h.now,
+		},
 	})
 	if err != nil {
 		finishedAt := h.now()
@@ -195,6 +201,23 @@ func DeploymentID(commitSHA string) string {
 
 func EventID(deploymentID string, suffix string) string {
 	return "evt_" + deploymentID + "_" + suffix
+}
+
+type cleanupEventRecorder struct {
+	store        postReceiveStore
+	appID        string
+	deploymentID string
+	now          func() time.Time
+}
+
+func (r cleanupEventRecorder) RecordCleanupFailure(ctx context.Context, failure compose.CleanupFailure) error {
+	return r.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(r.deploymentID+"_"+failure.ServiceName+"_"+failure.CommitSHA, "cleanup_failed"),
+		AppID:     r.appID,
+		Type:      "cleanup.failed",
+		Message:   "Cleanup failed for image " + failure.Image + ": " + failure.ErrorMessage,
+		CreatedAt: r.now(),
+	})
 }
 
 func shortCommitSHA(commitSHA string) string {

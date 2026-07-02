@@ -4,7 +4,7 @@ APP_NAME := rhumbase
 DAEMON_NAME := rhumbased
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e recovery-e2e ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e recovery-e2e hardening-e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -45,6 +45,9 @@ tui-e2e:
 
 recovery-e2e:
 	go test -count=1 -tags e2e ./test/e2e -run TestRecovery -v
+
+hardening-e2e:
+	go test -count=1 -tags e2e ./test/e2e -run TestHardening -v
 
 ci: check-tools fmt lint test smoke build
 

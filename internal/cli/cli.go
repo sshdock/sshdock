@@ -346,7 +346,7 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 }
 
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: rhumbase version | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | domains attach <app> <service> <domain> --port <port> | server domain set <domain> | ssh-keys add <name>")
+	fmt.Fprintln(stderr, "usage: rhumbase version | diagnostics | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | domains attach <app> <service> <domain> --port <port> | server domain set <domain> | ssh-keys add <name>")
 }
 
 func validatePublicKey(publicKey string) error {

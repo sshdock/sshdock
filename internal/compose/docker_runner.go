@@ -88,11 +88,21 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 
 	for _, sha := range prunableReleases(request.SuccessfulReleaseSHAs, request.keepReleases()) {
 		for _, service := range buildServices {
-			_, _ = r.executor.Run(ctx, Command{
+			image := releaseImage(request.AppName, service, sha)
+			_, err := r.executor.Run(ctx, Command{
 				Name: "docker",
 				Dir:  request.ProjectDir,
-				Args: []string{"image", "rm", releaseImage(request.AppName, service, sha)},
+				Args: []string{"image", "rm", image},
 			})
+			if err != nil && request.CleanupRecorder != nil {
+				_ = request.CleanupRecorder.RecordCleanupFailure(ctx, CleanupFailure{
+					AppName:      request.AppName,
+					ServiceName:  service,
+					CommitSHA:    sha,
+					Image:        image,
+					ErrorMessage: err.Error(),
+				})
+			}
 		}
 	}
 

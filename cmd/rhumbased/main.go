@@ -48,6 +48,10 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 func runServe(stderr io.Writer) int {
 	ctx := context.Background()
 	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "create data dir: %v\n", err)
 		return 1
@@ -104,6 +108,10 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 
 	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	if *worktreePath == "" {
 		*worktreePath = cfg.AppWorktreePath(*appName)
 	}
@@ -145,6 +153,10 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "create data dir: %v\n", err)
 		return 1

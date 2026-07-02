@@ -20,6 +20,18 @@ type Runner interface {
 	Logs(ctx context.Context, request LogsRequest) (string, error)
 }
 
+type CleanupFailure struct {
+	AppName      string
+	ServiceName  string
+	CommitSHA    string
+	Image        string
+	ErrorMessage string
+}
+
+type CleanupRecorder interface {
+	RecordCleanupFailure(ctx context.Context, failure CleanupFailure) error
+}
+
 type DeployRequest struct {
 	AppName               string
 	ProjectDir            string
@@ -29,6 +41,7 @@ type DeployRequest struct {
 	ProjectName           string
 	KeepReleases          int
 	SuccessfulReleaseSHAs []string
+	CleanupRecorder       CleanupRecorder
 }
 
 type RestartRequest struct {

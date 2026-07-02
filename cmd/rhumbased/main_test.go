@@ -94,3 +94,18 @@ func TestRunGitReceiveRequiresSSHOriginalCommand(t *testing.T) {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
+
+func TestRunGitReceiveValidatesConfig(t *testing.T) {
+	t.Setenv("SSH_ORIGINAL_COMMAND", "git-receive-pack 'my-app.git'")
+	t.Setenv("RHUMBASE_GIT_HOST", " ")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithInput([]string{"git-receive"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "RHUMBASE_GIT_HOST is required") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}

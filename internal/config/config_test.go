@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -52,6 +53,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	}
 	if cfg.CaddyAdminAddress != "" {
 		t.Fatalf("CaddyAdminAddress = %q, want empty default", cfg.CaddyAdminAddress)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate default config: %v", err)
 	}
 }
 
@@ -136,5 +140,28 @@ func TestAppPathsAreDerivedFromDataDirectory(t *testing.T) {
 	}
 	if cfg.AppWorktreePath("my-app") != "/srv/rhumbase/apps/my-app/worktree" {
 		t.Fatalf("AppWorktreePath = %q", cfg.AppWorktreePath("my-app"))
+	}
+}
+
+func TestValidateReportsActionableMissingFields(t *testing.T) {
+	cfg := Default()
+	cfg.DataDir = " "
+	cfg.GitHost = " "
+	cfg.GitReceiveCommand = " "
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate error = nil, want missing field errors")
+	}
+
+	message := err.Error()
+	for _, want := range []string{
+		"RHUMBASE_DATA_DIR is required",
+		"RHUMBASE_GIT_HOST is required",
+		"RHUMBASE_GIT_RECEIVE_COMMAND is required",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("Validate error missing %q:\n%s", want, message)
+		}
 	}
 }

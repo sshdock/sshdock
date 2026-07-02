@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -76,6 +78,40 @@ func (c Config) AppRepoPath(appName string) string {
 
 func (c Config) AppWorktreePath(appName string) string {
 	return filepath.Join(c.AppDir(appName), "worktree")
+}
+
+func (c Config) Validate() error {
+	required := []struct {
+		env   string
+		value string
+	}{
+		{env: "RHUMBASE_DATA_DIR", value: c.DataDir},
+		{env: "RHUMBASE_SQLITE_DB_PATH", value: c.SQLiteDBPath},
+		{env: "RHUMBASE_APPS_DIR", value: c.AppsDir},
+		{env: "RHUMBASE_NODE_ID", value: c.NodeID},
+		{env: "RHUMBASE_SSH_LISTEN_ADDR", value: c.SSHListenAddr},
+		{env: "RHUMBASE_DASHBOARD_USER", value: c.DashboardUser},
+		{env: "RHUMBASE_DASHBOARD_HOST_KEY_PATH", value: c.DashboardHostKeyPath},
+		{env: "RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", value: c.DashboardAuthorizedKeysPath},
+		{env: "RHUMBASE_GIT_USER", value: c.GitUser},
+		{env: "RHUMBASE_GIT_HOME_DIR", value: c.GitHomeDir},
+		{env: "RHUMBASE_GIT_HOST", value: c.GitHost},
+		{env: "RHUMBASE_GIT_AUTHORIZED_KEYS_PATH", value: c.GitAuthorizedKeysPath},
+		{env: "RHUMBASE_GIT_RECEIVE_COMMAND", value: c.GitReceiveCommand},
+		{env: "RHUMBASE_CADDY_CONFIG_PATH", value: c.CaddyConfigPath},
+	}
+
+	var problems []string
+	for _, field := range required {
+		if strings.TrimSpace(field.value) == "" {
+			problems = append(problems, field.env+" is required")
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("invalid Rhumbase config: %s", strings.Join(problems, "; "))
+	}
+
+	return nil
 }
 
 func envOrDefault(name string, fallback string) string {

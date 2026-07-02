@@ -359,6 +359,51 @@ An upgrade should:
 
 Upgrades must not prune Docker images broadly. Cleanup should remain scoped to Rhumbase-managed image tags.
 
+## Diagnostics
+
+Run:
+
+```bash
+rhumbase diagnostics
+```
+
+The command checks:
+
+- required Rhumbase config values
+- data, app, Git, dashboard, SQLite, and Caddy config directories
+- Docker and Docker Compose
+- Caddy
+- SSH client and server commands
+- Git
+- SQLite open and migration execution
+
+Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. A failed check exits non-zero.
+
+## Backup And Restore
+
+For v0, backup the complete Rhumbase state directory before upgrades or host maintenance:
+
+```text
+/var/lib/rhumbase/
+  rhumbase.db
+  apps/
+    <app>/
+      repo.git/
+      worktree/
+  git/
+  dashboard/
+```
+
+Also keep a copy of generated Caddy config, normally `/etc/caddy/rhumbase.caddyfile`, and any systemd unit overrides you add outside the default installer.
+
+Restore order:
+
+1. Stop `rhumbased`.
+2. Restore `/var/lib/rhumbase/` with original ownership.
+3. Restore generated Caddy config if needed.
+4. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
+5. Start `rhumbased` and run `rhumbase diagnostics`.
+
 ## Verification
 
 Run the full bootstrap harness with:
@@ -382,3 +427,11 @@ make ssh-e2e
 ```
 
 This test starts a local unprivileged OpenSSH daemon when available, pushes through real `ssh`, exercises the forced-command `authorized_keys` path, and verifies the push-to-create deployment record.
+
+Run the hardening harness with:
+
+```bash
+make hardening-e2e
+```
+
+This test runs bootstrap twice under a fake root, verifies data is preserved while binaries are replaced, and runs `rhumbase diagnostics` with fake runtime dependencies.

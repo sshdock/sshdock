@@ -129,6 +129,26 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	}
 }
 
+func TestRunWithEnvDiagnosticsReportsConfigFailure(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
+	t.Setenv("RHUMBASE_GIT_HOST", " ")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithEnv([]string{"diagnostics"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("diagnostics exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "fail config") {
+		t.Fatalf("diagnostics stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "RHUMBASE_GIT_HOST is required") {
+		t.Fatalf("diagnostics stdout missing config error:\n%s", stdout.String())
+	}
+}
+
 func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
 	tests := [][]string{
 		{"apps", "restart", "my-app"},

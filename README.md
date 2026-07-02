@@ -111,6 +111,8 @@ Current MVP state:
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
 - `rhumbased` starts an SSH dashboard on `RHUMBASE_SSH_LISTEN_ADDR`, authenticates `RHUMBASE_DASHBOARD_USER` with `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`, and renders deployed app status, services, domains, releases, deployments, and logs.
 - `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
+- `rhumbase diagnostics` checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations with actionable pass/fail output.
+- Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; cleanup remains scoped to Rhumbase-managed image tags.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
 
 ```bash
@@ -118,6 +120,7 @@ RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains attach my-app web example.com --port 3000
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps rollback my-app rel_<short-sha>
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase diagnostics
 ```
 
 Manual app creation remains available for scripting and debugging:
@@ -338,6 +341,12 @@ Recovery e2e:
 
 ```bash
 make recovery-e2e
+```
+
+Hardening e2e:
+
+```bash
+make hardening-e2e
 ```
 
 Full CI:

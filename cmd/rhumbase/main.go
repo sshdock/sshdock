@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/iketiunn/rumbase/internal/cli"
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
+	"github.com/iketiunn/rumbase/internal/diagnostics"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
@@ -28,11 +31,18 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 1 && args[0] == "diagnostics" {
+		return runDiagnostics(stdout)
+	}
 	if !commandNeedsStore(args) {
 		return run(args, stdout, stderr)
 	}
 
 	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "create data dir: %v\n", err)
 		return 1
@@ -79,6 +89,15 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	})
 	runner := cli.NewRunner(backend, version.String())
 	return runner.RunWithInput(args, os.Stdin, stdout, stderr)
+}
+
+func runDiagnostics(stdout io.Writer) int {
+	report := diagnostics.Run(context.Background(), config.LoadFromEnv(), diagnosticsLocalExecutor{})
+	fmt.Fprint(stdout, report.String())
+	if !report.OK {
+		return 1
+	}
+	return 0
 }
 
 func commandNeedsStore(args []string) bool {
@@ -136,4 +155,15 @@ func envError(name string) error {
 		return nil
 	}
 	return errors.New(value)
+}
+
+type diagnosticsLocalExecutor struct{}
+
+func (diagnosticsLocalExecutor) Run(ctx context.Context, command diagnostics.Command) (string, error) {
+	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("%s %s: %w: %s", command.Name, strings.Join(command.Args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
 }

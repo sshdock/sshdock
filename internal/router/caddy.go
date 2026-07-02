@@ -78,7 +78,7 @@ func (r *CaddyRouter) Reload(ctx context.Context) error {
 		return nil
 	}
 
-	args := []string{"reload", "--config", r.configPath}
+	args := []string{"reload", "--config", r.configPath, "--adapter", "caddyfile"}
 	if r.adminAddress != "" {
 		args = append(args, "--address", r.adminAddress)
 	}
@@ -137,7 +137,7 @@ func (r *CaddyRouter) validateConfig(ctx context.Context, configPath string) err
 		return nil
 	}
 
-	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: []string{"validate", "--config", configPath}})
+	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: []string{"validate", "--config", configPath, "--adapter", "caddyfile"}})
 }
 
 func renderCaddyfile(routes map[string]Route, upstreamHost string, adminAddress string) string {

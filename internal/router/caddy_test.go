@@ -38,7 +38,7 @@ func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
 	if len(executor.Commands) != 2 {
 		t.Fatalf("commands = %#v, want validate and reload", executor.Commands)
 	}
-	if executor.Commands[0].Name != "caddy" || len(executor.Commands[0].Args) != 3 || executor.Commands[0].Args[0] != "validate" || executor.Commands[0].Args[1] != "--config" {
+	if executor.Commands[0].Name != "caddy" || len(executor.Commands[0].Args) != 5 || executor.Commands[0].Args[0] != "validate" || executor.Commands[0].Args[1] != "--config" || executor.Commands[0].Args[3] != "--adapter" || executor.Commands[0].Args[4] != "caddyfile" {
 		t.Fatalf("validate command = %#v", executor.Commands[0])
 	}
 	if executor.Commands[0].Args[2] == configPath {
@@ -46,7 +46,7 @@ func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
 	}
 	wantReload := CaddyCommand{
 		Name: "caddy",
-		Args: []string{"reload", "--config", configPath},
+		Args: []string{"reload", "--config", configPath, "--adapter", "caddyfile"},
 	}
 	if !reflect.DeepEqual(executor.Commands[1], wantReload) {
 		t.Fatalf("reload command = %#v, want %#v", executor.Commands[1], wantReload)
@@ -166,7 +166,7 @@ func TestCaddyRouterReloadErrorIsReturned(t *testing.T) {
 	failure := errors.New("reload failed")
 	router := NewCaddyRouter(CaddyRouterConfig{
 		ConfigPath: filepath.Join(t.TempDir(), "Caddyfile"),
-		Executor:   &recordingCaddyExecutor{Err: failure},
+		Executor:   &recordingCaddyExecutor{ErrByCommand: map[string]error{"reload": failure}},
 	})
 
 	err := router.AttachDomain(ctx, Route{DomainName: "example.com", ServiceName: "web", Port: 3000})

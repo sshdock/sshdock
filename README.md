@@ -122,7 +122,8 @@ Target result when runtime milestones are complete:
 - Code is received through Git
 - Compose file is detected
 - Release is created
-- Images are built or pulled
+- Services with `image` are pulled
+- Services with `build` are built through Docker Compose into Rhumbase commit-tagged images using an internal release override file
 - Compose stack starts
 - Domain routes to the selected service
 - HTTPS is handled through Caddy

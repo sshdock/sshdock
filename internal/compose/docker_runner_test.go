@@ -48,7 +48,7 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 
 	want := []Command{
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "config"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "pull"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "pull", "--ignore-buildable"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "build", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "up", "-d"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"image", "tag", "rhumbase/my-app/web:abc123", "rhumbase/my-app/web:latest"}},

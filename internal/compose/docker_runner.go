@@ -47,7 +47,7 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 	if _, err := ValidateFile(request.ComposePath); err != nil {
 		return err
 	}
-	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: commandArgs(baseArgs, "pull")}); err != nil {
+	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: commandArgs(baseArgs, "pull", "--ignore-buildable")}); err != nil {
 		return err
 	}
 

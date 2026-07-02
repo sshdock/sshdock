@@ -14,7 +14,10 @@ import (
 type postReceiveStore interface {
 	CreateRelease(ctx context.Context, model app.Release) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
+	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
+	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
+	CreateEvent(ctx context.Context, model app.Event) error
 }
 
 type WorktreeCheckout interface {
@@ -114,12 +117,27 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	}); err != nil {
 		return err
 	}
+	if err := h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusDeploying, now); err != nil {
+		return err
+	}
+	if err := h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusDeploying, now); err != nil {
+		return err
+	}
 	if err := h.store.CreateDeployment(ctx, app.Deployment{
 		ID:        deploymentID,
 		AppID:     event.AppName,
 		ReleaseID: releaseID,
 		Status:    app.DeploymentStatusDeploying,
 		StartedAt: now,
+	}); err != nil {
+		return err
+	}
+	if err := h.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(deploymentID, "started"),
+		AppID:     event.AppName,
+		Type:      "deploy.started",
+		Message:   "Deploy started for release " + releaseID,
+		CreatedAt: now,
 	}); err != nil {
 		return err
 	}
@@ -134,11 +152,37 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		KeepReleases: 5,
 	})
 	if err != nil {
-		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, h.now(), err.Error())
+		finishedAt := h.now()
+		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, err.Error())
+		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
+		_ = h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusFailed, finishedAt)
+		_ = h.store.CreateEvent(ctx, app.Event{
+			ID:        EventID(deploymentID, "failed"),
+			AppID:     event.AppName,
+			Type:      "deploy.failed",
+			Message:   "Deploy failed for release " + releaseID + ": " + err.Error(),
+			CreatedAt: finishedAt,
+		})
 		return err
 	}
 
-	return h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusSucceeded, h.now(), "")
+	finishedAt := h.now()
+	if err := h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusSucceeded, finishedAt, ""); err != nil {
+		return err
+	}
+	if err := h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusSucceeded, finishedAt); err != nil {
+		return err
+	}
+	if err := h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusHealthy, finishedAt); err != nil {
+		return err
+	}
+	return h.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(deploymentID, "succeeded"),
+		AppID:     event.AppName,
+		Type:      "deploy.succeeded",
+		Message:   "Deploy succeeded for release " + releaseID,
+		CreatedAt: finishedAt,
+	})
 }
 
 func ReleaseID(commitSHA string) string {
@@ -147,6 +191,10 @@ func ReleaseID(commitSHA string) string {
 
 func DeploymentID(commitSHA string) string {
 	return "dep_" + shortCommitSHA(commitSHA)
+}
+
+func EventID(deploymentID string, suffix string) string {
+	return "evt_" + deploymentID + "_" + suffix
 }
 
 func shortCommitSHA(commitSHA string) string {

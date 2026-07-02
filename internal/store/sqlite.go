@@ -90,6 +90,30 @@ func (s *SQLiteStore) ListApps(ctx context.Context) ([]app.App, error) {
 	return models, rows.Err()
 }
 
+func (s *SQLiteStore) UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
+		update apps
+		set status = ?, updated_at = ?
+		where id = ?`,
+		string(status),
+		formatTime(updatedAt),
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("app", id)
+	}
+
+	return nil
+}
+
 func (s *SQLiteStore) CreateRelease(ctx context.Context, model app.Release) error {
 	_, err := s.db.ExecContext(ctx, `
 		insert into releases (id, app_id, commit_sha, compose_path, status, created_at, updated_at)
@@ -140,6 +164,30 @@ func (s *SQLiteStore) ListReleasesByApp(ctx context.Context, appID string) ([]ap
 	}
 
 	return models, rows.Err()
+}
+
+func (s *SQLiteStore) UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
+		update releases
+		set status = ?, updated_at = ?
+		where id = ?`,
+		string(status),
+		formatTime(updatedAt),
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("release", id)
+	}
+
+	return nil
 }
 
 func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment) error {

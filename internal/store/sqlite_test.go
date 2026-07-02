@@ -45,6 +45,21 @@ func TestSQLiteStoreApps(t *testing.T) {
 	if len(apps) != 1 || apps[0] != model {
 		t.Fatalf("ListApps = %#v, want [%#v]", apps, model)
 	}
+
+	updatedAt := now.Add(time.Minute)
+	if err := store.UpdateAppStatus(ctx, model.ID, app.AppStatusDeploying, updatedAt); err != nil {
+		t.Fatalf("UpdateAppStatus: %v", err)
+	}
+	got, err = store.GetApp(ctx, model.ID)
+	if err != nil {
+		t.Fatalf("GetApp after status update: %v", err)
+	}
+	if got.Status != app.AppStatusDeploying {
+		t.Fatalf("status after update = %q", got.Status)
+	}
+	if !got.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("updated_at after update = %s, want %s", got.UpdatedAt, updatedAt)
+	}
 }
 
 func TestSQLiteStoreReleases(t *testing.T) {
@@ -79,6 +94,21 @@ func TestSQLiteStoreReleases(t *testing.T) {
 	}
 	if len(releases) != 1 || releases[0] != release {
 		t.Fatalf("ListReleasesByApp = %#v, want [%#v]", releases, release)
+	}
+
+	updatedAt := now.Add(time.Minute)
+	if err := store.UpdateReleaseStatus(ctx, release.ID, app.ReleaseStatusDeploying, updatedAt); err != nil {
+		t.Fatalf("UpdateReleaseStatus: %v", err)
+	}
+	got, err = store.GetRelease(ctx, release.ID)
+	if err != nil {
+		t.Fatalf("GetRelease after status update: %v", err)
+	}
+	if got.Status != app.ReleaseStatusDeploying {
+		t.Fatalf("status after update = %q", got.Status)
+	}
+	if !got.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("updated_at after update = %s, want %s", got.UpdatedAt, updatedAt)
 	}
 }
 

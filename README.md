@@ -97,6 +97,7 @@ Current MVP state:
 - `scripts/bootstrap.sh` installs local or released binaries, writes `rhumbased.service`, checks Docker/Caddy/systemd, and can be tested under a fake root with `make bootstrap-e2e`.
 - `rhumbase server domain set <domain>` persists the Git host used in app remote output.
 - `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
+- First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
 - Caddy reloads, public domain routing, and SSH dashboard sessions are still later runtime milestones.
 
@@ -300,6 +301,12 @@ Bootstrap installer harness:
 
 ```bash
 make bootstrap-e2e
+```
+
+Bootstrapped server push e2e:
+
+```bash
+make server-push-e2e
 ```
 
 Full CI:

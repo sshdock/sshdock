@@ -190,6 +190,8 @@ type fakeServiceStore struct {
 	apps                 map[string]App
 	releases             map[string]Release
 	deployments          map[string]Deployment
+	appStatuses          map[string]AppStatus
+	releaseStatuses      map[string]ReleaseStatus
 	deploymentStatuses   map[string]DeploymentStatus
 	deploymentFinishedAt map[string]time.Time
 	deploymentErrors     map[string]string
@@ -202,6 +204,8 @@ func newFakeServiceStore() *fakeServiceStore {
 		apps:                 map[string]App{},
 		releases:             map[string]Release{},
 		deployments:          map[string]Deployment{},
+		appStatuses:          map[string]AppStatus{},
+		releaseStatuses:      map[string]ReleaseStatus{},
 		deploymentStatuses:   map[string]DeploymentStatus{},
 		deploymentFinishedAt: map[string]time.Time{},
 		deploymentErrors:     map[string]string{},
@@ -231,6 +235,15 @@ func (f *fakeServiceStore) ListApps(_ context.Context) ([]App, error) {
 	return apps, nil
 }
 
+func (f *fakeServiceStore) UpdateAppStatus(_ context.Context, id string, status AppStatus, updatedAt time.Time) error {
+	model := f.apps[id]
+	model.Status = status
+	model.UpdatedAt = updatedAt
+	f.apps[id] = model
+	f.appStatuses[id] = status
+	return nil
+}
+
 func (f *fakeServiceStore) CreateRelease(_ context.Context, model Release) error {
 	f.releases[model.ID] = model
 	return nil
@@ -252,6 +265,15 @@ func (f *fakeServiceStore) ListReleasesByApp(_ context.Context, appID string) ([
 		}
 	}
 	return releases, nil
+}
+
+func (f *fakeServiceStore) UpdateReleaseStatus(_ context.Context, id string, status ReleaseStatus, updatedAt time.Time) error {
+	model := f.releases[id]
+	model.Status = status
+	model.UpdatedAt = updatedAt
+	f.releases[id] = model
+	f.releaseStatuses[id] = status
+	return nil
 }
 
 func (f *fakeServiceStore) CreateDeployment(_ context.Context, model Deployment) error {

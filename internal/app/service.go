@@ -12,9 +12,11 @@ type serviceStore interface {
 	CreateApp(ctx context.Context, model App) error
 	GetApp(ctx context.Context, id string) (App, error)
 	ListApps(ctx context.Context) ([]App, error)
+	UpdateAppStatus(ctx context.Context, id string, status AppStatus, updatedAt time.Time) error
 	CreateRelease(ctx context.Context, model Release) error
 	GetRelease(ctx context.Context, id string) (Release, error)
 	ListReleasesByApp(ctx context.Context, appID string) ([]Release, error)
+	UpdateReleaseStatus(ctx context.Context, id string, status ReleaseStatus, updatedAt time.Time) error
 	CreateDeployment(ctx context.Context, model Deployment) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	AttachDomain(ctx context.Context, model Domain) error

@@ -33,8 +33,8 @@ func TestAppsCreatePrintsRemoteNextSteps(t *testing.T) {
 	output := stdout.String()
 	for _, want := range []string{
 		"created app my-app",
-		"git remote add prod git@example.com:my-app",
-		"git push prod main",
+		"git remote add rhumbase git@example.com:my-app.git",
+		"git push rhumbase main",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, output)

@@ -34,12 +34,16 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
 	t.Setenv("RHUMBASE_APPS_DIR", filepath.Join(dataDir, "apps"))
 	t.Setenv("RHUMBASE_NODE_ID", "node-a")
+	t.Setenv("RHUMBASE_GIT_HOST", "rhumbase.example.com")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	if code := runWithEnv([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+		t.Fatalf("apps create stdout = %q", stdout.String())
 	}
 
 	stdout.Reset()

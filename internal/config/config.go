@@ -12,6 +12,7 @@ type Config struct {
 	NodeID          string
 	SSHListenAddr   string
 	DashboardUser   string
+	GitHost         string
 	CaddyConfigPath string
 }
 
@@ -25,6 +26,7 @@ func Default() Config {
 		NodeID:          "local",
 		SSHListenAddr:   ":2222",
 		DashboardUser:   "dashboard",
+		GitHost:         "server",
 		CaddyConfigPath: "/etc/caddy/rhumbase.caddyfile",
 	}
 }
@@ -38,6 +40,7 @@ func LoadFromEnv() Config {
 	cfg.NodeID = envOrDefault("RHUMBASE_NODE_ID", cfg.NodeID)
 	cfg.SSHListenAddr = envOrDefault("RHUMBASE_SSH_LISTEN_ADDR", cfg.SSHListenAddr)
 	cfg.DashboardUser = envOrDefault("RHUMBASE_DASHBOARD_USER", cfg.DashboardUser)
+	cfg.GitHost = envOrDefault("RHUMBASE_GIT_HOST", cfg.GitHost)
 	cfg.CaddyConfigPath = envOrDefault("RHUMBASE_CADDY_CONFIG_PATH", cfg.CaddyConfigPath)
 
 	return cfg

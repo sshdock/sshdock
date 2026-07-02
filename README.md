@@ -92,9 +92,10 @@ Current MVP state:
 - `rhumbase` persists app and domain metadata in SQLite.
 - `rhumbase apps create` creates a local bare Git repository and installs a `post-receive` hook.
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
+- `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Push-to-create SSH transport, SSH key management, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
+- SSH key management, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app

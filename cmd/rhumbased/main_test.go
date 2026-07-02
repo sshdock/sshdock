@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/iketiunn/rumbase/internal/compose"
@@ -36,5 +37,22 @@ func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
 	}
 	if _, ok := runner.(*compose.DockerRunner); !ok {
 		t.Fatalf("runner = %T, want *compose.DockerRunner", runner)
+	}
+}
+
+func TestRunGitReceiveRequiresSSHOriginalCommand(t *testing.T) {
+	t.Setenv("SSH_ORIGINAL_COMMAND", "")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithInput([]string{"git-receive"}, nil, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "SSH_ORIGINAL_COMMAND") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }

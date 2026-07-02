@@ -70,7 +70,7 @@ func (m *RepoManager) SetupBareRepo(ctx context.Context, appName string) (BareRe
 }
 
 func (m *RepoManager) RemoteURL(appName string) string {
-	return fmt.Sprintf("git@%s:%s", m.gitHost, appName)
+	return fmt.Sprintf("git@%s:%s.git", m.gitHost, appName)
 }
 
 func (m *RepoManager) renderPostReceiveHook(appName string, repoPath string) error {

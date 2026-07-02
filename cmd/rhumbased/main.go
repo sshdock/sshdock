@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
@@ -30,8 +31,11 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
 	}
+	if len(args) == 1 && args[0] == "git-receive" {
+		return runGitReceive(stdin, stdout, stderr)
+	}
 
-	fmt.Fprintln(stderr, "usage: rhumbased version | git-hook --app <name> --repo <repo.git> [--worktree <path>]")
+	fmt.Fprintln(stderr, "usage: rhumbased version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }
 
@@ -77,6 +81,57 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		Checkout: gitrecv.LocalWorktreeCheckout{},
 	})
 	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, stdin); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	return 0
+}
+
+func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	originalCommand := os.Getenv("SSH_ORIGINAL_COMMAND")
+	if originalCommand == "" {
+		fmt.Fprintln(stderr, "SSH_ORIGINAL_COMMAND is required for git-receive")
+		return 2
+	}
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+
+	cfg := config.LoadFromEnv()
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		fmt.Fprintf(stderr, "create data dir: %v\n", err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "create database dir: %v\n", err)
+		return 1
+	}
+
+	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer sqlite.Close()
+
+	service := gitrecv.NewReceivePackService(gitrecv.ReceivePackServiceConfig{
+		Store:   sqlite,
+		AppsDir: cfg.AppsDir,
+		NodeID:  cfg.NodeID,
+		RepoManager: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
+			AppsDir:  cfg.AppsDir,
+			GitHost:  cfg.GitHost,
+			Executor: gitrecv.LocalGitExecutor{},
+		}),
+		ReceivePackRunner: gitrecv.LocalReceivePackRunner{},
+	})
+	if err := service.Receive(context.Background(), gitrecv.ReceivePackRequest{
+		OriginalCommand: originalCommand,
+		Stdin:           stdin,
+		Stdout:          stdout,
+		Stderr:          stderr,
+	}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

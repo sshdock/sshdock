@@ -23,7 +23,7 @@ smoke:
 	go test ./test/harness -run TestSmoke -v
 
 e2e:
-	go test -tags e2e ./test/e2e -run TestGitHookEndToEnd -v
+	go test -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd)' -v
 
 e2e-docker:
 	RHUMBASE_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestGitHookDockerComposeEndToEnd -v

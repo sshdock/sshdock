@@ -29,7 +29,7 @@ func TestRepoManagerSetupBareRepo(t *testing.T) {
 	if repo.Path != wantRepoPath {
 		t.Fatalf("repo path = %q, want %q", repo.Path, wantRepoPath)
 	}
-	if repo.RemoteURL != "git@example.com:my-app" {
+	if repo.RemoteURL != "git@example.com:my-app.git" {
 		t.Fatalf("remote URL = %q", repo.RemoteURL)
 	}
 
@@ -76,7 +76,7 @@ func TestRepoManagerReturnsExecutorError(t *testing.T) {
 func TestRepoManagerUsesDefaultRemoteHost(t *testing.T) {
 	manager := NewRepoManager(RepoManagerConfig{AppsDir: t.TempDir(), Executor: &recordingGitExecutor{}})
 
-	if got := manager.RemoteURL("my-app"); got != "git@server:my-app" {
+	if got := manager.RemoteURL("my-app"); got != "git@server:my-app.git" {
 		t.Fatalf("RemoteURL = %q", got)
 	}
 }

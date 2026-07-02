@@ -21,7 +21,7 @@ func TestStoreBackendCreatesReceiveRepoWhenAppIsCreated(t *testing.T) {
 	setupper := &fakeReceiveRepoSetupper{
 		repo: gitrecv.BareRepo{
 			Path:      filepath.Join(appsDir, "my-app", "repo.git"),
-			RemoteURL: "git@git.example.com:my-app",
+			RemoteURL: "git@git.example.com:my-app.git",
 		},
 	}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
@@ -40,7 +40,7 @@ func TestStoreBackendCreatesReceiveRepoWhenAppIsCreated(t *testing.T) {
 	if len(setupper.apps) != 1 || setupper.apps[0] != "my-app" {
 		t.Fatalf("setupper apps = %#v, want [my-app]", setupper.apps)
 	}
-	if !strings.Contains(stdout.String(), "git remote add prod git@git.example.com:my-app") {
+	if !strings.Contains(stdout.String(), "git remote add rhumbase git@git.example.com:my-app.git") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 
@@ -115,8 +115,8 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	}
 	for _, want := range []string{
 		"created app my-app",
-		"git remote add prod git@git.example.com:my-app",
-		"git push prod main",
+		"git remote add rhumbase git@git.example.com:my-app.git",
+		"git push rhumbase main",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("apps create stdout missing %q:\n%s", want, stdout.String())

@@ -49,10 +49,10 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
 		NodeID:  cfg.NodeID,
 		AppsDir: cfg.AppsDir,
-		GitHost: "server",
+		GitHost: cfg.GitHost,
 		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
 			AppsDir:  cfg.AppsDir,
-			GitHost:  "server",
+			GitHost:  cfg.GitHost,
 			Executor: gitrecv.LocalGitExecutor{},
 		}),
 	})

@@ -52,7 +52,7 @@ func (b *MemoryBackend) CreateApp(name string) (App, string, error) {
 	model := App{Name: name, Status: "created", NodeID: "local"}
 	b.apps[name] = model
 
-	return model, fmt.Sprintf("git@%s:%s", b.gitHost, name), nil
+	return model, fmt.Sprintf("git@%s:%s.git", b.gitHost, name), nil
 }
 
 func (b *MemoryBackend) ListApps() ([]App, error) {
@@ -125,8 +125,8 @@ func (r *Runner) runApps(args []string, stdout io.Writer, stderr io.Writer) int 
 		}
 
 		fmt.Fprintf(stdout, "created app %s\n", app.Name)
-		fmt.Fprintf(stdout, "git remote add prod %s\n", remoteURL)
-		fmt.Fprintln(stdout, "git push prod main")
+		fmt.Fprintf(stdout, "git remote add rhumbase %s\n", remoteURL)
+		fmt.Fprintln(stdout, "git push rhumbase main")
 		return 0
 	}
 

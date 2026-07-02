@@ -115,6 +115,119 @@ func TestGitHookEndToEnd(t *testing.T) {
 	}
 }
 
+func TestGitReceivePushToCreateEndToEnd(t *testing.T) {
+	requireGit(t)
+
+	ctx := context.Background()
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll bin: %v", err)
+	}
+
+	rhumbasedPath := filepath.Join(binDir, "rhumbased")
+	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+
+	fakeSSHPath := filepath.Join(binDir, "fake-ssh")
+	if err := os.WriteFile(fakeSSHPath, []byte(`#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-o|-p|-l|-i|-F|-S|-J|-b|-c|-m)
+			shift 2
+			;;
+		-*)
+			shift
+			;;
+		*)
+			break
+			;;
+	esac
+done
+if [ "$#" -lt 2 ]; then
+	echo "missing SSH original command" >&2
+	exit 2
+fi
+shift
+SSH_ORIGINAL_COMMAND="$*" exec rhumbased git-receive
+`), 0o755); err != nil {
+		t.Fatalf("WriteFile fake ssh: %v", err)
+	}
+
+	appName := "push-app"
+	dataDir := filepath.Join(tmp, "data")
+	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	cfg := config.LoadFromEnv()
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll data dir: %v", err)
+	}
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll source: %v", err)
+	}
+	runGit(t, sourceDir, nil, "init")
+	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
+	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "checkout", "-b", "main")
+	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile compose: %v", err)
+	}
+	runGit(t, sourceDir, nil, "add", "compose.yml")
+	runGit(t, sourceDir, nil, "commit", "-m", "initial push-to-create compose app")
+	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
+	runGit(t, sourceDir, nil, "remote", "add", "rhumbase", "git@server:"+appName+".git")
+
+	env := append(os.Environ(),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GIT_SSH="+fakeSSHPath,
+		"RHUMBASE_DATA_DIR="+dataDir,
+		"RHUMBASE_COMPOSE_RUNNER=fake",
+	)
+	runGit(t, sourceDir, env, "push", "rhumbase", "main")
+
+	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	createdApp, err := sqlite.GetApp(ctx, appName)
+	if err != nil {
+		t.Fatalf("GetApp: %v", err)
+	}
+	if err := sqlite.Close(); err != nil {
+		t.Fatalf("Close app store: %v", err)
+	}
+	if createdApp.RepoPath != cfg.AppRepoPath(appName) {
+		t.Fatalf("app repo path = %q, want %q", createdApp.RepoPath, cfg.AppRepoPath(appName))
+	}
+	if info, err := os.Stat(cfg.AppRepoPath(appName)); err != nil {
+		t.Fatalf("stat repo: %v", err)
+	} else if !info.IsDir() {
+		t.Fatalf("repo path is not a directory: %s", cfg.AppRepoPath(appName))
+	}
+
+	releases, err := listReleases(cfg.SQLiteDBPath, appName)
+	if err != nil {
+		t.Fatalf("listReleases: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("releases = %#v", releases)
+	}
+	if releases[0].CommitSHA != commitSHA {
+		t.Fatalf("release commit = %q, want %q", releases[0].CommitSHA, commitSHA)
+	}
+
+	status, err := deploymentStatus(cfg.SQLiteDBPath, "dep_"+shortSHA(commitSHA))
+	if err != nil {
+		t.Fatalf("deploymentStatus: %v", err)
+	}
+	if status != string(app.DeploymentStatusSucceeded) {
+		t.Fatalf("deployment status = %q", status)
+	}
+}
+
 func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 	if os.Getenv("RHUMBASE_E2E_DOCKER") != "1" {
 		t.Skip("set RHUMBASE_E2E_DOCKER=1 to run the Docker Compose e2e test")

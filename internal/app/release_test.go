@@ -40,6 +40,7 @@ func TestServiceRollbackReleaseDeploysAndMarksSucceeded(t *testing.T) {
 	runner := &compose.FakeRunner{}
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
 	store.releases["rel_1"] = Release{
 		ID:          "rel_1",
 		AppID:       "app_1",
@@ -60,15 +61,13 @@ func TestServiceRollbackReleaseDeploysAndMarksSucceeded(t *testing.T) {
 		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
 	}
 	request := runner.DeployRequests[0]
-	if request.AppName != "app_1" || request.ReleaseID != "rel_1" || request.CommitSHA != "abc123" || request.ComposePath != "compose.yml" {
+	if request.AppName != "app_1" || request.ReleaseID != "rel_1" || request.CommitSHA != "abc123" || request.ComposePath != "compose.yml" || request.ProjectDir != "/apps/app_1/worktree" {
 		t.Fatalf("DeployRequest = %#v", request)
 	}
 	if store.deploymentStatuses["dep_rollback_1"] != DeploymentStatusSucceeded {
 		t.Fatalf("stored deployment status = %q", store.deploymentStatuses["dep_rollback_1"])
 	}
-	if len(store.events["app_1"]) != 1 || store.events["app_1"][0].Type != "rollback.triggered" {
-		t.Fatalf("events = %#v", store.events["app_1"])
-	}
+	assertEventTypes(t, store.events["app_1"], []string{"rollback.triggered", "rollback.succeeded"})
 }
 
 func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
@@ -77,6 +76,7 @@ func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 	failure := errors.New("deploy failed")
 	runner := &compose.FakeRunner{DeployErr: failure}
 	service := NewService(store, WithDeployRunner(runner))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_1"] = Release{
 		ID:          "rel_1",
 		AppID:       "app_1",
@@ -95,4 +95,5 @@ func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 	if store.deploymentErrors["dep_rollback_1"] != "deploy failed" {
 		t.Fatalf("stored deployment error = %q", store.deploymentErrors["dep_rollback_1"])
 	}
+	assertEventTypes(t, store.events["app_1"], []string{"rollback.triggered", "rollback.failed"})
 }

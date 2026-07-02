@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -187,7 +188,7 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 func hookRunnerFromEnv() (compose.Runner, error) {
 	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
 	if runner == "" || runner == "fake" {
-		return &compose.FakeRunner{}, nil
+		return fakeRunnerFromEnv(), nil
 	}
 	if runner == "docker" {
 		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
@@ -199,16 +200,31 @@ func hookRunnerFromEnv() (compose.Runner, error) {
 func dashboardRunnerFromEnv() (compose.Runner, error) {
 	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
 	if runner == "" || runner == "fake" {
-		return &compose.FakeRunner{
-			Services:  parseFakeServices(os.Getenv("RHUMBASE_FAKE_COMPOSE_SERVICES")),
-			LogOutput: os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS"),
-		}, nil
+		fake := fakeRunnerFromEnv()
+		fake.Services = parseFakeServices(os.Getenv("RHUMBASE_FAKE_COMPOSE_SERVICES"))
+		fake.LogOutput = os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS")
+		return fake, nil
 	}
 	if runner == "docker" {
 		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
 	}
 
 	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+}
+
+func fakeRunnerFromEnv() *compose.FakeRunner {
+	return &compose.FakeRunner{
+		DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
+		RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
+	}
+}
+
+func envError(name string) error {
+	value := os.Getenv(name)
+	if value == "" {
+		return nil
+	}
+	return errors.New(value)
 }
 
 func parseFakeServices(value string) []compose.ServiceStatus {

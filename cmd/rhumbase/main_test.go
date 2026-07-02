@@ -128,3 +128,18 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
+
+func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
+	tests := [][]string{
+		{"apps", "restart", "my-app"},
+		{"apps", "restart", "my-app", "web"},
+		{"apps", "redeploy", "my-app"},
+		{"apps", "rollback", "my-app", "rel_1"},
+	}
+
+	for _, args := range tests {
+		if !commandNeedsStore(args) {
+			t.Fatalf("commandNeedsStore(%v) = false, want true", args)
+		}
+	}
+}

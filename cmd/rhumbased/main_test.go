@@ -40,6 +40,23 @@ func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
 	}
 }
 
+func TestHookRunnerFromEnvConfiguresFakeDeployError(t *testing.T) {
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR", "compose failed")
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("hookRunnerFromEnv: %v", err)
+	}
+	fake, ok := runner.(*compose.FakeRunner)
+	if !ok {
+		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
+	}
+	if fake.DeployErr == nil || fake.DeployErr.Error() != "compose failed" {
+		t.Fatalf("DeployErr = %v, want compose failed", fake.DeployErr)
+	}
+}
+
 func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
 	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
 	t.Setenv("RHUMBASE_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")

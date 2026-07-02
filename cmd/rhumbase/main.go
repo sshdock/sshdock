@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/iketiunn/rumbase/internal/cli"
+	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/router"
@@ -47,6 +49,15 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
+	var recoveryRunner compose.Runner
+	if commandNeedsRecoveryRunner(args) {
+		recoveryRunner, err = cliRunnerFromEnv()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+	}
+
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
 		NodeID:             cfg.NodeID,
 		AppsDir:            cfg.AppsDir,
@@ -64,6 +75,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 			GitHost:  cfg.GitHost,
 			Executor: gitrecv.LocalGitExecutor{},
 		}),
+		RecoveryRunner: recoveryRunner,
 	})
 	runner := cli.NewRunner(backend, version.String())
 	return runner.RunWithInput(args, os.Stdin, stdout, stderr)
@@ -74,6 +86,9 @@ func commandNeedsStore(args []string) bool {
 		return true
 	}
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info") {
+		return true
+	}
+	if commandNeedsRecoveryRunner(args) {
 		return true
 	}
 	if len(args) == 7 && args[0] == "domains" && args[1] == "attach" && args[5] == "--port" {
@@ -88,4 +103,37 @@ func commandNeedsStore(args []string) bool {
 	}
 
 	return false
+}
+
+func commandNeedsRecoveryRunner(args []string) bool {
+	if len(args) == 3 && args[0] == "apps" && (args[1] == "restart" || args[1] == "redeploy") {
+		return true
+	}
+	if len(args) == 4 && args[0] == "apps" && (args[1] == "restart" || args[1] == "rollback") {
+		return true
+	}
+	return false
+}
+
+func cliRunnerFromEnv() (compose.Runner, error) {
+	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
+	if runner == "" || runner == "fake" {
+		return &compose.FakeRunner{
+			DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
+			RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
+		}, nil
+	}
+	if runner == "docker" {
+		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
+	}
+
+	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+}
+
+func envError(name string) error {
+	value := os.Getenv(name)
+	if value == "" {
+		return nil
+	}
+	return errors.New(value)
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
@@ -339,6 +340,203 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 	} {
 		if !strings.Contains(string(rendered), want) {
 			t.Fatalf("authorized_keys missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
+func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	currentTime := now
+	runner := &compose.FakeRunner{}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Now: func() time.Time {
+			value := currentTime
+			currentTime = currentTime.Add(time.Second)
+			return value
+		},
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+
+	if code := cliRunner.Run([]string{"apps", "restart", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps restart exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "restarted app my-app") {
+		t.Fatalf("apps restart stdout = %q", stdout.String())
+	}
+	if len(runner.RestartRequests) != 1 {
+		t.Fatalf("RestartRequests = %#v", runner.RestartRequests)
+	}
+	appRestart := runner.RestartRequests[0]
+	if appRestart.AppName != "my-app" || appRestart.ServiceName != "" || appRestart.ProjectDir != filepath.Join(appsDir, "my-app", "worktree") || appRestart.ComposePath != filepath.Join(appsDir, "my-app", "worktree", "compose.yml") {
+		t.Fatalf("app restart request = %#v", appRestart)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := cliRunner.Run([]string{"apps", "restart", "my-app", "web"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps restart service exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "restarted my-app/web") {
+		t.Fatalf("apps restart service stdout = %q", stdout.String())
+	}
+	if len(runner.RestartRequests) != 2 {
+		t.Fatalf("RestartRequests = %#v", runner.RestartRequests)
+	}
+	if runner.RestartRequests[1].ServiceName != "web" {
+		t.Fatalf("service restart request = %#v", runner.RestartRequests[1])
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := cliRunner.Run([]string{"apps", "redeploy", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps redeploy exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "redeployed my-app") {
+		t.Fatalf("apps redeploy stdout = %q", stdout.String())
+	}
+	if len(runner.DeployRequests) != 1 {
+		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
+	}
+	if runner.DeployRequests[0].ReleaseID != "rel_new" || runner.DeployRequests[0].CommitSHA != "new" {
+		t.Fatalf("redeploy request = %#v", runner.DeployRequests[0])
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := cliRunner.Run([]string{"apps", "rollback", "my-app", "rel_old"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps rollback exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "rolled back my-app to rel_old") {
+		t.Fatalf("apps rollback stdout = %q", stdout.String())
+	}
+	if len(runner.DeployRequests) != 2 {
+		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
+	}
+	if runner.DeployRequests[1].ReleaseID != "rel_old" || runner.DeployRequests[1].CommitSHA != "old" {
+		t.Fatalf("rollback request = %#v", runner.DeployRequests[1])
+	}
+
+	model, err := sqlite.GetApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("GetApp: %v", err)
+	}
+	if model.Status != app.AppStatusHealthy {
+		t.Fatalf("app status = %q", model.Status)
+	}
+	release, err := sqlite.GetRelease(ctx, "rel_old")
+	if err != nil {
+		t.Fatalf("GetRelease: %v", err)
+	}
+	if release.Status != app.ReleaseStatusRolledBack {
+		t.Fatalf("release status = %q", release.Status)
+	}
+	deployments, err := sqlite.ListDeploymentsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 2 {
+		t.Fatalf("deployments = %#v", deployments)
+	}
+	for _, deployment := range deployments {
+		if deployment.Status != app.DeploymentStatusSucceeded {
+			t.Fatalf("deployment = %#v", deployment)
+		}
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	gotTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		gotTypes = append(gotTypes, event.Type)
+	}
+	wantTypes := "restart.triggered,restart.succeeded,service.restart.triggered,service.restart.succeeded,redeploy.started,redeploy.succeeded,rollback.triggered,rollback.succeeded"
+	if strings.Join(gotTypes, ",") != wantTypes {
+		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
+	}
+}
+
+func TestStoreBackendRestartAppCanRunRepeatedly(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	currentTime := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &compose.FakeRunner{}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Now: func() time.Time {
+			value := currentTime
+			currentTime = currentTime.Add(time.Second)
+			return value
+		},
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	seedRecoveryApp(t, ctx, sqlite, appsDir, currentTime)
+
+	if code := cliRunner.Run([]string{"apps", "restart", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("first apps restart exit code = %d, stderr = %q", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := cliRunner.Run([]string{"apps", "restart", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("second apps restart exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if len(runner.RestartRequests) != 2 {
+		t.Fatalf("RestartRequests = %#v", runner.RestartRequests)
+	}
+
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	gotTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		gotTypes = append(gotTypes, event.Type)
+	}
+	wantTypes := "restart.triggered,restart.succeeded,restart.triggered,restart.succeeded"
+	if strings.Join(gotTypes, ",") != wantTypes {
+		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
+	}
+}
+
+func seedRecoveryApp(t *testing.T, ctx context.Context, sqlite *store.SQLiteStore, appsDir string, now time.Time) {
+	t.Helper()
+
+	model := app.App{
+		ID:           "my-app",
+		Name:         "my-app",
+		NodeID:       "node-a",
+		RepoPath:     filepath.Join(appsDir, "my-app", "repo.git"),
+		WorktreePath: filepath.Join(appsDir, "my-app", "worktree"),
+		Status:       app.AppStatusHealthy,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	releases := []app.Release{
+		{ID: "rel_old", AppID: "my-app", CommitSHA: "old", ComposePath: filepath.Join(model.WorktreePath, "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)},
+		{ID: "rel_new", AppID: "my-app", CommitSHA: "new", ComposePath: filepath.Join(model.WorktreePath, "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, release := range releases {
+		if err := sqlite.CreateRelease(ctx, release); err != nil {
+			t.Fatalf("CreateRelease: %v", err)
 		}
 	}
 }

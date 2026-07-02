@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/sshaccess"
@@ -28,6 +29,7 @@ type StoreBackendConfig struct {
 	GitReceiveCommand  string
 	RepoSetupper       ReceiveRepoSetupper
 	Router             routeSyncer
+	RecoveryRunner     compose.Runner
 	Now                func() time.Time
 }
 
@@ -44,6 +46,7 @@ type StoreBackend struct {
 	gitReceiveCommand  string
 	repoSetupper       ReceiveRepoSetupper
 	router             routeSyncer
+	recoveryRunner     compose.Runner
 	now                func() time.Time
 }
 
@@ -67,6 +70,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		gitReceiveCommand:  cfg.GitReceiveCommand,
 		repoSetupper:       cfg.RepoSetupper,
 		router:             cfg.Router,
+		recoveryRunner:     cfg.RecoveryRunner,
 		now:                cfg.Now,
 	}
 }
@@ -146,6 +150,40 @@ func (b *StoreBackend) GetApp(name string) (App, error) {
 	}
 
 	return cliApp(model), nil
+}
+
+func (b *StoreBackend) RestartApp(name string) error {
+	ctx := context.Background()
+	if err := b.recoveryService().RestartApp(ctx, name); err != nil {
+		return fmt.Errorf("restart app %q: %w", name, err)
+	}
+	return nil
+}
+
+func (b *StoreBackend) RestartService(appName string, serviceName string) error {
+	ctx := context.Background()
+	if err := b.recoveryService().RestartService(ctx, appName, serviceName); err != nil {
+		return fmt.Errorf("restart service %q/%q: %w", appName, serviceName, err)
+	}
+	return nil
+}
+
+func (b *StoreBackend) RedeployApp(name string) error {
+	ctx := context.Background()
+	deploymentID := recoveryDeploymentID("redeploy", name, "", b.now())
+	if _, err := b.recoveryService().RedeployLatest(ctx, name, deploymentID); err != nil {
+		return fmt.Errorf("redeploy app %q: %w", name, err)
+	}
+	return nil
+}
+
+func (b *StoreBackend) RollbackApp(name string, releaseID string) error {
+	ctx := context.Background()
+	deploymentID := recoveryDeploymentID("rollback", name, releaseID, b.now())
+	if _, err := b.recoveryService().RollbackRelease(ctx, name, releaseID, deploymentID); err != nil {
+		return fmt.Errorf("rollback app %q to %q: %w", name, releaseID, err)
+	}
+	return nil
 }
 
 func (b *StoreBackend) AttachDomain(domain Domain) error {
@@ -259,6 +297,14 @@ func cliApp(model appmodel.App) App {
 	}
 }
 
+func (b *StoreBackend) recoveryService() *appmodel.Service {
+	options := []appmodel.ServiceOption{appmodel.WithClock(b.now)}
+	if b.recoveryRunner != nil {
+		options = append(options, appmodel.WithRecoveryRunner(b.recoveryRunner))
+	}
+	return appmodel.NewService(b.store, options...)
+}
+
 func (b *StoreBackend) currentGitHost(ctx context.Context) string {
 	if gitHost, ok := b.persistedGitHost(ctx); ok {
 		return gitHost
@@ -292,6 +338,22 @@ func domainID(appName string, domainName string) string {
 
 func eventID(subjectID string, suffix string) string {
 	return "evt_" + sanitizeIDPart(subjectID) + "_" + sanitizeIDPart(suffix)
+}
+
+func recoveryDeploymentID(operation string, appName string, releaseID string, now time.Time) string {
+	parts := []string{"dep", operation, appName}
+	if releaseID != "" {
+		parts = append(parts, releaseID)
+	}
+	parts = append(parts, now.UTC().Format("20060102150405_000000000"))
+
+	sanitized := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := sanitizeIDPart(part); value != "" {
+			sanitized = append(sanitized, value)
+		}
+	}
+	return strings.Join(sanitized, "_")
 }
 
 func routesFromDomains(domains []appmodel.Domain) []router.Route {

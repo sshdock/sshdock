@@ -32,6 +32,10 @@ type Backend interface {
 	CreateApp(name string) (App, string, error)
 	ListApps() ([]App, error)
 	GetApp(name string) (App, error)
+	RestartApp(name string) error
+	RestartService(appName string, serviceName string) error
+	RedeployApp(name string) error
+	RollbackApp(name string, releaseID string) error
 	AttachDomain(domain Domain) error
 	SetServerGitHost(host string) error
 	AddSSHKey(name string, publicKey string) error
@@ -97,6 +101,40 @@ func (b *MemoryBackend) AttachDomain(domain Domain) error {
 	}
 
 	b.domains = append(b.domains, domain)
+	return nil
+}
+
+func (b *MemoryBackend) RestartApp(name string) error {
+	if _, ok := b.apps[name]; !ok {
+		return fmt.Errorf("app %q not found", name)
+	}
+	return nil
+}
+
+func (b *MemoryBackend) RestartService(appName string, serviceName string) error {
+	if _, ok := b.apps[appName]; !ok {
+		return fmt.Errorf("app %q not found", appName)
+	}
+	if strings.TrimSpace(serviceName) == "" {
+		return fmt.Errorf("service name is required")
+	}
+	return nil
+}
+
+func (b *MemoryBackend) RedeployApp(name string) error {
+	if _, ok := b.apps[name]; !ok {
+		return fmt.Errorf("app %q not found", name)
+	}
+	return nil
+}
+
+func (b *MemoryBackend) RollbackApp(name string, releaseID string) error {
+	if _, ok := b.apps[name]; !ok {
+		return fmt.Errorf("app %q not found", name)
+	}
+	if strings.TrimSpace(releaseID) == "" {
+		return fmt.Errorf("release ID is required")
+	}
 	return nil
 }
 
@@ -203,6 +241,42 @@ func (r *Runner) runApps(args []string, stdout io.Writer, stderr io.Writer) int 
 		return 0
 	}
 
+	if len(args) == 3 && args[0] == "restart" {
+		if err := r.backend.RestartService(args[1], args[2]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "restarted %s/%s\n", args[1], args[2])
+		return 0
+	}
+
+	if len(args) == 2 && args[0] == "restart" {
+		if err := r.backend.RestartApp(args[1]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "restarted app %s\n", args[1])
+		return 0
+	}
+
+	if len(args) == 2 && args[0] == "redeploy" {
+		if err := r.backend.RedeployApp(args[1]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "redeployed %s\n", args[1])
+		return 0
+	}
+
+	if len(args) == 3 && args[0] == "rollback" {
+		if err := r.backend.RollbackApp(args[1], args[2]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "rolled back %s to %s\n", args[1], args[2])
+		return 0
+	}
+
 	printUsage(stderr)
 	return 2
 }
@@ -272,7 +346,7 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 }
 
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: rhumbase version | apps create <name> | apps list | apps info <name> | domains attach <app> <service> <domain> --port <port> | server domain set <domain> | ssh-keys add <name>")
+	fmt.Fprintln(stderr, "usage: rhumbase version | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | domains attach <app> <service> <domain> --port <port> | server domain set <domain> | ssh-keys add <name>")
 }
 
 func validatePublicKey(publicKey string) error {

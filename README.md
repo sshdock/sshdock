@@ -110,13 +110,14 @@ Current MVP state:
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
 - `rhumbased` starts an SSH dashboard on `RHUMBASE_SSH_LISTEN_ADDR`, authenticates `RHUMBASE_DASHBOARD_USER` with `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`, and renders deployed app status, services, domains, releases, deployments, and logs.
+- `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Recovery operations are still a later runtime milestone.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains attach my-app web example.com --port 3000
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps rollback my-app rel_<short-sha>
 ```
 
 Manual app creation remains available for scripting and debugging:
@@ -331,6 +332,12 @@ SSH dashboard e2e:
 
 ```bash
 make tui-e2e
+```
+
+Recovery e2e:
+
+```bash
+make recovery-e2e
 ```
 
 Full CI:

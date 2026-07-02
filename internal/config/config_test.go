@@ -26,8 +26,20 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.DashboardUser == "" {
 		t.Fatal("DashboardUser is empty")
 	}
+	if cfg.GitUser != "git" {
+		t.Fatalf("GitUser = %q, want git", cfg.GitUser)
+	}
+	if cfg.GitHomeDir != filepath.Join(cfg.DataDir, "git") {
+		t.Fatalf("GitHomeDir = %q, want path under data dir", cfg.GitHomeDir)
+	}
 	if cfg.GitHost != "server" {
 		t.Fatalf("GitHost = %q, want server", cfg.GitHost)
+	}
+	if cfg.GitAuthorizedKeysPath != filepath.Join(cfg.GitHomeDir, ".ssh", "authorized_keys") {
+		t.Fatalf("GitAuthorizedKeysPath = %q, want path under git home", cfg.GitAuthorizedKeysPath)
+	}
+	if cfg.GitReceiveCommand == "" {
+		t.Fatal("GitReceiveCommand is empty")
 	}
 	if cfg.CaddyConfigPath == "" {
 		t.Fatal("CaddyConfigPath is empty")
@@ -41,7 +53,11 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("RHUMBASE_NODE_ID", "node-a")
 	t.Setenv("RHUMBASE_SSH_LISTEN_ADDR", "127.0.0.1:2222")
 	t.Setenv("RHUMBASE_DASHBOARD_USER", "operator")
+	t.Setenv("RHUMBASE_GIT_USER", "deploy")
+	t.Setenv("RHUMBASE_GIT_HOME_DIR", "/tmp/rhumbase-git")
 	t.Setenv("RHUMBASE_GIT_HOST", "rhumbase.example.com")
+	t.Setenv("RHUMBASE_GIT_AUTHORIZED_KEYS_PATH", "/tmp/authorized_keys")
+	t.Setenv("RHUMBASE_GIT_RECEIVE_COMMAND", "/opt/rhumbase/bin/rhumbased git-receive")
 	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
 
 	cfg := LoadFromEnv()
@@ -64,8 +80,20 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	if cfg.DashboardUser != "operator" {
 		t.Fatalf("DashboardUser = %q", cfg.DashboardUser)
 	}
+	if cfg.GitUser != "deploy" {
+		t.Fatalf("GitUser = %q", cfg.GitUser)
+	}
+	if cfg.GitHomeDir != "/tmp/rhumbase-git" {
+		t.Fatalf("GitHomeDir = %q", cfg.GitHomeDir)
+	}
 	if cfg.GitHost != "rhumbase.example.com" {
 		t.Fatalf("GitHost = %q", cfg.GitHost)
+	}
+	if cfg.GitAuthorizedKeysPath != "/tmp/authorized_keys" {
+		t.Fatalf("GitAuthorizedKeysPath = %q", cfg.GitAuthorizedKeysPath)
+	}
+	if cfg.GitReceiveCommand != "/opt/rhumbase/bin/rhumbased git-receive" {
+		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
 	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)

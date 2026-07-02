@@ -53,6 +53,16 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			message text not null,
 			created_at text not null
 		)`,
+		`create table if not exists server_config (
+			key text primary key,
+			value text not null,
+			updated_at text not null
+		)`,
+		`create table if not exists ssh_keys (
+			name text primary key,
+			public_key text not null,
+			created_at text not null
+		)`,
 		`create index if not exists idx_releases_app_id on releases(app_id)`,
 		`create index if not exists idx_domains_app_id on domains(app_id)`,
 		`create index if not exists idx_events_app_id on events(app_id)`,

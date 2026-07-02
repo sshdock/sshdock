@@ -174,6 +174,66 @@ func TestSQLiteStoreEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreServerConfig(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	updatedAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+
+	if _, err := store.GetServerConfig(ctx); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetServerConfig error = %v, want ErrNotFound", err)
+	}
+	if err := store.SetServerConfig(ctx, ServerConfig{GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+
+	got, err := store.GetServerConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetServerConfig: %v", err)
+	}
+	want := ServerConfig{GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}
+	if got != want {
+		t.Fatalf("server config = %#v, want %#v", got, want)
+	}
+}
+
+func TestSQLiteStoreSSHKeys(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	createdAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	key := SSHKey{
+		Name:      "admin",
+		PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com",
+		CreatedAt: createdAt,
+	}
+
+	if err := store.UpsertSSHKey(ctx, key); err != nil {
+		t.Fatalf("UpsertSSHKey: %v", err)
+	}
+	keys, err := store.ListSSHKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListSSHKeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != key {
+		t.Fatalf("keys = %#v, want [%#v]", keys, key)
+	}
+
+	replacement := SSHKey{
+		Name:      "admin",
+		PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIReplacement admin@example.com",
+		CreatedAt: createdAt.Add(time.Minute),
+	}
+	if err := store.UpsertSSHKey(ctx, replacement); err != nil {
+		t.Fatalf("UpsertSSHKey replacement: %v", err)
+	}
+	keys, err = store.ListSSHKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListSSHKeys replacement: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != replacement {
+		t.Fatalf("keys after replacement = %#v, want [%#v]", keys, replacement)
+	}
+}
+
 func TestSQLiteStoreMissingRowsReturnNotFound(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)

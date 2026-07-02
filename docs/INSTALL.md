@@ -84,6 +84,8 @@ Default install layout:
 /usr/local/bin/rhumbased
 /var/lib/rhumbase/
 /var/lib/rhumbase/apps/
+/var/lib/rhumbase/git/
+/var/lib/rhumbase/git/.ssh/authorized_keys
 /etc/systemd/system/rhumbased.service
 /etc/caddy/rhumbase.caddyfile
 ```
@@ -210,6 +212,39 @@ The SSH key authorization model for v0 is single-admin/deploy-key oriented:
 - Paths containing `/`, such as `<owner>/<repo>.git`, are rejected in v0.
 - Namespace ownership can be added later by mapping SSH keys to owners or admin roles before authorizing `owner/repo` paths.
 
+The default Git receive user is:
+
+```text
+git
+```
+
+The bootstrap script creates or validates this user with:
+
+```bash
+useradd --system --home /var/lib/rhumbase/git --shell /usr/bin/git-shell git
+```
+
+Deploy keys are managed with:
+
+```bash
+rhumbase server domain set rhumbase.example.com
+echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
+```
+
+`rhumbase server domain set` stores the Git host in SQLite. App remote output prefers the persisted host over `RHUMBASE_GIT_HOST` after it is set.
+
+`rhumbase ssh-keys add` stores the key in SQLite and rewrites:
+
+```text
+/var/lib/rhumbase/git/.ssh/authorized_keys
+```
+
+Each rendered key is restricted with:
+
+```text
+command="exec /usr/local/bin/rhumbased git-receive",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+```
+
 The Git SSH entry point should run a forced command equivalent to:
 
 ```text
@@ -234,6 +269,7 @@ Expected service behavior:
 - use the configured data directory
 - use `RHUMBASE_COMPOSE_RUNNER=docker`
 - use `RHUMBASE_GIT_HOST=server` unless overridden at install time
+- use `/var/lib/rhumbase/git/.ssh/authorized_keys` as the Git receive key file unless overridden
 - use `/etc/caddy/rhumbase.caddyfile` as the generated Caddy config path unless overridden
 - write logs to journald
 
@@ -283,3 +319,11 @@ The harness builds both binaries, runs `scripts/bootstrap.sh` under a temporary 
 - `rhumbased.service` contains the production environment
 - Docker, Compose, Caddy, and systemd checks are attempted
 - systemd reload and service enablement are attempted
+
+Run the real SSH push harness with:
+
+```bash
+make ssh-e2e
+```
+
+This test starts a local unprivileged OpenSSH daemon when available, pushes through real `ssh`, exercises the forced-command `authorized_keys` path, and verifies the push-to-create deployment record.

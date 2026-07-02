@@ -11,6 +11,7 @@ import (
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
+	"github.com/iketiunn/rumbase/internal/sshaccess"
 	"github.com/iketiunn/rumbase/internal/store"
 )
 
@@ -19,20 +20,24 @@ type ReceiveRepoSetupper interface {
 }
 
 type StoreBackendConfig struct {
-	NodeID       string
-	AppsDir      string
-	GitHost      string
-	RepoSetupper ReceiveRepoSetupper
-	Now          func() time.Time
+	NodeID             string
+	AppsDir            string
+	GitHost            string
+	AuthorizedKeysPath string
+	GitReceiveCommand  string
+	RepoSetupper       ReceiveRepoSetupper
+	Now                func() time.Time
 }
 
 type StoreBackend struct {
-	store        store.Store
-	nodeID       string
-	appsDir      string
-	gitHost      string
-	repoSetupper ReceiveRepoSetupper
-	now          func() time.Time
+	store              store.Store
+	nodeID             string
+	appsDir            string
+	gitHost            string
+	authorizedKeysPath string
+	gitReceiveCommand  string
+	repoSetupper       ReceiveRepoSetupper
+	now                func() time.Time
 }
 
 func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *StoreBackend {
@@ -47,12 +52,14 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 	}
 
 	return &StoreBackend{
-		store:        persistentStore,
-		nodeID:       cfg.NodeID,
-		appsDir:      cfg.AppsDir,
-		gitHost:      cfg.GitHost,
-		repoSetupper: cfg.RepoSetupper,
-		now:          cfg.Now,
+		store:              persistentStore,
+		nodeID:             cfg.NodeID,
+		appsDir:            cfg.AppsDir,
+		gitHost:            cfg.GitHost,
+		authorizedKeysPath: cfg.AuthorizedKeysPath,
+		gitReceiveCommand:  cfg.GitReceiveCommand,
+		repoSetupper:       cfg.RepoSetupper,
+		now:                cfg.Now,
 	}
 }
 
@@ -66,9 +73,10 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 
 	repo := gitrecv.BareRepo{
 		Path:      filepath.Join(b.appsDir, name, "repo.git"),
-		RemoteURL: fmt.Sprintf("git@%s:%s.git", b.gitHost, name),
+		RemoteURL: fmt.Sprintf("git@%s:%s.git", b.currentGitHost(ctx), name),
 	}
 	if b.repoSetupper != nil {
+		persistedGitHost, hasPersistedGitHost := b.persistedGitHost(ctx)
 		var err error
 		repo, err = b.repoSetupper.SetupBareRepo(ctx, name)
 		if err != nil {
@@ -77,8 +85,11 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 		if repo.Path == "" {
 			repo.Path = filepath.Join(b.appsDir, name, "repo.git")
 		}
+		if hasPersistedGitHost {
+			repo.RemoteURL = fmt.Sprintf("git@%s:%s.git", persistedGitHost, name)
+		}
 		if repo.RemoteURL == "" {
-			repo.RemoteURL = fmt.Sprintf("git@%s:%s.git", b.gitHost, name)
+			repo.RemoteURL = fmt.Sprintf("git@%s:%s.git", b.currentGitHost(ctx), name)
 		}
 	}
 
@@ -155,12 +166,82 @@ func (b *StoreBackend) AttachDomain(domain Domain) error {
 	return nil
 }
 
+func (b *StoreBackend) SetServerGitHost(host string) error {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return fmt.Errorf("server Git host is required")
+	}
+
+	if err := b.store.SetServerConfig(context.Background(), store.ServerConfig{
+		GitHost:   host,
+		UpdatedAt: b.now(),
+	}); err != nil {
+		return fmt.Errorf("set server Git host: %w", err)
+	}
+
+	return nil
+}
+
+func (b *StoreBackend) AddSSHKey(name string, publicKey string) error {
+	name = strings.TrimSpace(name)
+	publicKey = strings.TrimSpace(publicKey)
+	if name == "" {
+		return fmt.Errorf("SSH key name is required")
+	}
+	if err := validatePublicKey(publicKey); err != nil {
+		return err
+	}
+	ctx := context.Background()
+	key := store.SSHKey{Name: name, PublicKey: publicKey, CreatedAt: b.now()}
+	if err := b.store.UpsertSSHKey(ctx, key); err != nil {
+		return fmt.Errorf("store SSH key %q: %w", name, err)
+	}
+	keys, err := b.store.ListSSHKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("list SSH keys: %w", err)
+	}
+	if b.authorizedKeysPath != "" {
+		if err := sshaccess.WriteAuthorizedKeys(b.authorizedKeysPath, sshAccessKeys(keys), b.gitReceiveCommand); err != nil {
+			return fmt.Errorf("write authorized_keys: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func cliApp(model appmodel.App) App {
 	return App{
 		Name:   model.Name,
 		Status: string(model.Status),
 		NodeID: model.NodeID,
 	}
+}
+
+func (b *StoreBackend) currentGitHost(ctx context.Context) string {
+	if gitHost, ok := b.persistedGitHost(ctx); ok {
+		return gitHost
+	}
+	return b.gitHost
+}
+
+func (b *StoreBackend) persistedGitHost(ctx context.Context) (string, bool) {
+	config, err := b.store.GetServerConfig(ctx)
+	if err == nil && config.GitHost != "" {
+		return config.GitHost, true
+	}
+	return "", false
+}
+
+func sshAccessKeys(keys []store.SSHKey) []sshaccess.Key {
+	result := make([]sshaccess.Key, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, sshaccess.Key{
+			Name:      key.Name,
+			PublicKey: key.PublicKey,
+			CreatedAt: key.CreatedAt,
+		})
+	}
+	return result
 }
 
 func domainID(appName string, domainName string) string {

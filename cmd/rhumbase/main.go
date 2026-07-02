@@ -47,9 +47,11 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	defer sqlite.Close()
 
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
-		NodeID:  cfg.NodeID,
-		AppsDir: cfg.AppsDir,
-		GitHost: cfg.GitHost,
+		NodeID:             cfg.NodeID,
+		AppsDir:            cfg.AppsDir,
+		GitHost:            cfg.GitHost,
+		AuthorizedKeysPath: cfg.GitAuthorizedKeysPath,
+		GitReceiveCommand:  cfg.GitReceiveCommand,
 		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
 			AppsDir:  cfg.AppsDir,
 			GitHost:  cfg.GitHost,
@@ -57,7 +59,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		}),
 	})
 	runner := cli.NewRunner(backend, version.String())
-	return runner.Run(args, stdout, stderr)
+	return runner.RunWithInput(args, os.Stdin, stdout, stderr)
 }
 
 func commandNeedsStore(args []string) bool {
@@ -70,6 +72,12 @@ func commandNeedsStore(args []string) bool {
 	if len(args) == 7 && args[0] == "domains" && args[1] == "attach" && args[5] == "--port" {
 		_, err := strconv.Atoi(args[6])
 		return err == nil
+	}
+	if len(args) == 4 && args[0] == "server" && args[1] == "domain" && args[2] == "set" {
+		return true
+	}
+	if len(args) == 3 && args[0] == "ssh-keys" && args[1] == "add" {
+		return true
 	}
 
 	return false

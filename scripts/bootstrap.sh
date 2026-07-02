@@ -57,14 +57,28 @@ ensure_daemon_user() {
 	if [ "$SKIP_USER" = "1" ]; then
 		return
 	fi
-	if id -u "$DAEMON_USER" >/dev/null 2>&1; then
+	ensure_system_user "$DAEMON_USER" "$DATA_DIR" "/usr/sbin/nologin"
+}
+
+ensure_git_user() {
+	if [ "$SKIP_USER" = "1" ]; then
+		return
+	fi
+	ensure_system_user "$GIT_USER" "$GIT_HOME_DIR" "$GIT_SHELL"
+}
+
+ensure_system_user() {
+	local user="$1"
+	local home="$2"
+	local shell="$3"
+	if id -u "$user" >/dev/null 2>&1; then
 		return
 	fi
 	if [ "$(id -u)" -ne 0 ]; then
-		die "daemon user $DAEMON_USER is missing; run as root to create it"
+		die "user $user is missing; run as root to create it"
 	fi
 	need_command useradd
-	run useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$DAEMON_USER"
+	run useradd --system --home "$home" --shell "$shell" "$user"
 }
 
 maybe_chown() {
@@ -80,14 +94,18 @@ maybe_chown() {
 
 prepare_directories() {
 	local bin_dir_actual data_dir_actual apps_dir_actual systemd_dir_actual caddy_dir_actual
+	local git_home_actual git_ssh_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	apps_dir_actual="$(prefix_path "$APPS_DIR")"
 	systemd_dir_actual="$(prefix_path "$SYSTEMD_DIR")"
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
+	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
+	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
 
-	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual"
-	run chmod 0755 "$data_dir_actual" "$apps_dir_actual"
+	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual"
+	run chmod 0755 "$data_dir_actual" "$apps_dir_actual" "$git_home_actual"
+	run chmod 0700 "$git_ssh_dir_actual"
 	maybe_chown "$data_dir_actual"
 }
 
@@ -159,6 +177,9 @@ User=$DAEMON_USER
 Group=$DAEMON_USER
 Environment=RHUMBASE_DATA_DIR=$DATA_DIR
 Environment=RHUMBASE_GIT_HOST=$GIT_HOST
+Environment=RHUMBASE_GIT_USER=$GIT_USER
+Environment=RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
+Environment=RHUMBASE_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
 Environment=RHUMBASE_COMPOSE_RUNNER=docker
 Environment=RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
 ExecStart=$INSTALL_BIN_DIR/rhumbased
@@ -196,6 +217,10 @@ APPS_DIR="${RHUMBASE_APPS_DIR:-$DATA_DIR/apps}"
 SYSTEMD_DIR="${RHUMBASE_SYSTEMD_DIR:-/etc/systemd/system}"
 CADDY_CONFIG_PATH="${RHUMBASE_CADDY_CONFIG_PATH:-/etc/caddy/rhumbase.caddyfile}"
 GIT_HOST="${RHUMBASE_GIT_HOST:-server}"
+GIT_USER="${RHUMBASE_GIT_USER:-git}"
+GIT_HOME_DIR="${RHUMBASE_GIT_HOME_DIR:-$DATA_DIR/git}"
+GIT_AUTHORIZED_KEYS_PATH="${RHUMBASE_GIT_AUTHORIZED_KEYS_PATH:-$GIT_HOME_DIR/.ssh/authorized_keys}"
+GIT_SHELL="${RHUMBASE_GIT_SHELL:-/usr/bin/git-shell}"
 DAEMON_USER="${RHUMBASE_DAEMON_USER:-rhumbase}"
 SKIP_USER="${RHUMBASE_BOOTSTRAP_SKIP_USER:-0}"
 SKIP_CHOWN="${RHUMBASE_BOOTSTRAP_SKIP_CHOWN:-0}"
@@ -204,6 +229,7 @@ SKIP_SYSTEMD_RELOAD="${RHUMBASE_BOOTSTRAP_SKIP_SYSTEMD_RELOAD:-0}"
 ensure_root_for_real_install
 check_dependencies
 ensure_daemon_user
+ensure_git_user
 prepare_directories
 install_binaries
 write_systemd_unit

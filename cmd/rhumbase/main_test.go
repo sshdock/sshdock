@@ -73,6 +73,30 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	}
 }
 
+func TestRunWithEnvUsesPersistedServerDomainForCreatedAppRemote(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
+	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
+	t.Setenv("RHUMBASE_APPS_DIR", filepath.Join(dataDir, "apps"))
+	t.Setenv("RHUMBASE_GIT_HOST", "env.example.com")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := runWithEnv([]string{"server", "domain", "set", "rhumbase.example.com"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("server domain set exit code = %d, stderr = %q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithEnv([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+		t.Fatalf("apps create stdout = %q", stdout.String())
+	}
+}
+
 func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(blockingFile, []byte("x"), 0o644); err != nil {

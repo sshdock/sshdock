@@ -5,6 +5,8 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type App struct {
@@ -20,17 +22,26 @@ type Domain struct {
 	Port        int
 }
 
+type SSHKey struct {
+	Name      string
+	PublicKey string
+	CreatedAt time.Time
+}
+
 type Backend interface {
 	CreateApp(name string) (App, string, error)
 	ListApps() ([]App, error)
 	GetApp(name string) (App, error)
 	AttachDomain(domain Domain) error
+	SetServerGitHost(host string) error
+	AddSSHKey(name string, publicKey string) error
 }
 
 type MemoryBackend struct {
 	gitHost string
 	apps    map[string]App
 	domains []Domain
+	keys    map[string]SSHKey
 }
 
 func NewMemoryBackend(gitHost string) *MemoryBackend {
@@ -41,6 +52,7 @@ func NewMemoryBackend(gitHost string) *MemoryBackend {
 	return &MemoryBackend{
 		gitHost: gitHost,
 		apps:    map[string]App{},
+		keys:    map[string]SSHKey{},
 	}
 }
 
@@ -88,6 +100,29 @@ func (b *MemoryBackend) AttachDomain(domain Domain) error {
 	return nil
 }
 
+func (b *MemoryBackend) SetServerGitHost(host string) error {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return fmt.Errorf("server Git host is required")
+	}
+	b.gitHost = host
+	return nil
+}
+
+func (b *MemoryBackend) AddSSHKey(name string, publicKey string) error {
+	name = strings.TrimSpace(name)
+	publicKey = strings.TrimSpace(publicKey)
+	if name == "" {
+		return fmt.Errorf("SSH key name is required")
+	}
+	if err := validatePublicKey(publicKey); err != nil {
+		return err
+	}
+
+	b.keys[name] = SSHKey{Name: name, PublicKey: publicKey, CreatedAt: time.Now().UTC()}
+	return nil
+}
+
 type Runner struct {
 	backend Backend
 	version string
@@ -98,6 +133,10 @@ func NewRunner(backend Backend, version string) *Runner {
 }
 
 func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
+	return r.RunWithInput(args, nil, stdout, stderr)
+}
+
+func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintf(stdout, "rhumbase %s\n", r.version)
 		return 0
@@ -109,6 +148,10 @@ func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
 			return r.runApps(args[1:], stdout, stderr)
 		case "domains":
 			return r.runDomains(args[1:], stdout, stderr)
+		case "server":
+			return r.runServer(args[1:], stdout, stderr)
+		case "ssh-keys":
+			return r.runSSHKeys(args[1:], stdin, stdout, stderr)
 		}
 	}
 
@@ -192,6 +235,53 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 	return 2
 }
 
+func (r *Runner) runServer(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 3 && args[0] == "domain" && args[1] == "set" {
+		if err := r.backend.SetServerGitHost(args[2]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "server Git host set to %s\n", strings.TrimSpace(args[2]))
+		return 0
+	}
+
+	printUsage(stderr)
+	return 2
+}
+
+func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 2 && args[0] == "add" {
+		if stdin == nil {
+			stdin = strings.NewReader("")
+		}
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			fmt.Fprintf(stderr, "read SSH public key: %v\n", err)
+			return 1
+		}
+		if err := r.backend.AddSSHKey(args[1], string(data)); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "added SSH key %s\n", args[1])
+		return 0
+	}
+
+	printUsage(stderr)
+	return 2
+}
+
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: rhumbase version | apps create <name> | apps list | apps info <name> | domains attach <app> <service> <domain> --port <port>")
+	fmt.Fprintln(stderr, "usage: rhumbase version | apps create <name> | apps list | apps info <name> | domains attach <app> <service> <domain> --port <port> | server domain set <domain> | ssh-keys add <name>")
+}
+
+func validatePublicKey(publicKey string) error {
+	if publicKey == "" {
+		return fmt.Errorf("SSH public key is required on stdin")
+	}
+	fields := strings.Fields(publicKey)
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "ssh-") {
+		return fmt.Errorf("invalid SSH public key")
+	}
+	return nil
 }

@@ -37,6 +37,18 @@ exit 0
 printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
+	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
+if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
+	echo 0
+	exit 0
+fi
+printf 'id %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 1
+`)
+	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
+printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 
 	installRoot := filepath.Join(tmp, "root")
 	env := append(os.Environ(),
@@ -44,7 +56,6 @@ exit 0
 		"RHUMBASE_TAG=test-local",
 		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
 		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_SKIP_USER=1",
 		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
 		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
 	)
@@ -80,6 +91,8 @@ exit 0
 		"docker compose version",
 		"caddy version",
 		"systemctl --version",
+		"useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase",
+		"useradd --system --home /var/lib/rhumbase/git --shell /usr/bin/git-shell git",
 		"systemctl daemon-reload",
 		"systemctl enable --now rhumbased.service",
 	} {

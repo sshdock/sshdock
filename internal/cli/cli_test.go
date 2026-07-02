@@ -100,6 +100,26 @@ func TestDomainsAttach(t *testing.T) {
 	}
 }
 
+func TestSSHKeysAddReadsPublicKeyFromInput(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.RunWithInput(
+		[]string{"ssh-keys", "add", "admin"},
+		strings.NewReader("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("ssh-keys add exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "added SSH key admin") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestUnknownCommandPrintsUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

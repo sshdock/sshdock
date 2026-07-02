@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -176,6 +177,89 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	}
 	if domains[0] != wantDomain {
 		t.Fatalf("stored domain = %#v, want %#v", domains[0], wantDomain)
+	}
+}
+
+func TestStoreBackendUsesPersistedServerGitHostForAppRemotes(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: filepath.Join(t.TempDir(), "apps"),
+		GitHost: "env.example.com",
+	})
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := runner.Run([]string{"server", "domain", "set", "rhumbase.example.com"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("server domain set exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "server Git host set to rhumbase.example.com") {
+		t.Fatalf("server domain set stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runner.Run([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+		t.Fatalf("apps create stdout = %q", stdout.String())
+	}
+}
+
+func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	authorizedKeysPath := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:             "node-a",
+		AppsDir:            filepath.Join(t.TempDir(), "apps"),
+		AuthorizedKeysPath: authorizedKeysPath,
+		GitReceiveCommand:  "/usr/local/bin/rhumbased git-receive",
+		Now:                func() time.Time { return now },
+	})
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com\n"
+
+	code := runner.RunWithInput([]string{"ssh-keys", "add", "admin"}, strings.NewReader(publicKey), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("ssh-keys add exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "added SSH key admin") {
+		t.Fatalf("ssh-keys add stdout = %q", stdout.String())
+	}
+
+	keys, err := sqlite.ListSSHKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListSSHKeys: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("keys = %#v", keys)
+	}
+	if keys[0].Name != "admin" || keys[0].PublicKey != strings.TrimSpace(publicKey) || !keys[0].CreatedAt.Equal(now) {
+		t.Fatalf("stored key = %#v", keys[0])
+	}
+
+	rendered, err := os.ReadFile(authorizedKeysPath)
+	if err != nil {
+		t.Fatalf("ReadFile authorized_keys: %v", err)
+	}
+	for _, want := range []string{
+		`command="exec /usr/local/bin/rhumbased git-receive"`,
+		`no-pty`,
+		`no-port-forwarding`,
+		`no-agent-forwarding`,
+		`no-X11-forwarding`,
+		strings.TrimSpace(publicKey),
+	} {
+		if !strings.Contains(string(rendered), want) {
+			t.Fatalf("authorized_keys missing %q:\n%s", want, rendered)
+		}
 	}
 }
 

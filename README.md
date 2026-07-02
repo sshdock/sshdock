@@ -95,8 +95,10 @@ Current MVP state:
 - `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - `scripts/bootstrap.sh` installs local or released binaries, writes `rhumbased.service`, checks Docker/Caddy/systemd, and can be tested under a fake root with `make bootstrap-e2e`.
+- `rhumbase server domain set <domain>` persists the Git host used in app remote output.
+- `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- SSH key management, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
+- Caddy reloads, public domain routing, and SSH dashboard sessions are still later runtime milestones.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
@@ -280,6 +282,12 @@ Real Git-hook e2e with fake Compose:
 
 ```bash
 make e2e
+```
+
+Real OpenSSH push e2e with fake Compose:
+
+```bash
+make ssh-e2e
 ```
 
 Opt-in real Docker Compose e2e:

@@ -11,6 +11,17 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+type ServerConfig struct {
+	GitHost   string
+	UpdatedAt time.Time
+}
+
+type SSHKey struct {
+	Name      string
+	PublicKey string
+	CreatedAt time.Time
+}
+
 type Store interface {
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
@@ -24,6 +35,10 @@ type Store interface {
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
 	CreateEvent(ctx context.Context, model app.Event) error
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
+	SetServerConfig(ctx context.Context, config ServerConfig) error
+	GetServerConfig(ctx context.Context) (ServerConfig, error)
+	UpsertSSHKey(ctx context.Context, key SSHKey) error
+	ListSSHKeys(ctx context.Context) ([]SSHKey, error)
 }
 
 func notFound(kind string, id string) error {

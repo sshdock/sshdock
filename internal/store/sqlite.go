@@ -257,6 +257,80 @@ func (s *SQLiteStore) ListEventsByApp(ctx context.Context, appID string) ([]app.
 	return models, rows.Err()
 }
 
+func (s *SQLiteStore) SetServerConfig(ctx context.Context, config ServerConfig) error {
+	_, err := s.db.ExecContext(ctx, `
+		insert into server_config (key, value, updated_at)
+		values ('git_host', ?, ?)
+		on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at`,
+		config.GitHost,
+		formatTime(config.UpdatedAt),
+	)
+	return err
+}
+
+func (s *SQLiteStore) GetServerConfig(ctx context.Context) (ServerConfig, error) {
+	row := s.db.QueryRowContext(ctx, `
+		select value, updated_at
+		from server_config
+		where key = 'git_host'`)
+
+	var config ServerConfig
+	var updatedAt string
+	if err := row.Scan(&config.GitHost, &updatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ServerConfig{}, notFound("server config", "git_host")
+		}
+		return ServerConfig{}, err
+	}
+
+	parsed, err := parseTime(updatedAt)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+	config.UpdatedAt = parsed
+	return config, nil
+}
+
+func (s *SQLiteStore) UpsertSSHKey(ctx context.Context, key SSHKey) error {
+	_, err := s.db.ExecContext(ctx, `
+		insert into ssh_keys (name, public_key, created_at)
+		values (?, ?, ?)
+		on conflict(name) do update set public_key = excluded.public_key, created_at = excluded.created_at`,
+		key.Name,
+		key.PublicKey,
+		formatTime(key.CreatedAt),
+	)
+	return err
+}
+
+func (s *SQLiteStore) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select name, public_key, created_at
+		from ssh_keys
+		order by name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []SSHKey
+	for rows.Next() {
+		var key SSHKey
+		var createdAt string
+		if err := rows.Scan(&key.Name, &key.PublicKey, &createdAt); err != nil {
+			return nil, err
+		}
+		parsed, err := parseTime(createdAt)
+		if err != nil {
+			return nil, err
+		}
+		key.CreatedAt = parsed
+		keys = append(keys, key)
+	}
+
+	return keys, rows.Err()
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

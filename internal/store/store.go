@@ -34,6 +34,7 @@ type Store interface {
 	CreateDeployment(ctx context.Context, model app.Deployment) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	AttachDomain(ctx context.Context, model app.Domain) error
+	ListDomains(ctx context.Context) ([]app.Domain, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
 	CreateEvent(ctx context.Context, model app.Event) error
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)

@@ -246,6 +246,28 @@ func (s *SQLiteStore) AttachDomain(ctx context.Context, model app.Domain) error 
 	return err
 }
 
+func (s *SQLiteStore) ListDomains(ctx context.Context) ([]app.Domain, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select id, app_id, service_name, domain_name, port, https, created_at, updated_at
+		from domains
+		order by created_at, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var models []app.Domain
+	for rows.Next() {
+		model, err := scanDomain(rows)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, model)
+	}
+
+	return models, rows.Err()
+}
+
 func (s *SQLiteStore) ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		select id, app_id, service_name, domain_name, port, https, created_at, updated_at

@@ -38,6 +38,18 @@ func (f *FakeRouter) DetachDomain(_ context.Context, domainName string) error {
 	return nil
 }
 
+func (f *FakeRouter) SyncRoutes(_ context.Context, routes []Route) error {
+	if f.AttachErr != nil {
+		return f.AttachErr
+	}
+
+	f.routes = map[string]Route{}
+	for _, route := range routes {
+		f.routes[route.DomainName] = route
+	}
+	return nil
+}
+
 func (f *FakeRouter) Reload(_ context.Context) error {
 	if f.ReloadErr != nil {
 		return f.ReloadErr

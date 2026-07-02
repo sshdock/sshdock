@@ -30,11 +30,20 @@ func TestRunVersion(t *testing.T) {
 
 func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	dataDir := t.TempDir()
+	fakeBinDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(fakeBinDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll fake bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBinDir, "caddy"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile fake caddy: %v", err)
+	}
+	t.Setenv("PATH", fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
 	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
 	t.Setenv("RHUMBASE_APPS_DIR", filepath.Join(dataDir, "apps"))
 	t.Setenv("RHUMBASE_NODE_ID", "node-a")
 	t.Setenv("RHUMBASE_GIT_HOST", "rhumbase.example.com")
+	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", filepath.Join(dataDir, "Caddyfile"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

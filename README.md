@@ -87,6 +87,16 @@ Attach a domain:
 rhumbase domains attach my-app web example.com --port 3000
 ```
 
+For v0, Caddy runs on the host and proxies to a loopback-published Compose port. The app Compose file must publish the selected service on `127.0.0.1:<port>`, and the `--port` value is that host port:
+
+```yaml
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:3000:80"
+```
+
 Current MVP state:
 
 - `rhumbase` persists app and domain metadata in SQLite.
@@ -98,8 +108,9 @@ Current MVP state:
 - `rhumbase server domain set <domain>` persists the Git host used in app remote output.
 - `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
+- `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- Caddy reloads, public domain routing, and SSH dashboard sessions are still later runtime milestones.
+- SSH dashboard sessions are still a later runtime milestone.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
@@ -307,6 +318,12 @@ Bootstrapped server push e2e:
 
 ```bash
 make server-push-e2e
+```
+
+Caddy route e2e:
+
+```bash
+make route-e2e
 ```
 
 Full CI:

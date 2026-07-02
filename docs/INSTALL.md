@@ -146,6 +146,39 @@ Rhumbase should write its generated route config to the configured Caddy config 
 
 The main Caddy configuration must import or load this file before routes can serve traffic.
 
+For v0, Rhumbase assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`, and `rhumbase domains attach ... --port <port>` uses that host port as the upstream:
+
+```yaml
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:3000:80"
+```
+
+Rhumbase renders Caddy upstreams as:
+
+```text
+reverse_proxy 127.0.0.1:<port>
+```
+
+`rhumbase domains attach` writes the generated config to `RHUMBASE_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads Caddy with `caddy reload --config <config-path>`.
+
+Local tests may set:
+
+```bash
+RHUMBASE_CADDY_CONFIG_PATH=/tmp/rhumbase.Caddyfile
+RHUMBASE_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
+```
+
+When `RHUMBASE_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a matching `admin` global option and reload uses `--address`. Production installs can leave it unset and use Caddy's default admin endpoint.
+
+DNS and HTTPS limits:
+
+- Public DNS must point the domain at the server before normal public HTTP routing works.
+- Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
+- Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
+
 ## SQLite Data Path
 
 Default Rhumbase state lives under:

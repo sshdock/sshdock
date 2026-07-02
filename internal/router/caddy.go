@@ -2,7 +2,9 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,39 +21,55 @@ type CaddyCommandExecutor interface {
 }
 
 type CaddyRouterConfig struct {
-	ConfigPath string
-	Executor   CaddyCommandExecutor
+	ConfigPath   string
+	Executor     CaddyCommandExecutor
+	UpstreamHost string
+	AdminAddress string
 }
 
 type CaddyRouter struct {
-	configPath string
-	executor   CaddyCommandExecutor
-	routes     map[string]Route
+	configPath   string
+	executor     CaddyCommandExecutor
+	upstreamHost string
+	adminAddress string
+	routes       map[string]Route
 }
 
 func NewCaddyRouter(config CaddyRouterConfig) *CaddyRouter {
+	if config.UpstreamHost == "" {
+		config.UpstreamHost = "127.0.0.1"
+	}
+
 	return &CaddyRouter{
-		configPath: config.ConfigPath,
-		executor:   config.Executor,
-		routes:     map[string]Route{},
+		configPath:   config.ConfigPath,
+		executor:     config.Executor,
+		upstreamHost: config.UpstreamHost,
+		adminAddress: config.AdminAddress,
+		routes:       map[string]Route{},
 	}
 }
 
 func (r *CaddyRouter) AttachDomain(ctx context.Context, route Route) error {
-	r.routes[route.DomainName] = route
-	if err := r.writeConfig(); err != nil {
-		return err
-	}
+	routes := copyRoutes(r.routes)
+	routes[route.DomainName] = route
 
-	return r.Reload(ctx)
+	return r.SyncRoutes(ctx, routesFromMap(routes))
 }
 
 func (r *CaddyRouter) DetachDomain(ctx context.Context, domainName string) error {
-	delete(r.routes, domainName)
-	if err := r.writeConfig(); err != nil {
+	routes := copyRoutes(r.routes)
+	delete(routes, domainName)
+
+	return r.SyncRoutes(ctx, routesFromMap(routes))
+}
+
+func (r *CaddyRouter) SyncRoutes(ctx context.Context, routes []Route) error {
+	routeMap := routesByDomain(routes)
+	if err := r.writeConfig(ctx, routeMap); err != nil {
 		return err
 	}
 
+	r.routes = routeMap
 	return r.Reload(ctx)
 }
 
@@ -60,7 +78,11 @@ func (r *CaddyRouter) Reload(ctx context.Context) error {
 		return nil
 	}
 
-	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: []string{"reload", "--config", r.configPath}})
+	args := []string{"reload", "--config", r.configPath}
+	if r.adminAddress != "" {
+		args = append(args, "--address", r.adminAddress)
+	}
+	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: args})
 }
 
 func (r *CaddyRouter) Routes(_ context.Context) ([]Route, error) {
@@ -78,7 +100,7 @@ func (r *CaddyRouter) Routes(_ context.Context) ([]Route, error) {
 	return routes, nil
 }
 
-func (r *CaddyRouter) writeConfig() error {
+func (r *CaddyRouter) writeConfig(ctx context.Context, routes map[string]Route) error {
 	if err := os.MkdirAll(filepath.Dir(r.configPath), 0o755); err != nil {
 		return err
 	}
@@ -89,7 +111,7 @@ func (r *CaddyRouter) writeConfig() error {
 	}
 	tmpPath := tmp.Name()
 
-	if _, err := tmp.WriteString(renderCaddyfile(r.routes)); err != nil {
+	if _, err := tmp.WriteString(renderCaddyfile(routes, r.upstreamHost, r.adminAddress)); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		return err
@@ -102,11 +124,23 @@ func (r *CaddyRouter) writeConfig() error {
 		os.Remove(tmpPath)
 		return err
 	}
+	if err := r.validateConfig(ctx, tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
 
 	return os.Rename(tmpPath, r.configPath)
 }
 
-func renderCaddyfile(routes map[string]Route) string {
+func (r *CaddyRouter) validateConfig(ctx context.Context, configPath string) error {
+	if r.executor == nil {
+		return nil
+	}
+
+	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: []string{"validate", "--config", configPath}})
+}
+
+func renderCaddyfile(routes map[string]Route, upstreamHost string, adminAddress string) string {
 	domains := make([]string, 0, len(routes))
 	for domain := range routes {
 		domains = append(domains, domain)
@@ -114,12 +148,19 @@ func renderCaddyfile(routes map[string]Route) string {
 	sort.Strings(domains)
 
 	var builder strings.Builder
+	if adminAddress != "" {
+		builder.WriteString("{\n")
+		builder.WriteString("\tadmin ")
+		builder.WriteString(adminAddress)
+		builder.WriteString("\n")
+		builder.WriteString("}\n\n")
+	}
 	for _, domain := range domains {
 		route := routes[domain]
 		builder.WriteString(domain)
 		builder.WriteString(" {\n")
 		builder.WriteString("\treverse_proxy ")
-		builder.WriteString(route.ServiceName)
+		builder.WriteString(upstreamHost)
 		builder.WriteString(":")
 		builder.WriteString(portString(route.Port))
 		builder.WriteString("\n")
@@ -127,6 +168,49 @@ func renderCaddyfile(routes map[string]Route) string {
 	}
 
 	return builder.String()
+}
+
+type LocalCommandExecutor struct{}
+
+func (LocalCommandExecutor) Run(ctx context.Context, command CaddyCommand) error {
+	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
+	cmd.Dir = command.Dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s %s failed: %w\n%s", command.Name, strings.Join(command.Args, " "), err, output)
+	}
+
+	return nil
+}
+
+func routesByDomain(routes []Route) map[string]Route {
+	result := map[string]Route{}
+	for _, route := range routes {
+		result[route.DomainName] = route
+	}
+	return result
+}
+
+func copyRoutes(routes map[string]Route) map[string]Route {
+	copied := map[string]Route{}
+	for domain, route := range routes {
+		copied[domain] = route
+	}
+	return copied
+}
+
+func routesFromMap(routeMap map[string]Route) []Route {
+	domains := make([]string, 0, len(routeMap))
+	for domain := range routeMap {
+		domains = append(domains, domain)
+	}
+	sort.Strings(domains)
+
+	routes := make([]Route, 0, len(domains))
+	for _, domain := range domains {
+		routes = append(routes, routeMap[domain])
+	}
+	return routes
 }
 
 func portString(port int) string {

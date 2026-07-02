@@ -46,6 +46,27 @@ func TestFakeRouterAttachDetachReloadAndList(t *testing.T) {
 	if len(routes) != 0 {
 		t.Fatalf("Routes after detach = %#v, want empty", routes)
 	}
+
+	replacementRoutes := []Route{
+		{AppID: "app_1", ServiceName: "web", DomainName: "two.example.com", Port: 3000, HTTPS: true},
+		{AppID: "app_2", ServiceName: "api", DomainName: "one.example.com", Port: 4000, HTTPS: true},
+	}
+	if err := router.SyncRoutes(ctx, replacementRoutes); err != nil {
+		t.Fatalf("SyncRoutes: %v", err)
+	}
+	routes, err = router.Routes(ctx)
+	if err != nil {
+		t.Fatalf("Routes after sync: %v", err)
+	}
+	wantRoutes := []Route{replacementRoutes[1], replacementRoutes[0]}
+	if len(routes) != len(wantRoutes) {
+		t.Fatalf("Routes after sync len = %d, want %d: %#v", len(routes), len(wantRoutes), routes)
+	}
+	for i := range wantRoutes {
+		if routes[i] != wantRoutes[i] {
+			t.Fatalf("Routes after sync[%d] = %#v, want %#v", i, routes[i], wantRoutes[i])
+		}
+	}
 }
 
 func TestFakeRouterFailureModes(t *testing.T) {
@@ -68,6 +89,9 @@ func TestFakeRouterFailureModes(t *testing.T) {
 	}
 	if err := router.Reload(ctx); !errors.Is(err, reloadErr) {
 		t.Fatalf("Reload error = %v, want %v", err, reloadErr)
+	}
+	if err := router.SyncRoutes(ctx, []Route{{DomainName: "example.com"}}); !errors.Is(err, attachErr) {
+		t.Fatalf("SyncRoutes error = %v, want %v", err, attachErr)
 	}
 	if _, err := router.Routes(ctx); !errors.Is(err, routesErr) {
 		t.Fatalf("Routes error = %v, want %v", err, routesErr)

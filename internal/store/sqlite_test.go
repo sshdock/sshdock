@@ -177,6 +177,34 @@ func TestSQLiteStoreDomains(t *testing.T) {
 	if len(domains) != 1 || domains[0] != domain {
 		t.Fatalf("ListDomainsByApp = %#v, want [%#v]", domains, domain)
 	}
+
+	secondDomain := app.Domain{
+		ID:          "dom_2",
+		AppID:       "app_2",
+		ServiceName: "api",
+		DomainName:  "api.example.com",
+		Port:        4000,
+		HTTPS:       true,
+		CreatedAt:   now.Add(time.Minute),
+		UpdatedAt:   now.Add(time.Minute),
+	}
+	if err := store.AttachDomain(ctx, secondDomain); err != nil {
+		t.Fatalf("AttachDomain second: %v", err)
+	}
+
+	allDomains, err := store.ListDomains(ctx)
+	if err != nil {
+		t.Fatalf("ListDomains: %v", err)
+	}
+	wantDomains := []app.Domain{domain, secondDomain}
+	if len(allDomains) != len(wantDomains) {
+		t.Fatalf("ListDomains len = %d, want %d: %#v", len(allDomains), len(wantDomains), allDomains)
+	}
+	for i := range wantDomains {
+		if allDomains[i] != wantDomains[i] {
+			t.Fatalf("ListDomains[%d] = %#v, want %#v", i, allDomains[i], wantDomains[i])
+		}
+	}
 }
 
 func TestSQLiteStoreEvents(t *testing.T) {

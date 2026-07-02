@@ -44,6 +44,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.CaddyConfigPath == "" {
 		t.Fatal("CaddyConfigPath is empty")
 	}
+	if cfg.CaddyAdminAddress != "" {
+		t.Fatalf("CaddyAdminAddress = %q, want empty default", cfg.CaddyAdminAddress)
+	}
 }
 
 func TestLoadFromEnvOverridesDefaults(t *testing.T) {
@@ -59,6 +62,7 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("RHUMBASE_GIT_AUTHORIZED_KEYS_PATH", "/tmp/authorized_keys")
 	t.Setenv("RHUMBASE_GIT_RECEIVE_COMMAND", "/opt/rhumbase/bin/rhumbased git-receive")
 	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
+	t.Setenv("RHUMBASE_CADDY_ADMIN_ADDRESS", "127.0.0.1:22019")
 
 	cfg := LoadFromEnv()
 
@@ -97,6 +101,9 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
+	}
+	if cfg.CaddyAdminAddress != "127.0.0.1:22019" {
+		t.Fatalf("CaddyAdminAddress = %q", cfg.CaddyAdminAddress)
 	}
 }
 

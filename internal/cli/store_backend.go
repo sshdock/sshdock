@@ -11,6 +11,7 @@ import (
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
+	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/sshaccess"
 	"github.com/iketiunn/rumbase/internal/store"
 )
@@ -26,7 +27,12 @@ type StoreBackendConfig struct {
 	AuthorizedKeysPath string
 	GitReceiveCommand  string
 	RepoSetupper       ReceiveRepoSetupper
+	Router             routeSyncer
 	Now                func() time.Time
+}
+
+type routeSyncer interface {
+	SyncRoutes(ctx context.Context, routes []router.Route) error
 }
 
 type StoreBackend struct {
@@ -37,6 +43,7 @@ type StoreBackend struct {
 	authorizedKeysPath string
 	gitReceiveCommand  string
 	repoSetupper       ReceiveRepoSetupper
+	router             routeSyncer
 	now                func() time.Time
 }
 
@@ -59,6 +66,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		authorizedKeysPath: cfg.AuthorizedKeysPath,
 		gitReceiveCommand:  cfg.GitReceiveCommand,
 		repoSetupper:       cfg.RepoSetupper,
+		router:             cfg.Router,
 		now:                cfg.Now,
 	}
 }
@@ -162,6 +170,40 @@ func (b *StoreBackend) AttachDomain(domain Domain) error {
 	if err := b.store.AttachDomain(ctx, model); err != nil {
 		return fmt.Errorf("attach domain %q: %w", domain.DomainName, err)
 	}
+	if err := b.store.CreateEvent(ctx, appmodel.Event{
+		ID:        eventID(model.ID, "attached"),
+		AppID:     model.AppID,
+		Type:      "domain.attached",
+		Message:   "Attached " + model.DomainName + " to " + model.AppID + "/" + model.ServiceName,
+		CreatedAt: now,
+	}); err != nil {
+		return fmt.Errorf("record domain attach event: %w", err)
+	}
+	if b.router != nil {
+		domains, err := b.store.ListDomains(ctx)
+		if err != nil {
+			return fmt.Errorf("list domains for route rebuild: %w", err)
+		}
+		if err := b.router.SyncRoutes(ctx, routesFromDomains(domains)); err != nil {
+			_ = b.store.CreateEvent(ctx, appmodel.Event{
+				ID:        eventID(model.ID, "router_reload_failed"),
+				AppID:     model.AppID,
+				Type:      "router.reload_failed",
+				Message:   "Caddy reload failed for " + model.DomainName + ": " + err.Error(),
+				CreatedAt: b.now(),
+			})
+			return fmt.Errorf("reload Caddy routes: %w", err)
+		}
+		if err := b.store.CreateEvent(ctx, appmodel.Event{
+			ID:        eventID(model.ID, "router_reloaded"),
+			AppID:     model.AppID,
+			Type:      "router.reloaded",
+			Message:   "Reloaded Caddy routes for " + model.DomainName,
+			CreatedAt: b.now(),
+		}); err != nil {
+			return fmt.Errorf("record Caddy reload event: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -246,6 +288,24 @@ func sshAccessKeys(keys []store.SSHKey) []sshaccess.Key {
 
 func domainID(appName string, domainName string) string {
 	return "dom_" + sanitizeIDPart(appName) + "_" + sanitizeIDPart(domainName)
+}
+
+func eventID(subjectID string, suffix string) string {
+	return "evt_" + sanitizeIDPart(subjectID) + "_" + sanitizeIDPart(suffix)
+}
+
+func routesFromDomains(domains []appmodel.Domain) []router.Route {
+	routes := make([]router.Route, 0, len(domains))
+	for _, domain := range domains {
+		routes = append(routes, router.Route{
+			AppID:       domain.AppID,
+			ServiceName: domain.ServiceName,
+			DomainName:  domain.DomainName,
+			Port:        domain.Port,
+			HTTPS:       domain.HTTPS,
+		})
+	}
+	return routes
 }
 
 func sanitizeIDPart(value string) string {

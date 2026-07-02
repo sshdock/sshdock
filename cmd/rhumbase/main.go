@@ -11,6 +11,7 @@ import (
 	"github.com/iketiunn/rumbase/internal/cli"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
+	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
 	"github.com/iketiunn/rumbase/internal/version"
 )
@@ -52,6 +53,12 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		GitHost:            cfg.GitHost,
 		AuthorizedKeysPath: cfg.GitAuthorizedKeysPath,
 		GitReceiveCommand:  cfg.GitReceiveCommand,
+		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
+			ConfigPath:   cfg.CaddyConfigPath,
+			Executor:     router.LocalCommandExecutor{},
+			AdminAddress: cfg.CaddyAdminAddress,
+			UpstreamHost: "127.0.0.1",
+		}),
 		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
 			AppsDir:  cfg.AppsDir,
 			GitHost:  cfg.GitHost,

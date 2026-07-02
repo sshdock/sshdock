@@ -18,6 +18,7 @@ type Config struct {
 	GitAuthorizedKeysPath string
 	GitReceiveCommand     string
 	CaddyConfigPath       string
+	CaddyAdminAddress     string
 }
 
 func Default() Config {
@@ -54,6 +55,7 @@ func LoadFromEnv() Config {
 	cfg.GitAuthorizedKeysPath = envOrDefault("RHUMBASE_GIT_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.GitHomeDir, ".ssh", "authorized_keys"))
 	cfg.GitReceiveCommand = envOrDefault("RHUMBASE_GIT_RECEIVE_COMMAND", cfg.GitReceiveCommand)
 	cfg.CaddyConfigPath = envOrDefault("RHUMBASE_CADDY_CONFIG_PATH", cfg.CaddyConfigPath)
+	cfg.CaddyAdminAddress = envOrDefault("RHUMBASE_CADDY_ADMIN_ADDRESS", cfg.CaddyAdminAddress)
 
 	return cfg
 }

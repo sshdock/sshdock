@@ -12,6 +12,7 @@ import (
 
 	"github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
+	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
 )
 
@@ -96,6 +97,17 @@ func (f *fakeReceiveRepoSetupper) SetupBareRepo(_ context.Context, appName strin
 	return f.repo, nil
 }
 
+type fakeRoutePublisher struct {
+	Syncs [][]router.Route
+	Err   error
+}
+
+func (f *fakeRoutePublisher) SyncRoutes(_ context.Context, routes []router.Route) error {
+	copied := append([]router.Route(nil), routes...)
+	f.Syncs = append(f.Syncs, copied)
+	return f.Err
+}
+
 func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
@@ -177,6 +189,74 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	}
 	if domains[0] != wantDomain {
 		t.Fatalf("stored domain = %#v, want %#v", domains[0], wantDomain)
+	}
+}
+
+func TestStoreBackendDomainAttachRebuildsRouterFromPersistedDomainsAndRecordsEvents(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	routePublisher := &fakeRoutePublisher{}
+	currentTime := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: filepath.Join(t.TempDir(), "apps"),
+		Router:  routePublisher,
+		Now: func() time.Time {
+			value := currentTime
+			currentTime = currentTime.Add(time.Minute)
+			return value
+		},
+	})
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	for _, appName := range []string{"my-app", "api-app"} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := runner.Run([]string{"apps", "create", appName}, &stdout, &stderr); code != 0 {
+			t.Fatalf("apps create %s exit code = %d, stderr = %q", appName, code, stderr.String())
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runner.Run([]string{"domains", "attach", "my-app", "web", "www.example.com", "--port", "3000"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains attach first exit code = %d, stderr = %q", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runner.Run([]string{"domains", "attach", "api-app", "api", "api.example.com", "--port", "4000"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains attach second exit code = %d, stderr = %q", code, stderr.String())
+	}
+
+	if len(routePublisher.Syncs) != 2 {
+		t.Fatalf("router sync count = %d, want 2: %#v", len(routePublisher.Syncs), routePublisher.Syncs)
+	}
+	wantLastSync := []router.Route{
+		{AppID: "my-app", ServiceName: "web", DomainName: "www.example.com", Port: 3000, HTTPS: true},
+		{AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true},
+	}
+	gotLastSync := routePublisher.Syncs[len(routePublisher.Syncs)-1]
+	if len(gotLastSync) != len(wantLastSync) {
+		t.Fatalf("last router sync len = %d, want %d: %#v", len(gotLastSync), len(wantLastSync), gotLastSync)
+	}
+	for i := range wantLastSync {
+		if gotLastSync[i] != wantLastSync[i] {
+			t.Fatalf("last router sync[%d] = %#v, want %#v", i, gotLastSync[i], wantLastSync[i])
+		}
+	}
+
+	events, err := sqlite.ListEventsByApp(ctx, "api-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	gotTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		gotTypes = append(gotTypes, event.Type)
+	}
+	if strings.Join(gotTypes, ",") != "domain.attached,router.reloaded" {
+		t.Fatalf("event types = %#v, want domain.attached and router.reloaded", gotTypes)
 	}
 }
 

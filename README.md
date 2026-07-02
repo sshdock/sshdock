@@ -94,6 +94,7 @@ Current MVP state:
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
 - `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
+- `scripts/bootstrap.sh` installs local or released binaries, writes `rhumbased.service`, checks Docker/Caddy/systemd, and can be tested under a fake root with `make bootstrap-e2e`.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
 - SSH key management, Caddy reloads, and SSH dashboard sessions are still later runtime milestones.
 
@@ -285,6 +286,12 @@ Opt-in real Docker Compose e2e:
 
 ```bash
 make e2e-docker
+```
+
+Bootstrap installer harness:
+
+```bash
+make bootstrap-e2e
 ```
 
 Full CI:

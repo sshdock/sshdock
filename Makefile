@@ -4,7 +4,7 @@ APP_NAME := rhumbase
 DAEMON_NAME := rhumbased
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke e2e e2e-docker ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e e2e-docker bootstrap-e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -27,6 +27,9 @@ e2e:
 
 e2e-docker:
 	RHUMBASE_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestGitHookDockerComposeEndToEnd -v
+
+bootstrap-e2e:
+	go test -tags e2e ./test/e2e -run TestBootstrap -v
 
 ci: check-tools fmt lint test smoke build
 

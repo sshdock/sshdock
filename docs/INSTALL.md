@@ -1,8 +1,14 @@
 # Rhumbase Install Plan
 
-This document defines expected installation behavior for Rhumbase v0.
+This document defines the current installation behavior for Rhumbase v0.
 
-It is not an installer script. Do not add a curl-to-root installer until these steps are implemented, tested, and reviewed.
+The bootstrap entry point is:
+
+```bash
+sudo RHUMBASE_TAG=<version> scripts/bootstrap.sh
+```
+
+The script can install from a release tarball or from a local binary directory for tests and development.
 
 ## OS Assumptions
 
@@ -29,12 +35,22 @@ Rhumbase v0 requires:
 - Docker Engine
 - Docker Compose plugin, available as `docker compose`
 - Caddy
+- systemd
 - SQLite, via Rhumbase's embedded Go driver
 - Rhumbase binaries:
   - `rhumbase`
   - `rhumbased`
 
 The installer must check each dependency and print actionable errors when something is missing.
+
+The bootstrap script checks:
+
+```bash
+docker version
+docker compose version
+caddy version
+systemctl --version
+```
 
 ## Target Bootstrap Flow
 
@@ -52,6 +68,50 @@ git push rhumbase main
 ```
 
 The first authorized push to `my-app.git` should create the app automatically. `rhumbase apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
+
+## Current Bootstrap Behavior
+
+Required input:
+
+```bash
+RHUMBASE_TAG=<version>
+```
+
+Default install layout:
+
+```text
+/usr/local/bin/rhumbase
+/usr/local/bin/rhumbased
+/var/lib/rhumbase/
+/var/lib/rhumbase/apps/
+/etc/systemd/system/rhumbased.service
+/etc/caddy/rhumbase.caddyfile
+```
+
+By default, `scripts/bootstrap.sh` downloads:
+
+```text
+https://github.com/iketiunn/rhumbase/releases/download/<tag>/rhumbase_<tag>_linux_<arch>.tar.gz
+```
+
+For local testing or unreleased builds, set:
+
+```bash
+RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR=<dir-containing-rhumbase-and-rhumbased>
+```
+
+The script supports a fake-root harness:
+
+```bash
+RHUMBASE_TAG=test \
+RHUMBASE_BOOTSTRAP_ROOT=/tmp/rhumbase-root \
+RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR=bin \
+RHUMBASE_BOOTSTRAP_SKIP_USER=1 \
+RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1 \
+scripts/bootstrap.sh
+```
+
+The harness writes the same files under `RHUMBASE_BOOTSTRAP_ROOT` without mutating the host filesystem.
 
 ## Docker Requirement
 
@@ -100,6 +160,20 @@ Default files and directories:
 ```
 
 The installer should create the data directory with ownership suitable for the daemon user.
+
+The default daemon user is:
+
+```text
+rhumbase
+```
+
+If the user does not exist, `scripts/bootstrap.sh` creates it with:
+
+```bash
+useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase
+```
+
+The script creates `/var/lib/rhumbase` and `/var/lib/rhumbase/apps`, then assigns ownership to the daemon user during a real root install.
 
 ## SSH Dashboard User
 
@@ -158,6 +232,9 @@ Expected service behavior:
 - run `rhumbased`
 - restart on failure
 - use the configured data directory
+- use `RHUMBASE_COMPOSE_RUNNER=docker`
+- use `RHUMBASE_GIT_HOST=server` unless overridden at install time
+- use `/etc/caddy/rhumbase.caddyfile` as the generated Caddy config path unless overridden
 - write logs to journald
 
 Administrators should be able to inspect status with:
@@ -190,3 +267,19 @@ An upgrade should:
 6. Reload Caddy only after route config is valid.
 
 Upgrades must not prune Docker images broadly. Cleanup should remain scoped to Rhumbase-managed image tags.
+
+## Verification
+
+Run the full bootstrap harness with:
+
+```bash
+make bootstrap-e2e
+```
+
+The harness builds both binaries, runs `scripts/bootstrap.sh` under a temporary root, fakes Docker/Caddy/systemd commands, and asserts:
+
+- binaries are installed and executable
+- `/var/lib/rhumbase` and `/var/lib/rhumbase/apps` are created
+- `rhumbased.service` contains the production environment
+- Docker, Compose, Caddy, and systemd checks are attempted
+- systemd reload and service enablement are attempted

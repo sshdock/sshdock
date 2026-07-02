@@ -109,8 +109,9 @@ Current MVP state:
 - `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
+- `rhumbased` starts an SSH dashboard on `RHUMBASE_SSH_LISTEN_ADDR`, authenticates `RHUMBASE_DASHBOARD_USER` with `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`, and renders deployed app status, services, domains, releases, deployments, and logs.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
-- SSH dashboard sessions are still a later runtime milestone.
+- Recovery operations are still a later runtime milestone.
 
 ```bash
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
@@ -324,6 +325,12 @@ Caddy route e2e:
 
 ```bash
 make route-e2e
+```
+
+SSH dashboard e2e:
+
+```bash
+make tui-e2e
 ```
 
 Full CI:

@@ -205,6 +205,29 @@ func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment
 	return err
 }
 
+func (s *SQLiteStore) ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select id, app_id, release_id, status, started_at, finished_at, error_message
+		from deployments
+		where app_id = ?
+		order by started_at, id`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var models []app.Deployment
+	for rows.Next() {
+		model, err := scanDeployment(rows)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, model)
+	}
+
+	return models, rows.Err()
+}
+
 func (s *SQLiteStore) UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error {
 	result, err := s.db.ExecContext(ctx, `
 		update deployments
@@ -466,6 +489,38 @@ func scanRelease(s scanner) (app.Release, error) {
 	model.UpdatedAt, parseErr = parseTime(updatedAt)
 	if parseErr != nil {
 		return app.Release{}, parseErr
+	}
+
+	return model, nil
+}
+
+func scanDeployment(s scanner) (app.Deployment, error) {
+	var model app.Deployment
+	var status string
+	var startedAt string
+	var finishedAt string
+	err := s.Scan(
+		&model.ID,
+		&model.AppID,
+		&model.ReleaseID,
+		&status,
+		&startedAt,
+		&finishedAt,
+		&model.ErrorMessage,
+	)
+	if err != nil {
+		return app.Deployment{}, err
+	}
+
+	var parseErr error
+	model.Status = app.DeploymentStatus(status)
+	model.StartedAt, parseErr = parseTime(startedAt)
+	if parseErr != nil {
+		return app.Deployment{}, parseErr
+	}
+	model.FinishedAt, parseErr = parseTime(finishedAt)
+	if parseErr != nil {
+		return app.Deployment{}, parseErr
 	}
 
 	return model, nil

@@ -149,6 +149,41 @@ func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	if errorMessage != "compose failed" {
 		t.Fatalf("error_message = %q", errorMessage)
 	}
+
+	second := app.Deployment{
+		ID:        "dep_2",
+		AppID:     "app_1",
+		ReleaseID: "rel_2",
+		Status:    app.DeploymentStatusSucceeded,
+		StartedAt: startedAt.Add(2 * time.Minute),
+	}
+	if err := store.CreateDeployment(ctx, second); err != nil {
+		t.Fatalf("CreateDeployment second: %v", err)
+	}
+	otherApp := app.Deployment{
+		ID:        "dep_other",
+		AppID:     "app_2",
+		ReleaseID: "rel_other",
+		Status:    app.DeploymentStatusSucceeded,
+		StartedAt: startedAt.Add(3 * time.Minute),
+	}
+	if err := store.CreateDeployment(ctx, otherApp); err != nil {
+		t.Fatalf("CreateDeployment other app: %v", err)
+	}
+
+	deployments, err := store.ListDeploymentsByApp(ctx, "app_1")
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 2 {
+		t.Fatalf("deployments = %#v, want two app_1 rows", deployments)
+	}
+	if deployments[0].ID != "dep_1" || deployments[0].Status != app.DeploymentStatusFailed || deployments[0].ErrorMessage != "compose failed" {
+		t.Fatalf("first deployment = %#v", deployments[0])
+	}
+	if deployments[1] != second {
+		t.Fatalf("second deployment = %#v, want %#v", deployments[1], second)
+	}
 }
 
 func TestSQLiteStoreDomains(t *testing.T) {

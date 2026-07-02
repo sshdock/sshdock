@@ -94,7 +94,7 @@ maybe_chown() {
 
 prepare_directories() {
 	local bin_dir_actual data_dir_actual apps_dir_actual systemd_dir_actual caddy_dir_actual
-	local git_home_actual git_ssh_dir_actual
+	local git_home_actual git_ssh_dir_actual dashboard_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	apps_dir_actual="$(prefix_path "$APPS_DIR")"
@@ -102,10 +102,11 @@ prepare_directories() {
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
+	dashboard_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
 
-	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual"
+	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$dashboard_dir_actual"
 	run chmod 0755 "$data_dir_actual" "$apps_dir_actual" "$git_home_actual"
-	run chmod 0700 "$git_ssh_dir_actual"
+	run chmod 0700 "$git_ssh_dir_actual" "$dashboard_dir_actual"
 	maybe_chown "$data_dir_actual"
 }
 
@@ -176,6 +177,10 @@ Type=simple
 User=$DAEMON_USER
 Group=$DAEMON_USER
 Environment=RHUMBASE_DATA_DIR=$DATA_DIR
+Environment=RHUMBASE_SSH_LISTEN_ADDR=$SSH_LISTEN_ADDR
+Environment=RHUMBASE_DASHBOARD_USER=$DASHBOARD_USER
+Environment=RHUMBASE_DASHBOARD_HOST_KEY_PATH=$DASHBOARD_HOST_KEY_PATH
+Environment=RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=$DASHBOARD_AUTHORIZED_KEYS_PATH
 Environment=RHUMBASE_GIT_HOST=$GIT_HOST
 Environment=RHUMBASE_GIT_USER=$GIT_USER
 Environment=RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
@@ -216,6 +221,10 @@ DATA_DIR="${RHUMBASE_DATA_DIR:-/var/lib/rhumbase}"
 APPS_DIR="${RHUMBASE_APPS_DIR:-$DATA_DIR/apps}"
 SYSTEMD_DIR="${RHUMBASE_SYSTEMD_DIR:-/etc/systemd/system}"
 CADDY_CONFIG_PATH="${RHUMBASE_CADDY_CONFIG_PATH:-/etc/caddy/rhumbase.caddyfile}"
+SSH_LISTEN_ADDR="${RHUMBASE_SSH_LISTEN_ADDR:-:2222}"
+DASHBOARD_USER="${RHUMBASE_DASHBOARD_USER:-dashboard}"
+DASHBOARD_HOST_KEY_PATH="${RHUMBASE_DASHBOARD_HOST_KEY_PATH:-$DATA_DIR/dashboard/ssh_host_rsa_key}"
+DASHBOARD_AUTHORIZED_KEYS_PATH="${RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DATA_DIR/dashboard/authorized_keys}"
 GIT_HOST="${RHUMBASE_GIT_HOST:-server}"
 GIT_USER="${RHUMBASE_GIT_USER:-git}"
 GIT_HOME_DIR="${RHUMBASE_GIT_HOME_DIR:-$DATA_DIR/git}"

@@ -41,6 +41,12 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.GitReceiveCommand == "" {
 		t.Fatal("GitReceiveCommand is empty")
 	}
+	if cfg.DashboardHostKeyPath != filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key") {
+		t.Fatalf("DashboardHostKeyPath = %q, want path under dashboard data dir", cfg.DashboardHostKeyPath)
+	}
+	if cfg.DashboardAuthorizedKeysPath != filepath.Join(cfg.DataDir, "dashboard", "authorized_keys") {
+		t.Fatalf("DashboardAuthorizedKeysPath = %q, want path under dashboard data dir", cfg.DashboardAuthorizedKeysPath)
+	}
 	if cfg.CaddyConfigPath == "" {
 		t.Fatal("CaddyConfigPath is empty")
 	}
@@ -61,6 +67,8 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("RHUMBASE_GIT_HOST", "rhumbase.example.com")
 	t.Setenv("RHUMBASE_GIT_AUTHORIZED_KEYS_PATH", "/tmp/authorized_keys")
 	t.Setenv("RHUMBASE_GIT_RECEIVE_COMMAND", "/opt/rhumbase/bin/rhumbased git-receive")
+	t.Setenv("RHUMBASE_DASHBOARD_HOST_KEY_PATH", "/tmp/dashboard_host_key")
+	t.Setenv("RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", "/tmp/dashboard_authorized_keys")
 	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
 	t.Setenv("RHUMBASE_CADDY_ADMIN_ADDRESS", "127.0.0.1:22019")
 
@@ -98,6 +106,12 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.GitReceiveCommand != "/opt/rhumbase/bin/rhumbased git-receive" {
 		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
+	}
+	if cfg.DashboardHostKeyPath != "/tmp/dashboard_host_key" {
+		t.Fatalf("DashboardHostKeyPath = %q", cfg.DashboardHostKeyPath)
+	}
+	if cfg.DashboardAuthorizedKeysPath != "/tmp/dashboard_authorized_keys" {
+		t.Fatalf("DashboardAuthorizedKeysPath = %q", cfg.DashboardAuthorizedKeysPath)
 	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)

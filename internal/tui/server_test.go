@@ -81,6 +81,10 @@ type fakeSession struct {
 	user string
 }
 
+func (f fakeSession) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
 func (f fakeSession) User() string {
 	return f.user
 }

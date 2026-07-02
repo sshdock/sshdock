@@ -3,9 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
 )
 
 type Session interface {
+	io.Writer
 	User() string
 }
 

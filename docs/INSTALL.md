@@ -192,6 +192,7 @@ Default files and directories:
 ```text
 /var/lib/rhumbase/rhumbase.db
 /var/lib/rhumbase/apps/
+/var/lib/rhumbase/dashboard/
 ```
 
 The installer should create the data directory with ownership suitable for the daemon user.
@@ -224,7 +225,28 @@ Expected operator entry point:
 ssh dashboard@server
 ```
 
-The install flow should ensure this user exists or clearly instruct the administrator how to create it.
+`rhumbased` serves this SSH dashboard itself. It does not require host `sshd` for dashboard sessions.
+
+Default dashboard SSH settings:
+
+```text
+RHUMBASE_SSH_LISTEN_ADDR=:2222
+RHUMBASE_DASHBOARD_USER=dashboard
+RHUMBASE_DASHBOARD_HOST_KEY_PATH=/var/lib/rhumbase/dashboard/ssh_host_rsa_key
+RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/authorized_keys
+```
+
+The daemon creates the dashboard host key if it is missing. The administrator must place one or more operator public keys in:
+
+```text
+/var/lib/rhumbase/dashboard/authorized_keys
+```
+
+The configured dashboard username must match the SSH user. For the default config:
+
+```bash
+ssh -p 2222 dashboard@server
+```
 
 The dashboard user should not expose a web admin panel.
 

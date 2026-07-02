@@ -7,11 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/rumbase/internal/tui"
 	"github.com/iketiunn/rumbase/internal/version"
 )
 
@@ -28,6 +30,9 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		fmt.Fprintf(stdout, "rhumbased %s\n", version.String())
 		return 0
 	}
+	if len(args) == 0 || (len(args) == 1 && args[0] == "serve") {
+		return runServe(stderr)
+	}
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
 	}
@@ -35,8 +40,48 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: rhumbased version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: rhumbased [serve] | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
+}
+
+func runServe(stderr io.Writer) int {
+	ctx := context.Background()
+	cfg := config.LoadFromEnv()
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		fmt.Fprintf(stderr, "create data dir: %v\n", err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "create database dir: %v\n", err)
+		return 1
+	}
+
+	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer sqlite.Close()
+
+	runner, err := dashboardRunnerFromEnv()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	handler := tui.NewDashboardHandler(sqlite, runner)
+	server := tui.NewSSHServer(tui.SSHServerConfig{
+		ListenAddr:         cfg.SSHListenAddr,
+		DashboardUser:      cfg.DashboardUser,
+		HostKeyPath:        cfg.DashboardHostKeyPath,
+		AuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
+		Handler:            handler,
+	})
+	if err := server.Serve(ctx); err != nil {
+		fmt.Fprintf(stderr, "dashboard SSH server: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
@@ -149,4 +194,39 @@ func hookRunnerFromEnv() (compose.Runner, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+}
+
+func dashboardRunnerFromEnv() (compose.Runner, error) {
+	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
+	if runner == "" || runner == "fake" {
+		return &compose.FakeRunner{
+			Services:  parseFakeServices(os.Getenv("RHUMBASE_FAKE_COMPOSE_SERVICES")),
+			LogOutput: os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS"),
+		}, nil
+	}
+	if runner == "docker" {
+		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
+	}
+
+	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+}
+
+func parseFakeServices(value string) []compose.ServiceStatus {
+	if value == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	services := make([]compose.ServiceStatus, 0, len(parts))
+	for _, part := range parts {
+		name, state, ok := strings.Cut(strings.TrimSpace(part), ":")
+		if !ok || name == "" {
+			continue
+		}
+		if state == "" {
+			state = "unknown"
+		}
+		services = append(services, compose.ServiceStatus{Name: name, State: state})
+	}
+	return services
 }

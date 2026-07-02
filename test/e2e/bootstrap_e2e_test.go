@@ -66,6 +66,7 @@ exit 0
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbased"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/apps"))
+	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/dashboard"))
 
 	unitPath := filepath.Join(installRoot, "etc/systemd/system/rhumbased.service")
 	unit := readFile(t, unitPath)
@@ -75,6 +76,10 @@ exit 0
 		"User=rhumbase",
 		"Group=rhumbase",
 		"Environment=RHUMBASE_DATA_DIR=/var/lib/rhumbase",
+		"Environment=RHUMBASE_SSH_LISTEN_ADDR=:2222",
+		"Environment=RHUMBASE_DASHBOARD_USER=dashboard",
+		"Environment=RHUMBASE_DASHBOARD_HOST_KEY_PATH=/var/lib/rhumbase/dashboard/ssh_host_rsa_key",
+		"Environment=RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/authorized_keys",
 		"Environment=RHUMBASE_GIT_HOST=server",
 		"Environment=RHUMBASE_COMPOSE_RUNNER=docker",
 		"Environment=RHUMBASE_CADDY_CONFIG_PATH=/etc/caddy/rhumbase.caddyfile",

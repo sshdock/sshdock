@@ -40,6 +40,27 @@ func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
 	}
 }
 
+func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("RHUMBASE_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
+	t.Setenv("RHUMBASE_FAKE_COMPOSE_LOGS", "first log\nsecond log\n")
+
+	runner, err := dashboardRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("dashboardRunnerFromEnv: %v", err)
+	}
+	fake, ok := runner.(*compose.FakeRunner)
+	if !ok {
+		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
+	}
+	if len(fake.Services) != 2 || fake.Services[0].Name != "web" || fake.Services[0].State != "running" || fake.Services[1].Name != "worker" || fake.Services[1].State != "exited" {
+		t.Fatalf("fake services = %#v", fake.Services)
+	}
+	if fake.LogOutput != "first log\nsecond log\n" {
+		t.Fatalf("fake log output = %q", fake.LogOutput)
+	}
+}
+
 func TestRunGitReceiveRequiresSSHOriginalCommand(t *testing.T) {
 	t.Setenv("SSH_ORIGINAL_COMMAND", "")
 	var stdout bytes.Buffer

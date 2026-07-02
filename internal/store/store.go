@@ -32,6 +32,7 @@ type Store interface {
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
+	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	AttachDomain(ctx context.Context, model app.Domain) error
 	ListDomains(ctx context.Context) ([]app.Domain, error)

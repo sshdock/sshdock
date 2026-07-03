@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -64,7 +65,7 @@ type dashboardRefreshMsg struct {
 	err      error
 }
 
-var dashboardTabs = []string{"Overview", "Domains", "Releases", "Deployments", "Logs"}
+var dashboardTabs = []string{"Summary", "Services", "Routes", "Releases", "Deploys", "Logs"}
 
 var (
 	dashboardTitleStyle = lipgloss.NewStyle().
@@ -96,7 +97,7 @@ func NewInteractiveDashboardModel(snapshot DashboardSnapshot, refresh DashboardR
 		refresh:  refresh,
 		width:    100,
 		height:   28,
-		showHelp: true,
+		showHelp: false,
 		logs:     viewport.New(80, 8),
 		filter:   filter,
 		focus:    dashboardFocusApps,
@@ -184,7 +185,6 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		selectedID, _ := m.selectedAppID()
 		m.snapshot = msg.snapshot
 		m.selected = m.indexForAppID(selectedID)
-		m.tab = 0
 		m.err = nil
 		m.clampSelection()
 		m.syncLogViewport()
@@ -304,18 +304,26 @@ func (m InteractiveDashboardModel) bodyView() string {
 		return m.compactView()
 	}
 
-	apps := m.renderPanel("Apps", m.appListView(), layout.leftWidth, layout.panelInnerHeight, m.focus == dashboardFocusApps)
-	detail := m.renderPanel(m.detailTitle(), m.detailContent(), layout.rightWidth, layout.panelInnerHeight, m.focus == dashboardFocusDetail)
+	apps := m.renderPanel("Apps", m.appListView(panelContentWidth(layout.leftWidth), false), layout.leftWidth, layout.panelInnerHeight, m.focus == dashboardFocusApps)
+	detail := m.renderPanel(m.detailTitle(), m.detailContent(panelContentWidth(layout.rightWidth)), layout.rightWidth, layout.panelInnerHeight, m.focus == dashboardFocusDetail)
 	return lipgloss.JoinHorizontal(lipgloss.Top, apps, detail)
 }
 
 func (m InteractiveDashboardModel) statusBar() string {
 	width := m.terminalWidth()
+	if m.filtering {
+		line := strings.Join([]string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}, " | ")
+		return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
+	}
+	if m.focus == dashboardFocusDetail || dashboardTabs[m.tab] == "Logs" {
+		line := strings.Join([]string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}, " | ")
+		return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
+	}
 	parts := []string{
 		fmt.Sprintf("apps %d", len(m.filteredAppOrder())),
 		fmt.Sprintf("focus %s", m.focus.String()),
 	}
-	if m.filtering || m.filter.Value() != "" {
+	if m.filter.Value() != "" {
 		parts = append(parts, "filter: "+valueOrDash(m.filter.Value()))
 	}
 	if m.err != nil {
@@ -327,7 +335,7 @@ func (m InteractiveDashboardModel) statusBar() string {
 	return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
 }
 
-func (m InteractiveDashboardModel) appListView() string {
+func (m InteractiveDashboardModel) appListView(width int, compact bool) string {
 	var builder strings.Builder
 	if m.filtering || m.filter.Value() != "" {
 		fmt.Fprintf(&builder, "filter: %s\n", m.filter.View())
@@ -343,6 +351,7 @@ func (m InteractiveDashboardModel) appListView() string {
 		return builder.String()
 	}
 	items := m.appItemsByID()
+	rows := make([][]string, 0, len(order))
 	for i, id := range order {
 		item, ok := items[id]
 		if !ok {
@@ -352,8 +361,23 @@ func (m InteractiveDashboardModel) appListView() string {
 		if i == m.selected {
 			cursor = ">"
 		}
-		fmt.Fprintf(&builder, "%s %s %s node=%s latest=%s domains=%d\n", cursor, item.Name, item.Status, item.NodeID, valueOrDash(item.LatestReleaseStatus), item.DomainCount)
+		rows = append(rows, []string{
+			strings.TrimSpace(cursor + " " + item.Name),
+			item.Status,
+			valueOrDash(item.LatestReleaseStatus),
+			fmt.Sprintf("%d", item.DomainCount),
+		})
 	}
+	columns := []dashboardTableColumn{
+		{Header: "App", MinWidth: 10, Flex: true, Priority: 0},
+		{Header: "State", MinWidth: 7, Priority: 1},
+		{Header: "Release", MinWidth: 9, Priority: 2},
+		{Header: "Doms", MinWidth: 4, Priority: 3},
+	}
+	if compact {
+		columns = columns[:2]
+	}
+	builder.WriteString(renderDashboardTable(width, columns, rows))
 	return builder.String()
 }
 
@@ -365,7 +389,7 @@ func (m InteractiveDashboardModel) detailTitle() string {
 	return "App " + selected.Detail.Metadata().Name
 }
 
-func (m InteractiveDashboardModel) detailContent() string {
+func (m InteractiveDashboardModel) detailContent(width int) string {
 	selected, ok := m.selectedApp()
 	if !ok {
 		return "No apps\n"
@@ -378,16 +402,16 @@ func (m InteractiveDashboardModel) detailContent() string {
 	builder.WriteString("\n")
 
 	switch dashboardTabs[m.tab] {
-	case "Overview":
-		builder.WriteString(renderServiceBlock(selected.Detail.Services()))
-		builder.WriteString("\n")
-		builder.WriteString(m.logsBlock())
-	case "Domains":
-		builder.WriteString(renderDomainBlock(selected.Detail.Domains()))
+	case "Summary":
+		builder.WriteString(renderSummaryTable(width, selected.Detail))
+	case "Services":
+		builder.WriteString(renderServiceTable(width, selected.Detail.Services()))
+	case "Routes":
+		builder.WriteString(renderRouteTable(width, selected.Detail.Domains()))
 	case "Releases":
-		builder.WriteString(renderReleaseBlock(selected.Detail.Releases()))
-	case "Deployments":
-		builder.WriteString(renderDeploymentBlock(selected.Detail.LatestDeployments(5)))
+		builder.WriteString(renderReleaseTable(width, selected.Detail.Releases()))
+	case "Deploys":
+		builder.WriteString(renderDeployTable(width, selected.Detail.LatestDeployments(5)))
 	case "Logs":
 		builder.WriteString(m.logsBlock())
 	}
@@ -401,32 +425,17 @@ func (m InteractiveDashboardModel) detailView() string {
 	}
 
 	var builder strings.Builder
-	metadata := selected.Detail.Metadata()
-	fmt.Fprintf(&builder, "App %s\nStatus: %s\nNode: %s\n", metadata.Name, metadata.Status, metadata.NodeID)
-	builder.WriteString(m.tabsView())
+	builder.WriteString("App ")
+	builder.WriteString(selected.Detail.Metadata().Name)
 	builder.WriteString("\n")
-
-	switch dashboardTabs[m.tab] {
-	case "Overview":
-		builder.WriteString(renderServiceBlock(selected.Detail.Services()))
-		builder.WriteString("\n")
-		builder.WriteString(m.logsBlock())
-	case "Domains":
-		builder.WriteString(renderDomainBlock(selected.Detail.Domains()))
-	case "Releases":
-		builder.WriteString(renderReleaseBlock(selected.Detail.Releases()))
-	case "Deployments":
-		builder.WriteString(renderDeploymentBlock(selected.Detail.LatestDeployments(5)))
-	case "Logs":
-		builder.WriteString(m.logsBlock())
-	}
+	builder.WriteString(m.detailContent(panelContentWidth(m.dashboardLayout().rightWidth)))
 	return builder.String()
 }
 
 func (m InteractiveDashboardModel) compactView() string {
 	layout := m.dashboardLayout()
-	apps := m.renderPanel("Apps", m.appListView(), layout.width, layout.compactListInnerHeight, m.focus == dashboardFocusApps)
-	detail := m.renderPanel(m.detailTitle(), m.detailContent(), layout.width, layout.compactDetailInnerHeight, m.focus == dashboardFocusDetail)
+	apps := m.renderPanel("Apps", m.appListView(panelContentWidth(layout.width), true), layout.width, layout.compactListInnerHeight, m.focus == dashboardFocusApps)
+	detail := m.renderPanel(m.detailTitle(), m.detailContent(panelContentWidth(layout.width)), layout.width, layout.compactDetailInnerHeight, m.focus == dashboardFocusDetail)
 	return strings.TrimRight(strings.Join([]string{apps, detail}, "\n"), "\n")
 }
 
@@ -540,10 +549,19 @@ func (m InteractiveDashboardModel) tabsView() string {
 }
 
 func (m InteractiveDashboardModel) helpView() string {
-	if !m.showHelp {
-		return "? help"
+	if m.showHelp {
+		return "[?] hide  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [tab] tabs  [u/d] logs  [r] refresh  [q] quit"
 	}
-	return "j/k select | / filter | tab tabs | u/d logs | r refresh | q quit | ? hide"
+	if m.filtering {
+		return "[type] filter  [esc] clear  [enter] apply"
+	}
+	if dashboardTabs[m.tab] == "Logs" {
+		return "[u/d] scroll  [pgup/pgdn] page  [tab] tabs  [esc] apps  [?] help"
+	}
+	if m.focus == dashboardFocusDetail {
+		return "[tab] next  [shift+tab] prev  [esc] apps  [?] help"
+	}
+	return "[?] help  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [r] refresh  [q] quit"
 }
 
 func (m InteractiveDashboardModel) selectedApp() (DashboardAppSnapshot, bool) {
@@ -659,7 +677,7 @@ func (m *InteractiveDashboardModel) resizeFilter() {
 
 func (m *InteractiveDashboardModel) syncLogViewport() {
 	m.resizeViewport()
-	m.logs.SetContent(logsText(m.selectedLogs()))
+	m.logs.SetContent(logsTableText(m.selectedLogs(), m.logs.Width))
 }
 
 func (m InteractiveDashboardModel) logsBlock() string {
@@ -675,6 +693,10 @@ func (m InteractiveDashboardModel) selectedLogs() map[string]LogsView {
 }
 
 func logsText(logsByService map[string]LogsView) string {
+	return logsTableText(logsByService, 80)
+}
+
+func logsTableText(logsByService map[string]LogsView, width int) string {
 	if len(logsByService) == 0 {
 		return "- none"
 	}
@@ -685,22 +707,257 @@ func logsText(logsByService map[string]LogsView) string {
 	sort.Strings(names)
 
 	var builder strings.Builder
+	rows := make([][]string, 0)
 	for _, name := range names {
-		if builder.Len() > 0 {
-			builder.WriteString("\n")
-		}
-		fmt.Fprintf(&builder, "Logs %s\n", name)
 		screen := NewLogsScreen(logsByService[name])
 		if len(screen.Lines()) == 0 {
-			builder.WriteString("- none\n")
+			rows = append(rows, []string{name, "- none"})
 			continue
 		}
 		for _, line := range screen.Lines() {
-			builder.WriteString(line)
-			builder.WriteString("\n")
+			rows = append(rows, []string{name, line})
 		}
 	}
+	builder.WriteString(renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Service", MinWidth: 8, Priority: 0},
+		{Header: "Line", MinWidth: 12, Flex: true, Priority: 0},
+	}, rows))
 	return strings.TrimRight(builder.String(), "\n")
+}
+
+type dashboardTableColumn struct {
+	Header   string
+	MinWidth int
+	Flex     bool
+	Priority int
+}
+
+func renderSummaryTable(width int, detail AppDetailScreen) string {
+	metadata := detail.Metadata()
+	rows := [][]string{
+		{"App", metadata.Name},
+		{"State", metadata.Status},
+		{"Node", metadata.NodeID},
+		{"Services", fmt.Sprintf("%d", len(detail.Services()))},
+		{"Routes", fmt.Sprintf("%d", len(detail.Domains()))},
+		{"Releases", fmt.Sprintf("%d", len(detail.Releases()))},
+		{"Deploys", fmt.Sprintf("%d", len(detail.LatestDeployments(5)))},
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Field", MinWidth: 8, Priority: 0},
+		{Header: "Value", MinWidth: 12, Flex: true, Priority: 0},
+	}, rows)
+}
+
+func renderServiceTable(width int, services []ServiceView) string {
+	if len(services) == 0 {
+		return "- none"
+	}
+	rows := make([][]string, 0, len(services))
+	for _, service := range services {
+		rows = append(rows, []string{service.Name, service.State})
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Service", MinWidth: 12, Flex: true, Priority: 0},
+		{Header: "State", MinWidth: 8, Priority: 0},
+	}, rows)
+}
+
+func renderRouteTable(width int, domains []DomainView) string {
+	if len(domains) == 0 {
+		return "- none"
+	}
+	rows := make([][]string, 0, len(domains))
+	for _, domain := range domains {
+		rows = append(rows, []string{
+			domain.DomainName,
+			valueOrDash(domain.ServiceName),
+			domain.Target,
+			fmt.Sprintf("%t", domain.HTTPS),
+		})
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Domain", MinWidth: 14, Flex: true, Priority: 0},
+		{Header: "Service", MinWidth: 8, Priority: 2},
+		{Header: "Target", MinWidth: 10, Priority: 1},
+		{Header: "HTTPS", MinWidth: 5, Priority: 3},
+	}, rows)
+}
+
+func renderReleaseTable(width int, releases []ReleaseView) string {
+	if len(releases) == 0 {
+		return "- none"
+	}
+	rows := make([][]string, 0, len(releases))
+	for _, release := range releases {
+		rows = append(rows, []string{
+			release.ID,
+			release.Status,
+			shortValue(release.CommitSHA, 12),
+			formatDashboardTime(release.CreatedAt),
+		})
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Release", MinWidth: 12, Flex: true, Priority: 0},
+		{Header: "Status", MinWidth: 9, Priority: 0},
+		{Header: "Commit", MinWidth: 8, Priority: 1},
+		{Header: "Created", MinWidth: 12, Priority: 2},
+	}, rows)
+}
+
+func renderDeployTable(width int, deployments []DeploymentView) string {
+	if len(deployments) == 0 {
+		return "- none"
+	}
+	rows := make([][]string, 0, len(deployments))
+	for _, deployment := range deployments {
+		rows = append(rows, []string{
+			deployment.ID,
+			deployment.Status,
+			deployment.ReleaseID,
+			formatDashboardTime(deployment.StartedAt),
+		})
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Deploy", MinWidth: 12, Flex: true, Priority: 0},
+		{Header: "Status", MinWidth: 9, Priority: 0},
+		{Header: "Release", MinWidth: 12, Priority: 1},
+		{Header: "Started", MinWidth: 12, Priority: 2},
+	}, rows)
+}
+
+func renderDashboardTable(width int, columns []dashboardTableColumn, rows [][]string) string {
+	width = maxInt(1, width)
+	visible := visibleDashboardColumns(width, columns)
+	if len(visible) == 0 {
+		return ""
+	}
+	widths := dashboardColumnWidths(width, visible)
+
+	var builder strings.Builder
+	builder.WriteString(renderDashboardTableRow(visible, widths, func(index int) string {
+		return visible[index].Header
+	}))
+	builder.WriteString("\n")
+	builder.WriteString(renderDashboardTableDivider(widths))
+	for _, row := range rows {
+		builder.WriteString("\n")
+		builder.WriteString(renderDashboardTableRow(visible, widths, func(index int) string {
+			sourceIndex := columnSourceIndex(columns, visible[index])
+			if sourceIndex < 0 || sourceIndex >= len(row) {
+				return ""
+			}
+			return row[sourceIndex]
+		}))
+	}
+	return builder.String()
+}
+
+func visibleDashboardColumns(width int, columns []dashboardTableColumn) []dashboardTableColumn {
+	visible := append([]dashboardTableColumn(nil), columns...)
+	for len(visible) > 1 && dashboardMinTableWidth(visible) > width {
+		removeIndex := -1
+		removePriority := -1
+		for i, column := range visible {
+			if column.Priority > removePriority {
+				removePriority = column.Priority
+				removeIndex = i
+			}
+		}
+		if removeIndex <= 0 && len(visible) > 1 {
+			removeIndex = len(visible) - 1
+		}
+		visible = append(visible[:removeIndex], visible[removeIndex+1:]...)
+	}
+	return visible
+}
+
+func dashboardColumnWidths(width int, columns []dashboardTableColumn) []int {
+	widths := make([]int, len(columns))
+	spacing := dashboardTableSpacing(len(columns))
+	flexIndex := -1
+	fixedWidth := 0
+	for i, column := range columns {
+		widths[i] = maxInt(1, column.MinWidth)
+		if column.Flex && flexIndex == -1 {
+			flexIndex = i
+			continue
+		}
+		fixedWidth += widths[i]
+	}
+	if flexIndex == -1 {
+		flexIndex = 0
+		fixedWidth -= widths[0]
+	}
+	widths[flexIndex] = maxInt(1, width-fixedWidth-spacing)
+	return widths
+}
+
+func dashboardMinTableWidth(columns []dashboardTableColumn) int {
+	total := dashboardTableSpacing(len(columns))
+	for _, column := range columns {
+		total += maxInt(1, column.MinWidth)
+	}
+	return total
+}
+
+func dashboardTableSpacing(columns int) int {
+	if columns <= 1 {
+		return 0
+	}
+	return (columns - 1) * 2
+}
+
+func renderDashboardTableRow(columns []dashboardTableColumn, widths []int, value func(int) string) string {
+	parts := make([]string, 0, len(columns))
+	for i := range columns {
+		parts = append(parts, padRight(fitLine(value(i), widths[i]), widths[i]))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func renderDashboardTableDivider(widths []int) string {
+	parts := make([]string, 0, len(widths))
+	for _, width := range widths {
+		parts = append(parts, strings.Repeat("-", maxInt(1, width)))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func columnSourceIndex(all []dashboardTableColumn, visible dashboardTableColumn) int {
+	for i, column := range all {
+		if column.Header == visible.Header {
+			return i
+		}
+	}
+	return -1
+}
+
+func padRight(s string, width int) string {
+	padding := width - lipgloss.Width(s)
+	if padding <= 0 {
+		return s
+	}
+	return s + strings.Repeat(" ", padding)
+}
+
+func panelContentWidth(width int) int {
+	frameWidth, _ := dashboardPanelStyle.GetFrameSize()
+	return maxInt(1, width-frameWidth)
+}
+
+func shortValue(value string, maxWidth int) string {
+	if value == "" {
+		return "-"
+	}
+	return fitLine(value, maxWidth)
+}
+
+func formatDashboardTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format("2006-01-02 15:04")
 }
 
 func renderServiceBlock(services []ServiceView) string {

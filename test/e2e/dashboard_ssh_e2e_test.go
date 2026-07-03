@@ -110,8 +110,8 @@ LogLevel ERROR
 	}
 
 	interactiveEnv := append(os.Environ(), "TERM=xterm-256color")
-	terminalQueryResponsesAndQuit := "\x1b]11;rgb:0000/0000/0000\x07\x1b[1;1Rq"
-	interactiveOutput := runCommandDelayedInput(t, paths.tmp, interactiveEnv, terminalQueryResponsesAndQuit, 750*time.Millisecond, 15*time.Second,
+	terminalQueryResponsesTabAndQuit := "\x1b]11;rgb:0000/0000/0000\x07\x1b[1;1R\tq"
+	interactiveOutput := runCommandDelayedInput(t, paths.tmp, interactiveEnv, terminalQueryResponsesTabAndQuit, 750*time.Millisecond, 15*time.Second,
 		sshPath,
 		"-tt",
 		"-p", fmt.Sprintf("%d", port),
@@ -124,7 +124,10 @@ LogLevel ERROR
 	for _, want := range []string{
 		"Rhumbase",
 		appName,
-		"web running",
+		"Service",
+		"State",
+		"web",
+		"running",
 	} {
 		if !strings.Contains(interactiveOutput, want) {
 			t.Fatalf("interactive dashboard output missing %q:\n%s\ndashboard sshd log:\n%s", want, interactiveOutput, readFile(t, sshdLogPath))

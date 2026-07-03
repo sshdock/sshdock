@@ -246,15 +246,17 @@ The production dashboard uses host `sshd` on port `22`, like the Git receive pat
 Interactive dashboard controls:
 
 ```text
-j/k or arrows  select apps
-g/G            jump to first or last app
-/              filter apps
-tab            switch detail tabs
-u/d            scroll logs
-r              refresh
-q              quit
-?              toggle help
+[?] help       expand command tips
+[/] filter     filter apps
+[j/k] select   select apps
+[g/G] jump     first or last app
+[tab] tabs     Summary, Services, Routes, Releases, Deploys, Logs
+[u/d] logs     scroll logs
+[r] refresh    refresh snapshot
+[q] quit       close the session
 ```
+
+The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
 Default dashboard SSH settings:
 

@@ -121,6 +121,7 @@ Current MVP state:
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
 - `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive column tables, K9s-style command tips, app filtering, detail tabs, log scrolling, refresh, and jump keys when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
 - `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
+- `rhumbased daemon` runs SQLite migrations on startup and redeploys each deployed app's latest good release so Compose stacks recover after a reboot.
 - `rhumbase diagnostics` checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations with actionable pass/fail output.
 - Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; dependency setup and Caddy imports are idempotent, and cleanup remains scoped to Rhumbase-managed image tags.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.

@@ -372,6 +372,8 @@ Expected service behavior:
 - use `RHUMBASE_GIT_HOST=server` unless overridden at install time
 - use `/var/lib/rhumbase/git/.ssh/authorized_keys` as the Git receive key file unless overridden
 - use `/etc/caddy/rhumbase.caddyfile` as the generated Caddy config path unless overridden
+- run SQLite migrations on startup
+- redeploy each deployed app's latest good release on startup so Compose stacks recover after a host reboot
 - write logs to journald
 
 Administrators should be able to inspect status with:
@@ -388,6 +390,8 @@ Expected inbound ports:
 - 22/tcp or the server's configured SSH port
 - 80/tcp for HTTP and ACME HTTP challenges
 - 443/tcp for HTTPS
+
+Open these ports in both the host firewall and the VPS provider's network firewall, security list, or security group. If Caddy can route on loopback but public HTTP/HTTPS times out, verify the provider-level ingress rules before changing Rhumbase config.
 
 No web dashboard port should be opened.
 
@@ -448,6 +452,8 @@ Restore order:
 3. Restore generated Caddy config if needed.
 4. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
 5. Start `rhumbased` and run `rhumbase diagnostics`.
+
+After a reboot or restore, startup recovery may take a short time while `rhumbased` replays Compose deployments for apps that were previously deployed.
 
 ## Verification
 

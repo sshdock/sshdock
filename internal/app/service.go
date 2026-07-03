@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/iketiunn/rumbase/internal/compose"
 )
+
+var ErrNoSuccessfulRelease = errors.New("no successful release")
 
 type serviceStore interface {
 	CreateApp(ctx context.Context, model App) error
@@ -324,6 +327,25 @@ func (s *Service) RedeployLatest(ctx context.Context, appID string, deploymentID
 	return deployment, nil
 }
 
+func (s *Service) RecoverDeployedApps(ctx context.Context) error {
+	apps, err := s.store.ListApps(ctx)
+	if err != nil {
+		return err
+	}
+	for _, model := range apps {
+		if _, _, err := s.latestGoodRelease(ctx, model.ID); errors.Is(err, ErrNoSuccessfulRelease) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		deploymentID := startupRecoveryDeploymentID(model.ID, s.now())
+		if _, err := s.RedeployLatest(ctx, model.ID, deploymentID); err != nil {
+			return fmt.Errorf("recover app %q: %w", model.ID, err)
+		}
+	}
+	return nil
+}
+
 func (s *Service) restart(ctx context.Context, appID string, serviceName string, startedType string, succeededType string, failedType string) error {
 	if s.recover == nil {
 		return fmt.Errorf("recovery runner is not configured")
@@ -390,7 +412,7 @@ func (s *Service) latestGoodRelease(ctx context.Context, appID string) (App, Rel
 			return model, releases[i], nil
 		}
 	}
-	return App{}, Release{}, fmt.Errorf("app %q has no successful release", appID)
+	return App{}, Release{}, fmt.Errorf("%w for app %q", ErrNoSuccessfulRelease, appID)
 }
 
 func (s *Service) checkoutRelease(ctx context.Context, model App, release Release) error {
@@ -452,6 +474,10 @@ func eventID(subject string, eventType string) string {
 
 func restartOperationID(appID string, serviceName string, now time.Time) string {
 	return appID + "_" + serviceName + "_" + now.UTC().Format("20060102150405_000000000")
+}
+
+func startupRecoveryDeploymentID(appID string, now time.Time) string {
+	return "dep_startup_recover_" + sanitizeEventID(appID) + "_" + now.UTC().Format("20060102150405_000000000")
 }
 
 func sanitizeEventID(value string) string {

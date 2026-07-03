@@ -325,6 +325,38 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	assertEventTypes(t, store.events["app_1"], []string{"redeploy.started", "redeploy.failed"})
 }
 
+func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	checkout := &fakeWorktreeCheckout{}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithRecoveryRunner(runner), WithWorktreeCheckout(checkout))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["empty"] = App{ID: "empty", Name: "empty", RepoPath: "/apps/empty/repo.git", WorktreePath: "/apps/empty/worktree", Status: AppStatusCreated}
+	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour)}
+	store.releases["rel_failed"] = Release{ID: "rel_failed", AppID: "app_1", CommitSHA: "failed", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusFailed, CreatedAt: now}
+
+	if err := service.RecoverDeployedApps(ctx); err != nil {
+		t.Fatalf("RecoverDeployedApps: %v", err)
+	}
+	if len(checkout.calls) != 1 {
+		t.Fatalf("checkout calls = %#v", checkout.calls)
+	}
+	if checkout.calls[0] != (checkoutCall{repoPath: "/apps/app_1/repo.git", worktreePath: "/apps/app_1/worktree", commitSHA: "old"}) {
+		t.Fatalf("checkout call = %#v", checkout.calls[0])
+	}
+	if len(runner.deploys) != 1 {
+		t.Fatalf("deploy requests = %#v", runner.deploys)
+	}
+	if runner.deploys[0].ReleaseID != "rel_old" || runner.deploys[0].CommitSHA != "old" {
+		t.Fatalf("deploy request = %#v", runner.deploys[0])
+	}
+	if store.deploymentStatuses["dep_startup_recover_app_1_20260702100000_000000000"] != DeploymentStatusSucceeded {
+		t.Fatalf("deployment statuses = %#v", store.deploymentStatuses)
+	}
+}
+
 type fakeServiceStore struct {
 	apps                 map[string]App
 	releases             map[string]Release

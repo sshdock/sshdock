@@ -14,6 +14,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 
+	appmodel "github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
@@ -123,6 +124,17 @@ func runDaemon(stderr io.Writer) int {
 		return 1
 	}
 	defer sqlite.Close()
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	service := appmodel.NewService(sqlite, appmodel.WithRecoveryRunner(runner), appmodel.WithWorktreeCheckout(gitrecv.LocalWorktreeCheckout{}))
+	if err := service.RecoverDeployedApps(ctx); err != nil {
+		fmt.Fprintf(stderr, "recover deployed apps: %v\n", err)
+		return 1
+	}
 
 	<-ctx.Done()
 	return 0

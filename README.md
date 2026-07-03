@@ -56,11 +56,19 @@ Rhumbase is not:
 
 ## Example Workflow
 
+Install Rhumbase on the server:
+
+```bash
+wget -O bootstrap.sh https://raw.githubusercontent.com/iketiunn/rhumbase/v0.1.0/scripts/bootstrap.sh
+sudo RHUMBASE_TAG=v0.1.0 bash bootstrap.sh
+sudo rhumbase diagnostics
+```
+
 Configure the server Git host and authorize your key:
 
 ```bash
-rhumbase server domain set rhumbase.example.com
-echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
+sudo rhumbase server domain set rhumbase.example.com
+cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
 ```
 
 Add the Git remote:
@@ -104,7 +112,7 @@ Current MVP state:
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
 - `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
-- `scripts/bootstrap.sh` installs local or released binaries, writes `rhumbased.service`, checks Docker/Caddy/systemd, and can be tested under a fake root with `make bootstrap-e2e`.
+- `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `rhumbased.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
 - `rhumbase server domain set <domain>` persists the Git host used in app remote output.
 - `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
@@ -112,7 +120,7 @@ Current MVP state:
 - `rhumbased` starts an SSH dashboard on `RHUMBASE_SSH_LISTEN_ADDR`, authenticates `RHUMBASE_DASHBOARD_USER` with `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`, and renders deployed app status, services, domains, releases, deployments, and logs.
 - `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
 - `rhumbase diagnostics` checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations with actionable pass/fail output.
-- Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; cleanup remains scoped to Rhumbase-managed image tags.
+- Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; dependency setup and Caddy imports are idempotent, and cleanup remains scoped to Rhumbase-managed image tags.
 - Local testing can use `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`.
 
 ```bash

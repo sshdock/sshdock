@@ -56,6 +56,7 @@ exit 0
 		"RHUMBASE_TAG=test-local",
 		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
 		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0",
 		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
 		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
 	)
@@ -113,6 +114,7 @@ func TestBootstrapRequiresTag(t *testing.T) {
 	env := append(os.Environ(),
 		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
 		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+tmp,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0",
 		"RHUMBASE_BOOTSTRAP_SKIP_USER=1",
 		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
 	)
@@ -129,6 +131,181 @@ func TestBootstrapRequiresTag(t *testing.T) {
 	}
 }
 
+func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	sourceBinDir := buildBootstrapSourceBinaries(t, root, tmp)
+
+	fakeBinDir := filepath.Join(tmp, "fake-bin")
+	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
+	writeDependencyInstallFakeCommands(t, fakeBinDir)
+
+	installRoot := filepath.Join(tmp, "root")
+	env := append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_TAG=test-local",
+		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
+		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
+		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
+	)
+
+	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
+
+	fakeLog := readFile(t, fakeLogPath)
+	for _, want := range []string{
+		"apt-get update",
+		"apt-get install -y ca-certificates curl gnupg git openssh-server debian-keyring debian-archive-keyring apt-transport-https",
+		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
+		"chmod a+r " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
+		"apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+		"curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o " + filepath.Join(installRoot, "tmp/rhumbase-caddy-stable.gpg.key"),
+		"gpg --batch --yes --dearmor -o " + filepath.Join(installRoot, "usr/share/keyrings/caddy-stable-archive-keyring.gpg") + " " + filepath.Join(installRoot, "tmp/rhumbase-caddy-stable.gpg.key"),
+		"curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o " + filepath.Join(installRoot, "etc/apt/sources.list.d/caddy-stable.list"),
+		"apt-get install -y caddy",
+		"systemctl enable --now docker",
+		"systemctl enable --now ssh",
+		"systemctl enable --now caddy",
+		"usermod -aG docker rhumbase",
+		"chown -R rhumbase:rhumbase " + filepath.Join(installRoot, "var/lib/rhumbase"),
+		"chown -R git:git " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
+		"chmod 0755 " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
+		"chmod 0700 " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh"),
+		"touch " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh/authorized_keys"),
+		"chmod 0600 " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh/authorized_keys"),
+	} {
+		if !strings.Contains(fakeLog, want) {
+			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
+		}
+	}
+
+	dockerSource := readFile(t, filepath.Join(installRoot, "etc/apt/sources.list.d/docker.sources"))
+	for _, want := range []string{
+		"URIs: https://download.docker.com/linux/ubuntu",
+		"Suites: noble",
+		"Architectures: amd64",
+		"Signed-By: /etc/apt/keyrings/docker.asc",
+	} {
+		if !strings.Contains(dockerSource, want) {
+			t.Fatalf("docker source missing %q:\n%s", want, dockerSource)
+		}
+	}
+
+	caddySource := readFile(t, filepath.Join(installRoot, "etc/apt/sources.list.d/caddy-stable.list"))
+	for _, want := range []string{
+		"dl.cloudsmith.io/public/caddy/stable",
+		"caddy-stable-archive-keyring.gpg",
+	} {
+		if !strings.Contains(caddySource, want) {
+			t.Fatalf("caddy source missing %q:\n%s", want, caddySource)
+		}
+	}
+
+	caddyfilePath := filepath.Join(installRoot, "etc/caddy/Caddyfile")
+	caddyfile := readFile(t, caddyfilePath)
+	if count := strings.Count(caddyfile, "import /etc/caddy/rhumbase.caddyfile"); count != 1 {
+		t.Fatalf("Caddyfile import count = %d:\n%s", count, caddyfile)
+	}
+	assertFileMode(t, filepath.Join(installRoot, "etc/caddy/rhumbase.caddyfile"), 0o644)
+
+	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
+	caddyfile = readFile(t, caddyfilePath)
+	if count := strings.Count(caddyfile, "import /etc/caddy/rhumbase.caddyfile"); count != 1 {
+		t.Fatalf("rerun Caddyfile import count = %d:\n%s", count, caddyfile)
+	}
+}
+
+func TestBootstrapSkipsDependencyInstallWhenRuntimeAlreadyWorks(t *testing.T) {
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	sourceBinDir := buildBootstrapSourceBinaries(t, root, tmp)
+
+	fakeBinDir := filepath.Join(tmp, "fake-bin")
+	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
+	writeWorkingRuntimeFakeCommands(t, fakeBinDir)
+
+	env := append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_TAG=test-local",
+		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
+		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=debian\nVERSION_CODENAME=bookworm\n",
+	)
+
+	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
+
+	fakeLog := readFile(t, fakeLogPath)
+	if strings.Contains(fakeLog, "apt-get install -y docker-ce") {
+		t.Fatalf("bootstrap installed Docker even though runtime worked:\n%s", fakeLog)
+	}
+	if strings.Contains(fakeLog, "apt-get install -y caddy") {
+		t.Fatalf("bootstrap installed Caddy even though runtime worked:\n%s", fakeLog)
+	}
+	for _, want := range []string{
+		"apt-get install -y ca-certificates curl gnupg git openssh-server debian-keyring debian-archive-keyring apt-transport-https",
+		"docker version",
+		"docker compose version",
+		"caddy version",
+	} {
+		if !strings.Contains(fakeLog, want) {
+			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
+		}
+	}
+}
+
+func TestBootstrapRejectsUnsupportedInstallOS(t *testing.T) {
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	sourceBinDir := buildBootstrapSourceBinaries(t, root, tmp)
+
+	fakeBinDir := filepath.Join(tmp, "fake-bin")
+	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
+	writeDependencyInstallFakeCommands(t, fakeBinDir)
+
+	env := append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_TAG=test-local",
+		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
+		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=fedora\nVERSION_CODENAME=\n",
+	)
+
+	cmd := exec.Command("bash", "scripts/bootstrap.sh")
+	cmd.Dir = root
+	cmd.Env = env
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("bootstrap succeeded on unsupported OS:\n%s", output)
+	}
+	if !strings.Contains(string(output), "unsupported OS fedora") {
+		t.Fatalf("bootstrap unsupported OS output = %s", output)
+	}
+}
+
+func TestReleaseWorkflowBuildsExpectedArtifacts(t *testing.T) {
+	workflow := readFile(t, filepath.Join("..", "..", ".github/workflows/release.yml"))
+	for _, want := range []string{
+		"on:",
+		"tags:",
+		"'v*'",
+		"GOOS: linux",
+		"- amd64",
+		"- arm64",
+		"GOARCH: ${{ matrix.arch }}",
+		"rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz",
+		"softprops/action-gh-release@v2",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow missing %q:\n%s", want, workflow)
+		}
+	}
+}
+
 func writeFakeCommand(t *testing.T, dir string, name string, body string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -137,6 +314,146 @@ func writeFakeCommand(t *testing.T, dir string, name string, body string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
 		t.Fatalf("WriteFile fake command %s: %v", name, err)
 	}
+}
+
+func buildBootstrapSourceBinaries(t *testing.T, root string, tmp string) string {
+	t.Helper()
+	sourceBinDir := filepath.Join(tmp, "source-bin")
+	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll source bin: %v", err)
+	}
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbase"), "./cmd/rhumbase")
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbased"), "./cmd/rhumbased")
+	return sourceBinDir
+}
+
+func writeDependencyInstallFakeCommands(t *testing.T, fakeBinDir string) {
+	t.Helper()
+	writeFakeCommand(t, fakeBinDir, "apt-get", `#!/bin/sh
+printf 'apt-get %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+case " $* " in
+	*" docker-ce "*)
+		touch "$(dirname "$0")/docker-installed"
+		;;
+	*" caddy "*)
+		touch "$(dirname "$0")/caddy-installed"
+		;;
+esac
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "curl", `#!/bin/sh
+printf 'curl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+	while [ "$#" -gt 0 ]; do
+		if [ "$1" = "-o" ]; then
+			mkdir -p "$(dirname "$2")"
+			case "$2" in
+				*caddy-stable.list)
+					printf 'deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main\n' > "$2"
+					;;
+				*)
+					printf 'fake key\n' > "$2"
+					;;
+			esac
+			exit 0
+		fi
+	shift
+done
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "dpkg", `#!/bin/sh
+printf 'dpkg %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+if [ "$1" = "--print-architecture" ]; then
+	echo amd64
+	exit 0
+fi
+if [ "$1" = "-s" ]; then
+	exit 1
+fi
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "gpg", `#!/bin/sh
+printf 'gpg %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = "-o" ]; then
+		mkdir -p "$(dirname "$2")"
+		printf 'fake keyring\n' > "$2"
+		exit 0
+	fi
+	shift
+done
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
+printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+if [ -f "$(dirname "$0")/docker-installed" ]; then
+	exit 0
+fi
+exit 1
+`)
+	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
+printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+if [ -f "$(dirname "$0")/caddy-installed" ]; then
+	exit 0
+fi
+exit 1
+`)
+	writeFakeCommand(t, fakeBinDir, "git", `#!/bin/sh
+printf 'git %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "ssh", `#!/bin/sh
+printf 'ssh %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "sshd", `#!/bin/sh
+printf 'sshd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
+printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
+if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
+	echo 0
+	exit 0
+fi
+printf 'id %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 1
+`)
+	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
+printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
+printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "chown", `#!/bin/sh
+printf 'chown %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "chmod", `#!/bin/sh
+printf 'chmod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+/bin/chmod "$@"
+`)
+	writeFakeCommand(t, fakeBinDir, "touch", `#!/bin/sh
+printf 'touch %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+/usr/bin/touch "$@"
+`)
+}
+
+func writeWorkingRuntimeFakeCommands(t *testing.T, fakeBinDir string) {
+	t.Helper()
+	writeDependencyInstallFakeCommands(t, fakeBinDir)
+	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
+printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
+printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 }
 
 func assertExecutable(t *testing.T, path string) {
@@ -168,4 +485,15 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("ReadFile %s: %v", path, err)
 	}
 	return string(data)
+}
+
+func assertFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat file %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("%s mode = %v, want %v", path, got, want)
+	}
 }

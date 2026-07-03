@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux binaries
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}
+          go build -o dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}/rhumbase ./cmd/rhumbase
+          go build -o dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}/rhumbased ./cmd/rhumbased
+          tar -C dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }} -czf dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz rhumbase rhumbased
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz

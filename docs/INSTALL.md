@@ -1,14 +1,24 @@
-# Rhumbase Install Plan
+# Rhumbase Installation
 
-This document defines the current installation behavior for Rhumbase v0.
+This document defines the Dokku-style installation flow for Rhumbase v0.
 
-The bootstrap entry point is:
+## Quick Start
+
+Run this on a fresh Ubuntu LTS or Debian stable VPS:
 
 ```bash
-sudo RHUMBASE_TAG=<version> scripts/bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/iketiunn/rhumbase/v0.1.0/scripts/bootstrap.sh
+sudo RHUMBASE_TAG=v0.1.0 bash bootstrap.sh
+sudo rhumbase diagnostics
+
+cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
+sudo rhumbase server domain set rhumbase.example.com
+
+git remote add rhumbase git@rhumbase.example.com:my-app.git
+git push rhumbase main
 ```
 
-The script can install from a release tarball or from a local binary directory for tests and development.
+Replace `v0.1.0` with the release tag you want to install. Replace `rhumbase.example.com` with a real domain that points at the server, or use the server IP while testing the Git push path.
 
 ## OS Assumptions
 
@@ -18,9 +28,9 @@ Expected baseline:
 
 - systemd-based distribution
 - amd64 or arm64 CPU
-- OpenSSH server already available for normal server access
 - root or sudo access during setup
-- ports 80 and 443 available for app traffic
+- inbound SSH available for normal server access
+- ports 80 and 443 available for app traffic and ACME HTTP challenges
 - a dedicated data directory for Rhumbase state
 
 Recommended first targets:
@@ -37,34 +47,31 @@ Rhumbase v0 requires:
 - Caddy
 - systemd
 - SQLite, via Rhumbase's embedded Go driver
+- Git
+- OpenSSH server
 - Rhumbase binaries:
   - `rhumbase`
   - `rhumbased`
 
-The installer must check each dependency and print actionable errors when something is missing.
+By default, the bootstrap script installs missing apt dependencies on real root installs:
 
-The bootstrap script checks:
+- base packages: `ca-certificates`, `curl`, `gnupg`, `git`, `openssh-server`, `debian-keyring`, `debian-archive-keyring`, and `apt-transport-https`
+- Docker Engine and Docker Compose plugin from Docker's official apt repository
+- Caddy from Caddy's official Cloudsmith apt repository
+
+Set `RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
 
 ```bash
+sudo RHUMBASE_TAG=v0.1.0 RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
+```
+
+Check-only mode requires these commands to work before installation continues:
+
+```text
 docker version
 docker compose version
 caddy version
 systemctl --version
-```
-
-## Target Bootstrap Flow
-
-The intended install experience should be close to:
-
-```bash
-wget -O bootstrap.sh <rhumbase-install-url>
-sudo RHUMBASE_TAG=<version> bash bootstrap.sh
-
-rhumbase server domain set rhumbase.example.com
-echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
-
-git remote add rhumbase git@rhumbase.example.com:my-app.git
-git push rhumbase main
 ```
 
 The first authorized push to `my-app.git` should create the app automatically. `rhumbase apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
@@ -87,6 +94,7 @@ Default install layout:
 /var/lib/rhumbase/git/
 /var/lib/rhumbase/git/.ssh/authorized_keys
 /etc/systemd/system/rhumbased.service
+/etc/caddy/Caddyfile
 /etc/caddy/rhumbase.caddyfile
 ```
 
@@ -108,6 +116,7 @@ The script supports a fake-root harness:
 RHUMBASE_TAG=test \
 RHUMBASE_BOOTSTRAP_ROOT=/tmp/rhumbase-root \
 RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR=bin \
+RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0 \
 RHUMBASE_BOOTSTRAP_SKIP_USER=1 \
 RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1 \
 scripts/bootstrap.sh
@@ -117,7 +126,7 @@ The harness writes the same files under `RHUMBASE_BOOTSTRAP_ROOT` without mutati
 
 ## Docker Requirement
 
-The install flow should verify:
+The install flow verifies:
 
 ```bash
 docker version
@@ -126,7 +135,7 @@ docker compose version
 
 The Rhumbase daemon must be able to run Docker Compose commands.
 
-The installer should not run broad Docker cleanup commands.
+The installer adds the `rhumbase` daemon user to the `docker` group. It does not run broad Docker cleanup commands and fails with an actionable message if a conflicting non-official Docker package is installed while Docker is not working.
 
 ## Caddy Requirement
 
@@ -144,7 +153,13 @@ Rhumbase should write its generated route config to the configured Caddy config 
 /etc/caddy/rhumbase.caddyfile
 ```
 
-The main Caddy configuration must import or load this file before routes can serve traffic.
+The installer creates `/etc/caddy/rhumbase.caddyfile` if it is missing and ensures `/etc/caddy/Caddyfile` imports it exactly once:
+
+```text
+import /etc/caddy/rhumbase.caddyfile
+```
+
+If `/etc/caddy/Caddyfile` already exists and lacks the import, the installer writes a one-time backup beside it before appending the import.
 
 For v0, Rhumbase assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`, and `rhumbase domains attach ... --port <port>` uses that host port as the upstream:
 
@@ -178,6 +193,7 @@ DNS and HTTPS limits:
 - Public DNS must point the domain at the server before normal public HTTP routing works.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
+- No web dashboard port should be opened. The SSH dashboard listens on `RHUMBASE_SSH_LISTEN_ADDR`, defaulting to `:2222`; expose that port only if you want remote dashboard access separate from system SSH.
 
 ## SQLite Data Path
 
@@ -279,11 +295,11 @@ The bootstrap script creates or validates this user with:
 useradd --system --home /var/lib/rhumbase/git --shell /usr/bin/git-shell git
 ```
 
-Deploy keys are managed with:
+Deploy keys are managed on the server with:
 
 ```bash
-rhumbase server domain set rhumbase.example.com
-echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
+sudo rhumbase server domain set rhumbase.example.com
+cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
 ```
 
 `rhumbase server domain set` stores the Git host in SQLite. App remote output prefers the persisted host over `RHUMBASE_GIT_HOST` after it is set.
@@ -293,6 +309,8 @@ echo "$PUBLIC_KEY" | rhumbase ssh-keys add admin
 ```text
 /var/lib/rhumbase/git/.ssh/authorized_keys
 ```
+
+The installer keeps `/var/lib/rhumbase/git`, `/var/lib/rhumbase/git/.ssh`, and `authorized_keys` compatible with OpenSSH strict modes and owned by the `git` receive user.
 
 Each rendered key is restricted with:
 
@@ -364,7 +382,7 @@ Upgrades must not prune Docker images broadly. Cleanup should remain scoped to R
 Run:
 
 ```bash
-rhumbase diagnostics
+sudo rhumbase diagnostics
 ```
 
 The command checks:
@@ -412,12 +430,12 @@ Run the full bootstrap harness with:
 make bootstrap-e2e
 ```
 
-The harness builds both binaries, runs `scripts/bootstrap.sh` under a temporary root, fakes Docker/Caddy/systemd commands, and asserts:
+The harness builds both binaries, runs `scripts/bootstrap.sh` under a temporary root, fakes apt, Docker, Caddy, SSH, and systemd commands, and asserts:
 
 - binaries are installed and executable
 - `/var/lib/rhumbase` and `/var/lib/rhumbase/apps` are created
 - `rhumbased.service` contains the production environment
-- Docker, Compose, Caddy, and systemd checks are attempted
+- dependency installation, Docker, Compose, Caddy, ownership, and systemd checks are attempted
 - systemd reload and service enablement are attempted
 
 Run the real SSH push harness with:

@@ -14,6 +14,7 @@ import (
 type postReceiveStore interface {
 	CreateRelease(ctx context.Context, model app.Release) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
+	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
@@ -106,6 +107,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	now := h.now()
 	releaseID := ReleaseID(event.CommitSHA)
 	deploymentID := DeploymentID(event.CommitSHA)
+	priorSuccessfulReleaseSHAs, err := h.priorSuccessfulReleaseSHAs(ctx, event.AppName)
+	if err != nil {
+		return err
+	}
 	if err := h.store.CreateRelease(ctx, app.Release{
 		ID:          releaseID,
 		AppID:       event.AppName,
@@ -143,13 +148,14 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	}
 
 	err = h.runner.Deploy(ctx, compose.DeployRequest{
-		AppName:      event.AppName,
-		ProjectDir:   worktreePath,
-		ComposePath:  composePath,
-		ReleaseID:    releaseID,
-		CommitSHA:    event.CommitSHA,
-		ProjectName:  compose.ProjectName(event.AppName),
-		KeepReleases: 5,
+		AppName:               event.AppName,
+		ProjectDir:            worktreePath,
+		ComposePath:           composePath,
+		ReleaseID:             releaseID,
+		CommitSHA:             event.CommitSHA,
+		ProjectName:           compose.ProjectName(event.AppName),
+		KeepReleases:          5,
+		SuccessfulReleaseSHAs: priorSuccessfulReleaseSHAs,
 		CleanupRecorder: cleanupEventRecorder{
 			store:        h.store,
 			appID:        event.AppName,
@@ -189,6 +195,21 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		Message:   "Deploy succeeded for release " + releaseID,
 		CreatedAt: finishedAt,
 	})
+}
+
+func (h *PostReceiveHandler) priorSuccessfulReleaseSHAs(ctx context.Context, appName string) ([]string, error) {
+	releases, err := h.store.ListReleasesByApp(ctx, appName)
+	if err != nil {
+		return nil, err
+	}
+
+	var shas []string
+	for i := len(releases) - 1; i >= 0; i-- {
+		if releases[i].Status == app.ReleaseStatusSucceeded {
+			shas = append(shas, releases[i].CommitSHA)
+		}
+	}
+	return shas, nil
 }
 
 func ReleaseID(commitSHA string) string {

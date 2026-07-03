@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,60 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	wantTypes := []string{"deploy.started", "deploy.succeeded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
+func TestPostReceiveHandlerPassesPriorSuccessfulReleaseSHAsForCleanup(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	baseTime := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	for index, release := range []struct {
+		sha    string
+		status app.ReleaseStatus
+	}{
+		{sha: "oldest-success", status: app.ReleaseStatusSucceeded},
+		{sha: "failed-release", status: app.ReleaseStatusFailed},
+		{sha: "middle-success", status: app.ReleaseStatusSucceeded},
+		{sha: "newest-success", status: app.ReleaseStatusSucceeded},
+	} {
+		createdAt := baseTime.Add(time.Duration(index) * time.Minute)
+		if err := sqlite.CreateRelease(ctx, app.Release{
+			ID:          "rel_" + release.sha,
+			AppID:       "my-app",
+			CommitSHA:   release.sha,
+			ComposePath: filepath.Join(worktreePath, "compose.yml"),
+			Status:      release.status,
+			CreatedAt:   createdAt,
+			UpdatedAt:   createdAt,
+		}); err != nil {
+			t.Fatalf("CreateRelease %s: %v", release.sha, err)
+		}
+	}
+
+	runner := &compose.FakeRunner{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: runner,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+		Now: func() time.Time { return baseTime.Add(10 * time.Minute) },
+	})
+
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(runner.DeployRequests) != 1 {
+		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
+	}
+
+	want := []string{"newest-success", "middle-success", "oldest-success"}
+	if !reflect.DeepEqual(runner.DeployRequests[0].SuccessfulReleaseSHAs, want) {
+		t.Fatalf("SuccessfulReleaseSHAs = %#v, want %#v", runner.DeployRequests[0].SuccessfulReleaseSHAs, want)
 	}
 }
 

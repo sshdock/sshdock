@@ -280,10 +280,14 @@ func latestImage(appName string, serviceName string) string {
 }
 
 func prunableReleases(successfulReleaseSHAs []string, keepRecent int) []string {
-	if len(successfulReleaseSHAs) <= keepRecent {
+	priorToKeep := keepRecent - 1
+	if priorToKeep < 0 {
+		priorToKeep = 0
+	}
+	if len(successfulReleaseSHAs) <= priorToKeep {
 		return nil
 	}
-	return successfulReleaseSHAs[keepRecent:]
+	return successfulReleaseSHAs[priorToKeep:]
 }
 
 func parseServiceStatuses(output string) ([]ServiceStatus, error) {

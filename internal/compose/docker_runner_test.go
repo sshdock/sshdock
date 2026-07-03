@@ -52,6 +52,7 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "build", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "up", "-d"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"image", "tag", "rhumbase/my-app/web:abc123", "rhumbase/my-app/web:latest"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:prev-5"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:old-1"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
@@ -124,7 +125,7 @@ func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
 		t.Fatalf("cleanup failures = %#v", recorder.Failures)
 	}
 	failure := recorder.Failures[0]
-	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "old-1" || failure.Image != "rhumbase/my-app/web:old-1" || failure.ErrorMessage != "image is in use" {
+	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "prev-5" || failure.Image != "rhumbase/my-app/web:prev-5" || failure.ErrorMessage != "image is in use" {
 		t.Fatalf("cleanup failure = %#v", failure)
 	}
 }

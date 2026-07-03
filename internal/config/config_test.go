@@ -45,8 +45,11 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.DashboardHostKeyPath != filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key") {
 		t.Fatalf("DashboardHostKeyPath = %q, want path under dashboard data dir", cfg.DashboardHostKeyPath)
 	}
-	if cfg.DashboardAuthorizedKeysPath != filepath.Join(cfg.DataDir, "dashboard", "authorized_keys") {
+	if cfg.DashboardAuthorizedKeysPath != filepath.Join(cfg.DataDir, "dashboard", ".ssh", "authorized_keys") {
 		t.Fatalf("DashboardAuthorizedKeysPath = %q, want path under dashboard data dir", cfg.DashboardAuthorizedKeysPath)
+	}
+	if cfg.DashboardCommand != "sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard" {
+		t.Fatalf("DashboardCommand = %q", cfg.DashboardCommand)
 	}
 	if cfg.CaddyConfigPath == "" {
 		t.Fatal("CaddyConfigPath is empty")
@@ -73,6 +76,7 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("RHUMBASE_GIT_RECEIVE_COMMAND", "/opt/rhumbase/bin/rhumbased git-receive")
 	t.Setenv("RHUMBASE_DASHBOARD_HOST_KEY_PATH", "/tmp/dashboard_host_key")
 	t.Setenv("RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", "/tmp/dashboard_authorized_keys")
+	t.Setenv("RHUMBASE_DASHBOARD_COMMAND", "/opt/rhumbase/bin/rhumbased dashboard")
 	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
 	t.Setenv("RHUMBASE_CADDY_ADMIN_ADDRESS", "127.0.0.1:22019")
 
@@ -117,6 +121,9 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	if cfg.DashboardAuthorizedKeysPath != "/tmp/dashboard_authorized_keys" {
 		t.Fatalf("DashboardAuthorizedKeysPath = %q", cfg.DashboardAuthorizedKeysPath)
 	}
+	if cfg.DashboardCommand != "/opt/rhumbase/bin/rhumbased dashboard" {
+		t.Fatalf("DashboardCommand = %q", cfg.DashboardCommand)
+	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
 	}
@@ -147,6 +154,7 @@ func TestValidateReportsActionableMissingFields(t *testing.T) {
 	cfg := Default()
 	cfg.DataDir = " "
 	cfg.GitHost = " "
+	cfg.DashboardCommand = " "
 	cfg.GitReceiveCommand = " "
 
 	err := cfg.Validate()
@@ -158,6 +166,7 @@ func TestValidateReportsActionableMissingFields(t *testing.T) {
 	for _, want := range []string{
 		"RHUMBASE_DATA_DIR is required",
 		"RHUMBASE_GIT_HOST is required",
+		"RHUMBASE_DASHBOARD_COMMAND is required",
 		"RHUMBASE_GIT_RECEIVE_COMMAND is required",
 	} {
 		if !strings.Contains(message, want) {

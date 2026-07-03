@@ -64,7 +64,7 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 		"RHUMBASE_GIT_HOME_DIR="+filepath.Join(dataDir, "git"),
 		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "git/.ssh/authorized_keys"),
 		"RHUMBASE_DASHBOARD_HOST_KEY_PATH="+filepath.Join(dataDir, "dashboard/ssh_host_rsa_key"),
-		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "dashboard/authorized_keys"),
+		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "dashboard/.ssh/authorized_keys"),
 		"RHUMBASE_CADDY_CONFIG_PATH="+filepath.Join(installRoot, "etc/caddy/rhumbase.caddyfile"),
 	)
 	diagnosticsOutput := runCommand(t, root, diagnosticsEnv, filepath.Join(installRoot, "usr/local/bin/rhumbase"), "diagnostics")

@@ -193,7 +193,7 @@ DNS and HTTPS limits:
 - Public DNS must point the domain at the server before normal public HTTP routing works.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
-- No web dashboard port should be opened. The SSH dashboard listens on `RHUMBASE_SSH_LISTEN_ADDR`, defaulting to `:2222`; expose that port only if you want remote dashboard access separate from system SSH.
+- No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through a `dashboard` user forced command.
 
 ## SQLite Data Path
 
@@ -241,30 +241,39 @@ Expected operator entry point:
 ssh dashboard@server
 ```
 
-`rhumbased` serves this SSH dashboard itself. It does not require host `sshd` for dashboard sessions.
+The production dashboard uses host `sshd` on port `22`, like the Git receive path. The `dashboard` account is an SSH entry point only; each authorized key is restricted to a forced command that renders the dashboard once.
 
 Default dashboard SSH settings:
 
 ```text
-RHUMBASE_SSH_LISTEN_ADDR=:2222
 RHUMBASE_DASHBOARD_USER=dashboard
-RHUMBASE_DASHBOARD_HOST_KEY_PATH=/var/lib/rhumbase/dashboard/ssh_host_rsa_key
-RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/authorized_keys
+RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/.ssh/authorized_keys
+RHUMBASE_DASHBOARD_COMMAND="sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard"
 ```
 
-The daemon creates the dashboard host key if it is missing. The administrator must place one or more operator public keys in:
-
-```text
-/var/lib/rhumbase/dashboard/authorized_keys
-```
-
-The configured dashboard username must match the SSH user. For the default config:
+The bootstrap script creates or validates this user with:
 
 ```bash
-ssh -p 2222 dashboard@server
+useradd --system --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard
 ```
 
-The dashboard user should not expose a web admin panel.
+The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Dashboard access is still restricted by generated `authorized_keys` options.
+
+The bootstrap script installs `/usr/local/bin/rhumbase-dashboard` and a narrow `/etc/sudoers.d/rhumbase-dashboard` rule so the SSH-only `dashboard` account can hand off dashboard rendering to the `rhumbase` daemon user.
+
+`rhumbase ssh-keys add` rewrites the dashboard key file:
+
+```text
+/var/lib/rhumbase/dashboard/.ssh/authorized_keys
+```
+
+Each rendered dashboard key is restricted with:
+
+```text
+command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+```
+
+The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, writes the dashboard to stdout, and exits. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 
@@ -341,7 +350,7 @@ rhumbased.service
 Expected service behavior:
 
 - start after Docker is available
-- run `rhumbased`
+- run `rhumbased daemon`
 - restart on failure
 - use the configured data directory
 - use `RHUMBASE_COMPOSE_RUNNER=docker`

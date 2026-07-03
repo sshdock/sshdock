@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -75,6 +76,49 @@ func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
 	}
 	if fake.LogOutput != "first log\nsecond log\n" {
 		t.Fatalf("fake log output = %q", fake.LogOutput)
+	}
+}
+
+func TestRunDashboardRendersOnce(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
+	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
+	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithInput([]string{"dashboard"}, nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"Rhumbase Dashboard",
+		"Apps",
+		"No apps",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDaemonValidatesConfig(t *testing.T) {
+	t.Setenv("RHUMBASE_GIT_HOST", " ")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithInput([]string{"daemon"}, nil, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "RHUMBASE_GIT_HOST is required") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 

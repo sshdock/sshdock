@@ -69,11 +69,13 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
-		NodeID:             cfg.NodeID,
-		AppsDir:            cfg.AppsDir,
-		GitHost:            cfg.GitHost,
-		AuthorizedKeysPath: cfg.GitAuthorizedKeysPath,
-		GitReceiveCommand:  cfg.GitReceiveCommand,
+		NodeID:                      cfg.NodeID,
+		AppsDir:                     cfg.AppsDir,
+		GitHost:                     cfg.GitHost,
+		AuthorizedKeysPath:          cfg.GitAuthorizedKeysPath,
+		GitReceiveCommand:           cfg.GitReceiveCommand,
+		DashboardAuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
+		DashboardCommand:            cfg.DashboardCommand,
 		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
 			ConfigPath:   cfg.CaddyConfigPath,
 			Executor:     router.LocalCommandExecutor{},

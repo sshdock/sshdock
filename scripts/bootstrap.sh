@@ -254,6 +254,15 @@ ensure_git_user() {
 	run usermod --shell "$GIT_SHELL" "$GIT_USER"
 }
 
+ensure_dashboard_user() {
+	if [ "$SKIP_USER" = "1" ]; then
+		return
+	fi
+	ensure_system_user "$DASHBOARD_USER" "$DASHBOARD_HOME_DIR" "$DASHBOARD_SHELL"
+	need_command usermod
+	run usermod --home "$DASHBOARD_HOME_DIR" --shell "$DASHBOARD_SHELL" "$DASHBOARD_USER"
+}
+
 ensure_system_user() {
 	local user="$1"
 	local home="$2"
@@ -292,13 +301,17 @@ ensure_daemon_docker_access() {
 
 normalize_runtime_ownership() {
 	local data_dir_actual git_home_actual git_ssh_dir_actual git_authorized_keys_actual
+	local dashboard_home_actual dashboard_ssh_dir_actual dashboard_authorized_keys_actual
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
 	git_authorized_keys_actual="$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")"
+	dashboard_home_actual="$(prefix_path "$DASHBOARD_HOME_DIR")"
+	dashboard_ssh_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
+	dashboard_authorized_keys_actual="$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")"
 
-	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual"
-	run chmod 0700 "$git_ssh_dir_actual" "$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
+	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual" "$dashboard_home_actual"
+	run chmod 0700 "$git_ssh_dir_actual" "$dashboard_ssh_dir_actual"
 
 	if [ "$SKIP_CHOWN" = "1" ]; then
 		return
@@ -314,11 +327,16 @@ normalize_runtime_ownership() {
 	run touch "$git_authorized_keys_actual"
 	run chmod 0600 "$git_authorized_keys_actual"
 	run chown "$GIT_USER:$GIT_USER" "$git_ssh_dir_actual" "$git_authorized_keys_actual"
+	run touch "$dashboard_authorized_keys_actual"
+	run chmod 0600 "$dashboard_authorized_keys_actual"
+	run chown "$DASHBOARD_USER:$DASHBOARD_USER" "$dashboard_home_actual" "$dashboard_ssh_dir_actual" "$dashboard_authorized_keys_actual"
+	run chmod 0755 "$dashboard_home_actual"
+	run chmod 0700 "$dashboard_ssh_dir_actual"
 }
 
 prepare_directories() {
 	local bin_dir_actual data_dir_actual apps_dir_actual systemd_dir_actual caddy_dir_actual
-	local git_home_actual git_ssh_dir_actual dashboard_dir_actual
+	local git_home_actual git_ssh_dir_actual dashboard_home_actual dashboard_ssh_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	apps_dir_actual="$(prefix_path "$APPS_DIR")"
@@ -326,9 +344,10 @@ prepare_directories() {
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
-	dashboard_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
+	dashboard_home_actual="$(prefix_path "$DASHBOARD_HOME_DIR")"
+	dashboard_ssh_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
 
-	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$dashboard_dir_actual"
+	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$dashboard_home_actual" "$dashboard_ssh_dir_actual"
 	normalize_runtime_ownership
 }
 
@@ -410,6 +429,26 @@ WRAPPER
 	run chmod 0755 "$wrapper_actual"
 }
 
+write_dashboard_wrapper() {
+	local wrapper_actual
+	wrapper_actual="$(prefix_path "$DASHBOARD_WRAPPER_PATH")"
+
+	run mkdir -p "$(dirname "$wrapper_actual")"
+	cat > "$wrapper_actual" <<WRAPPER
+#!/bin/sh
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export RHUMBASE_DATA_DIR=$DATA_DIR
+export RHUMBASE_SQLITE_DB_PATH=$DATA_DIR/rhumbase.db
+export RHUMBASE_APPS_DIR=$APPS_DIR
+export RHUMBASE_GIT_HOST=$GIT_HOST
+export RHUMBASE_COMPOSE_RUNNER=docker
+export RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+exec $INSTALL_BIN_DIR/rhumbased dashboard
+WRAPPER
+	run chmod 0755 "$wrapper_actual"
+}
+
 configure_git_sudoers() {
 	if [ "$SKIP_USER" = "1" ]; then
 		return
@@ -422,6 +461,26 @@ configure_git_sudoers() {
 	cat > "$sudoers_tmp" <<SUDOERS
 Defaults:$GIT_USER env_keep += "SSH_ORIGINAL_COMMAND"
 $GIT_USER ALL=($DAEMON_USER) NOPASSWD: $GIT_RECEIVE_WRAPPER_PATH
+SUDOERS
+	run chmod 0440 "$sudoers_tmp"
+	if command -v visudo >/dev/null 2>&1; then
+		run visudo -cf "$sudoers_tmp"
+	fi
+	run mv -f "$sudoers_tmp" "$sudoers_actual"
+	run chmod 0440 "$sudoers_actual"
+}
+
+configure_dashboard_sudoers() {
+	if [ "$SKIP_USER" = "1" ]; then
+		return
+	fi
+	local sudoers_actual sudoers_tmp
+	sudoers_actual="$(prefix_path "$SUDOERS_DIR/rhumbase-dashboard")"
+	sudoers_tmp="$(dirname "$sudoers_actual")/.rhumbase-dashboard.tmp.$$"
+
+	run mkdir -p "$(dirname "$sudoers_actual")"
+	cat > "$sudoers_tmp" <<SUDOERS
+$DASHBOARD_USER ALL=($DAEMON_USER) NOPASSWD: $DASHBOARD_WRAPPER_PATH
 SUDOERS
 	run chmod 0440 "$sudoers_tmp"
 	if command -v visudo >/dev/null 2>&1; then
@@ -446,17 +505,13 @@ Type=simple
 User=$DAEMON_USER
 Group=$DAEMON_USER
 Environment=RHUMBASE_DATA_DIR=$DATA_DIR
-Environment=RHUMBASE_SSH_LISTEN_ADDR=$SSH_LISTEN_ADDR
-Environment=RHUMBASE_DASHBOARD_USER=$DASHBOARD_USER
-Environment=RHUMBASE_DASHBOARD_HOST_KEY_PATH=$DASHBOARD_HOST_KEY_PATH
-Environment=RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=$DASHBOARD_AUTHORIZED_KEYS_PATH
 Environment=RHUMBASE_GIT_HOST=$GIT_HOST
 Environment=RHUMBASE_GIT_USER=$GIT_USER
 Environment=RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
 Environment=RHUMBASE_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
 Environment=RHUMBASE_COMPOSE_RUNNER=docker
 Environment=RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
-ExecStart=$INSTALL_BIN_DIR/rhumbased
+ExecStart=$INSTALL_BIN_DIR/rhumbased daemon
 Restart=on-failure
 RestartSec=5s
 
@@ -527,8 +582,11 @@ CADDY_CONFIG_PATH="${RHUMBASE_CADDY_CONFIG_PATH:-/etc/caddy/rhumbase.caddyfile}"
 CADDY_MAIN_CONFIG_PATH="${RHUMBASE_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
 SSH_LISTEN_ADDR="${RHUMBASE_SSH_LISTEN_ADDR:-:2222}"
 DASHBOARD_USER="${RHUMBASE_DASHBOARD_USER:-dashboard}"
+DASHBOARD_HOME_DIR="${RHUMBASE_DASHBOARD_HOME_DIR:-$DATA_DIR/dashboard}"
+DASHBOARD_SHELL="${RHUMBASE_DASHBOARD_SHELL:-/bin/sh}"
 DASHBOARD_HOST_KEY_PATH="${RHUMBASE_DASHBOARD_HOST_KEY_PATH:-$DATA_DIR/dashboard/ssh_host_rsa_key}"
-DASHBOARD_AUTHORIZED_KEYS_PATH="${RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DATA_DIR/dashboard/authorized_keys}"
+DASHBOARD_AUTHORIZED_KEYS_PATH="${RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DASHBOARD_HOME_DIR/.ssh/authorized_keys}"
+DASHBOARD_WRAPPER_PATH="${RHUMBASE_DASHBOARD_WRAPPER_PATH:-$INSTALL_BIN_DIR/rhumbase-dashboard}"
 GIT_HOST="${RHUMBASE_GIT_HOST:-server}"
 GIT_USER="${RHUMBASE_GIT_USER:-git}"
 GIT_HOME_DIR="${RHUMBASE_GIT_HOME_DIR:-$DATA_DIR/git}"
@@ -566,11 +624,14 @@ else
 fi
 ensure_daemon_user
 ensure_git_user
+ensure_dashboard_user
 prepare_directories
 ensure_daemon_docker_access
 install_binaries
 write_git_receive_wrapper
+write_dashboard_wrapper
 configure_git_sudoers
+configure_dashboard_sudoers
 write_systemd_unit
 configure_caddy_import
 verify_installed_binaries

@@ -16,6 +16,7 @@ type Config struct {
 	DashboardUser               string
 	DashboardHostKeyPath        string
 	DashboardAuthorizedKeysPath string
+	DashboardCommand            string
 	GitUser                     string
 	GitHomeDir                  string
 	GitHost                     string
@@ -36,7 +37,8 @@ func Default() Config {
 		SSHListenAddr:               ":2222",
 		DashboardUser:               "dashboard",
 		DashboardHostKeyPath:        filepath.Join(dataDir, "dashboard", "ssh_host_rsa_key"),
-		DashboardAuthorizedKeysPath: filepath.Join(dataDir, "dashboard", "authorized_keys"),
+		DashboardAuthorizedKeysPath: filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"),
+		DashboardCommand:            "sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",
 		GitUser:                     "git",
 		GitHomeDir:                  filepath.Join(dataDir, "git"),
 		GitHost:                     "server",
@@ -56,7 +58,8 @@ func LoadFromEnv() Config {
 	cfg.SSHListenAddr = envOrDefault("RHUMBASE_SSH_LISTEN_ADDR", cfg.SSHListenAddr)
 	cfg.DashboardUser = envOrDefault("RHUMBASE_DASHBOARD_USER", cfg.DashboardUser)
 	cfg.DashboardHostKeyPath = envOrDefault("RHUMBASE_DASHBOARD_HOST_KEY_PATH", filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key"))
-	cfg.DashboardAuthorizedKeysPath = envOrDefault("RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.DataDir, "dashboard", "authorized_keys"))
+	cfg.DashboardAuthorizedKeysPath = envOrDefault("RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.DataDir, "dashboard", ".ssh", "authorized_keys"))
+	cfg.DashboardCommand = envOrDefault("RHUMBASE_DASHBOARD_COMMAND", cfg.DashboardCommand)
 	cfg.GitUser = envOrDefault("RHUMBASE_GIT_USER", cfg.GitUser)
 	cfg.GitHomeDir = envOrDefault("RHUMBASE_GIT_HOME_DIR", filepath.Join(cfg.DataDir, "git"))
 	cfg.GitHost = envOrDefault("RHUMBASE_GIT_HOST", cfg.GitHost)
@@ -93,6 +96,7 @@ func (c Config) Validate() error {
 		{env: "RHUMBASE_DASHBOARD_USER", value: c.DashboardUser},
 		{env: "RHUMBASE_DASHBOARD_HOST_KEY_PATH", value: c.DashboardHostKeyPath},
 		{env: "RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH", value: c.DashboardAuthorizedKeysPath},
+		{env: "RHUMBASE_DASHBOARD_COMMAND", value: c.DashboardCommand},
 		{env: "RHUMBASE_GIT_USER", value: c.GitUser},
 		{env: "RHUMBASE_GIT_HOME_DIR", value: c.GitHomeDir},
 		{env: "RHUMBASE_GIT_HOST", value: c.GitHost},

@@ -78,6 +78,7 @@ exit 0
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase"))
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbased"))
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-git-receive"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-dashboard"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/apps"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/dashboard"))
@@ -94,17 +95,39 @@ exit 0
 		}
 	}
 
-	sudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-git-receive")
-	sudoers := readFile(t, sudoersPath)
+	dashboardWrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-dashboard"))
+	for _, want := range []string{
+		"export RHUMBASE_DATA_DIR=/var/lib/rhumbase",
+		"export RHUMBASE_COMPOSE_RUNNER=docker",
+		"exec /usr/local/bin/rhumbased dashboard",
+	} {
+		if !strings.Contains(dashboardWrapper, want) {
+			t.Fatalf("dashboard wrapper missing %q:\n%s", want, dashboardWrapper)
+		}
+	}
+
+	gitSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-git-receive")
+	gitSudoers := readFile(t, gitSudoersPath)
 	for _, want := range []string{
 		`Defaults:git env_keep += "SSH_ORIGINAL_COMMAND"`,
 		"git ALL=(rhumbase) NOPASSWD: /usr/local/bin/rhumbase-git-receive",
 	} {
-		if !strings.Contains(sudoers, want) {
-			t.Fatalf("sudoers missing %q:\n%s", want, sudoers)
+		if !strings.Contains(gitSudoers, want) {
+			t.Fatalf("git sudoers missing %q:\n%s", want, gitSudoers)
 		}
 	}
-	assertFileMode(t, sudoersPath, 0o440)
+	assertFileMode(t, gitSudoersPath, 0o440)
+
+	dashboardSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-dashboard")
+	dashboardSudoers := readFile(t, dashboardSudoersPath)
+	for _, want := range []string{
+		"dashboard ALL=(rhumbase) NOPASSWD: /usr/local/bin/rhumbase-dashboard",
+	} {
+		if !strings.Contains(dashboardSudoers, want) {
+			t.Fatalf("dashboard sudoers missing %q:\n%s", want, dashboardSudoers)
+		}
+	}
+	assertFileMode(t, dashboardSudoersPath, 0o440)
 
 	unitPath := filepath.Join(installRoot, "etc/systemd/system/rhumbased.service")
 	unit := readFile(t, unitPath)
@@ -114,17 +137,21 @@ exit 0
 		"User=rhumbase",
 		"Group=rhumbase",
 		"Environment=RHUMBASE_DATA_DIR=/var/lib/rhumbase",
-		"Environment=RHUMBASE_SSH_LISTEN_ADDR=:2222",
-		"Environment=RHUMBASE_DASHBOARD_USER=dashboard",
-		"Environment=RHUMBASE_DASHBOARD_HOST_KEY_PATH=/var/lib/rhumbase/dashboard/ssh_host_rsa_key",
-		"Environment=RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/authorized_keys",
 		"Environment=RHUMBASE_GIT_HOST=server",
 		"Environment=RHUMBASE_COMPOSE_RUNNER=docker",
 		"Environment=RHUMBASE_CADDY_CONFIG_PATH=/etc/caddy/rhumbase.caddyfile",
-		"ExecStart=/usr/local/bin/rhumbased",
+		"ExecStart=/usr/local/bin/rhumbased daemon",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("service unit missing %q:\n%s", want, unit)
+		}
+	}
+	for _, notWant := range []string{
+		"Environment=RHUMBASE_SSH_LISTEN_ADDR=:2222",
+		"ExecStart=/usr/local/bin/rhumbased\n",
+	} {
+		if strings.Contains(unit, notWant) {
+			t.Fatalf("service unit should not contain %q:\n%s", notWant, unit)
 		}
 	}
 
@@ -137,7 +164,9 @@ exit 0
 		"sudo -V",
 		"useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase",
 		"useradd --system --home /var/lib/rhumbase/git --shell /bin/sh git",
+		"useradd --system --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
 		"usermod --shell /bin/sh git",
+		"usermod --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
 		"systemctl daemon-reload",
 		"systemctl enable rhumbased.service",
@@ -210,9 +239,11 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 		"systemctl enable --now caddy",
 		"usermod -aG docker rhumbase",
 		"usermod --shell /bin/sh git",
+		"usermod --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
 		"chown -R rhumbase:rhumbase " + filepath.Join(installRoot, "var/lib/rhumbase"),
 		"chown -R git:git " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
+		"chown dashboard:dashboard " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard") + " " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard/.ssh") + " " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard/.ssh/authorized_keys"),
 		"chmod 0755 " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
 		"chmod 0700 " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh"),
 		"touch " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh/authorized_keys"),

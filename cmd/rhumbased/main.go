@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
@@ -34,6 +36,12 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) == 0 || (len(args) == 1 && args[0] == "serve") {
 		return runServe(stderr)
 	}
+	if len(args) == 1 && args[0] == "daemon" {
+		return runDaemon(stderr)
+	}
+	if len(args) == 1 && args[0] == "dashboard" {
+		return runDashboard(stdout, stderr)
+	}
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
 	}
@@ -41,7 +49,7 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: rhumbased [serve] | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: rhumbased [serve] | daemon | dashboard | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }
 
@@ -84,6 +92,72 @@ func runServe(stderr io.Writer) int {
 	})
 	if err := server.Serve(ctx); err != nil {
 		fmt.Fprintf(stderr, "dashboard SSH server: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runDaemon(stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		fmt.Fprintf(stderr, "create data dir: %v\n", err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "create database dir: %v\n", err)
+		return 1
+	}
+
+	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer sqlite.Close()
+
+	<-ctx.Done()
+	return 0
+}
+
+func runDashboard(stdout io.Writer, stderr io.Writer) int {
+	ctx := context.Background()
+	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		fmt.Fprintf(stderr, "create data dir: %v\n", err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "create database dir: %v\n", err)
+		return 1
+	}
+
+	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer sqlite.Close()
+
+	runner, err := dashboardRunnerFromEnv()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	handler := tui.NewDashboardHandler(sqlite, runner)
+	if err := handler.Render(ctx, stdout); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0

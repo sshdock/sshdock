@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,8 +15,16 @@ import (
 
 func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 	requireGit(t)
+	sshdPath := requireCommandOrSkip(t, "sshd")
 	sshPath := requireCommandOrSkip(t, "ssh")
 	sshKeygenPath := requireCommandOrSkip(t, "ssh-keygen")
+	currentUser, err := user.Current()
+	if err != nil {
+		t.Fatalf("current user: %v", err)
+	}
+	if currentUser.Username == "" {
+		t.Skip("current user name is required for OpenSSH dashboard e2e")
+	}
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "dashboard-app"
@@ -23,57 +32,60 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
 
-	dashboardKeyPath := filepath.Join(paths.tmp, "dashboard_ed25519")
-	runCommand(t, paths.tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", dashboardKeyPath)
-	dashboardAuthorizedKeysPath := filepath.Join(paths.tmp, "dashboard_authorized_keys")
-	if err := os.WriteFile(dashboardAuthorizedKeysPath, []byte(readFile(t, dashboardKeyPath+".pub")), 0o600); err != nil {
-		t.Fatalf("WriteFile dashboard authorized keys: %v", err)
+	hostKeyPath := filepath.Join(paths.tmp, "dashboard_host_ed25519")
+	runCommand(t, paths.tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", hostKeyPath)
+	port := freeLocalPort(t)
+	sshdConfigPath := filepath.Join(paths.tmp, "dashboard_sshd_config")
+	sshdLogPath := filepath.Join(paths.tmp, "dashboard_sshd.log")
+	sshdConfig := fmt.Sprintf(`
+Port %d
+ListenAddress 127.0.0.1
+HostKey %s
+PidFile %s
+AuthorizedKeysFile %s
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+StrictModes no
+AllowUsers %s
+LogLevel ERROR
+`, port, hostKeyPath, filepath.Join(paths.tmp, "dashboard_sshd.pid"), paths.dashboardAuthorizedKeysPath, currentUser.Username)
+	if err := os.WriteFile(sshdConfigPath, []byte(sshdConfig), 0o600); err != nil {
+		t.Fatalf("WriteFile dashboard sshd_config: %v", err)
+	}
+	if output, err := exec.Command(sshdPath, "-t", "-f", sshdConfigPath).CombinedOutput(); err != nil {
+		t.Skipf("OpenSSH dashboard config is not usable in this environment: %v\n%s", err, output)
 	}
 
-	port := freeLocalPort(t)
-	dashboardHostKeyPath := filepath.Join(paths.tmp, "dashboard_host_rsa_key")
-	dashboardLogPath := filepath.Join(paths.tmp, "dashboard.log")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	rhumbasedPath := filepath.Join(paths.installBinDir, "rhumbased")
-	env := append(os.Environ(),
-		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+paths.dataDir,
-		"RHUMBASE_SSH_LISTEN_ADDR=127.0.0.1:"+fmt.Sprintf("%d", port),
-		"RHUMBASE_DASHBOARD_USER=dashboard",
-		"RHUMBASE_DASHBOARD_HOST_KEY_PATH="+dashboardHostKeyPath,
-		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
-		"RHUMBASE_FAKE_COMPOSE_SERVICES=web:running",
-		"RHUMBASE_FAKE_COMPOSE_LOGS=first dashboard log\nsecond dashboard log\n",
-	)
-	dashboard := exec.CommandContext(ctx, rhumbasedPath, "serve")
-	dashboard.Env = env
-	logFile, err := os.Create(dashboardLogPath)
+	sshd := exec.CommandContext(ctx, sshdPath, "-D", "-e", "-f", sshdConfigPath)
+	logFile, err := os.Create(sshdLogPath)
 	if err != nil {
-		t.Fatalf("Create dashboard log: %v", err)
+		t.Fatalf("Create dashboard sshd log: %v", err)
 	}
-	dashboard.Stdout = logFile
-	dashboard.Stderr = logFile
-	if err := dashboard.Start(); err != nil {
+	sshd.Stdout = logFile
+	sshd.Stderr = logFile
+	if err := sshd.Start(); err != nil {
 		_ = logFile.Close()
-		t.Fatalf("start dashboard server: %v", err)
+		t.Skipf("start dashboard sshd: %v", err)
 	}
 	t.Cleanup(func() {
 		cancel()
-		_ = dashboard.Wait()
+		_ = sshd.Wait()
 		_ = logFile.Close()
 	})
-	waitForTCP(t, "127.0.0.1", port, dashboardLogPath)
+	waitForTCP(t, "127.0.0.1", port, sshdLogPath)
 
 	output := runCommand(t, paths.tmp, nil,
 		sshPath,
 		"-p", fmt.Sprintf("%d", port),
-		"-i", dashboardKeyPath,
+		"-i", paths.clientKeyPath,
 		"-o", "IdentitiesOnly=yes",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
-		"dashboard@127.0.0.1",
+		currentUser.Username+"@127.0.0.1",
 		"dashboard",
 	)
 	for _, want := range []string{
@@ -86,11 +98,10 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		"Releases",
 		"Deployments",
 		"Logs web",
-		"first dashboard log",
-		"second dashboard log",
+		"first-dashboard-log",
 	} {
 		if !strings.Contains(output, want) {
-			t.Fatalf("dashboard output missing %q:\n%s\ndashboard log:\n%s", want, output, readFile(t, dashboardLogPath))
+			t.Fatalf("dashboard output missing %q:\n%s\ndashboard sshd log:\n%s", want, output, readFile(t, sshdLogPath))
 		}
 	}
 }

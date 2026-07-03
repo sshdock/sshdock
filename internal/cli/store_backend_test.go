@@ -294,13 +294,16 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	authorizedKeysPath := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
+	dashboardAuthorizedKeysPath := filepath.Join(t.TempDir(), "dashboard", ".ssh", "authorized_keys")
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:             "node-a",
-		AppsDir:            filepath.Join(t.TempDir(), "apps"),
-		AuthorizedKeysPath: authorizedKeysPath,
-		GitReceiveCommand:  "/usr/local/bin/rhumbased git-receive",
-		Now:                func() time.Time { return now },
+		NodeID:                      "node-a",
+		AppsDir:                     filepath.Join(t.TempDir(), "apps"),
+		AuthorizedKeysPath:          authorizedKeysPath,
+		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
+		DashboardAuthorizedKeysPath: dashboardAuthorizedKeysPath,
+		DashboardCommand:            "/usr/local/bin/rhumbased dashboard",
+		Now:                         func() time.Time { return now },
 	})
 	runner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -326,9 +329,9 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		t.Fatalf("stored key = %#v", keys[0])
 	}
 
-	rendered, err := os.ReadFile(authorizedKeysPath)
+	renderedGit, err := os.ReadFile(authorizedKeysPath)
 	if err != nil {
-		t.Fatalf("ReadFile authorized_keys: %v", err)
+		t.Fatalf("ReadFile git authorized_keys: %v", err)
 	}
 	for _, want := range []string{
 		`command="exec /usr/local/bin/rhumbased git-receive"`,
@@ -338,8 +341,25 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		`no-X11-forwarding`,
 		strings.TrimSpace(publicKey),
 	} {
-		if !strings.Contains(string(rendered), want) {
-			t.Fatalf("authorized_keys missing %q:\n%s", want, rendered)
+		if !strings.Contains(string(renderedGit), want) {
+			t.Fatalf("git authorized_keys missing %q:\n%s", want, renderedGit)
+		}
+	}
+
+	renderedDashboard, err := os.ReadFile(dashboardAuthorizedKeysPath)
+	if err != nil {
+		t.Fatalf("ReadFile dashboard authorized_keys: %v", err)
+	}
+	for _, want := range []string{
+		`command="exec /usr/local/bin/rhumbased dashboard"`,
+		`no-pty`,
+		`no-port-forwarding`,
+		`no-agent-forwarding`,
+		`no-X11-forwarding`,
+		strings.TrimSpace(publicKey),
+	} {
+		if !strings.Contains(string(renderedDashboard), want) {
+			t.Fatalf("dashboard authorized_keys missing %q:\n%s", want, renderedDashboard)
 		}
 	}
 }

@@ -86,12 +86,13 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 }
 
 type serverPushPaths struct {
-	tmp           string
-	installBinDir string
-	dataDir       string
-	clientKeyPath string
-	sshPort       int
-	sshUser       string
+	tmp                         string
+	installBinDir               string
+	dataDir                     string
+	clientKeyPath               string
+	dashboardAuthorizedKeysPath string
+	sshPort                     int
+	sshUser                     string
 }
 
 func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushPaths {
@@ -135,6 +136,7 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	installBinDir := filepath.Join(installRoot, "usr", "local", "bin")
 	dataDir := filepath.Join(installRoot, "var", "lib", "rhumbase")
 	authorizedKeysPath := filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
+	dashboardAuthorizedKeysPath := filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys")
 	clientKeyPath := filepath.Join(tmp, "client_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
 	publicKey := readFile(t, clientKeyPath+".pub")
@@ -147,11 +149,20 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		composeRunner,
 		filepath.Join(installBinDir, "rhumbased"),
 	)
+	dashboardCommand := fmt.Sprintf("env PATH=%s%c%s RHUMBASE_DATA_DIR=%s RHUMBASE_COMPOSE_RUNNER=fake RHUMBASE_FAKE_COMPOSE_SERVICES=web:running RHUMBASE_FAKE_COMPOSE_LOGS=first-dashboard-log %s dashboard",
+		installBinDir,
+		os.PathListSeparator,
+		os.Getenv("PATH"),
+		dataDir,
+		filepath.Join(installBinDir, "rhumbased"),
+	)
 	cliEnv := append(os.Environ(),
 		"PATH="+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"RHUMBASE_DATA_DIR="+dataDir,
 		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
 		"RHUMBASE_GIT_RECEIVE_COMMAND="+receiveCommand,
+		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
+		"RHUMBASE_DASHBOARD_COMMAND="+dashboardCommand,
 		"RHUMBASE_COMPOSE_RUNNER="+composeRunner,
 	)
 	runCommand(t, root, cliEnv, filepath.Join(installBinDir, "rhumbase"), "server", "domain", "set", "127.0.0.1")
@@ -207,12 +218,13 @@ LogLevel ERROR
 	t.Cleanup(cancelSSHD)
 
 	return serverPushPaths{
-		tmp:           tmp,
-		installBinDir: installBinDir,
-		dataDir:       dataDir,
-		clientKeyPath: clientKeyPath,
-		sshPort:       port,
-		sshUser:       currentUser.Username,
+		tmp:                         tmp,
+		installBinDir:               installBinDir,
+		dataDir:                     dataDir,
+		clientKeyPath:               clientKeyPath,
+		dashboardAuthorizedKeysPath: dashboardAuthorizedKeysPath,
+		sshPort:                     port,
+		sshUser:                     currentUser.Username,
 	}
 }
 
@@ -261,6 +273,10 @@ exit 0
 printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
+	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
+printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
 printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
@@ -275,6 +291,14 @@ exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
 printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
+printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
+printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 }

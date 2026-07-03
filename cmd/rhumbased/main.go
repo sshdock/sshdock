@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/mattn/go-isatty"
+
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
@@ -40,7 +42,7 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runDaemon(stderr)
 	}
 	if len(args) == 1 && args[0] == "dashboard" {
-		return runDashboard(stdout, stderr)
+		return runDashboard(stdin, stdout, stderr)
 	}
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
@@ -126,7 +128,7 @@ func runDaemon(stderr io.Writer) int {
 	return 0
 }
 
-func runDashboard(stdout io.Writer, stderr io.Writer) int {
+func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	ctx := context.Background()
 	cfg := config.LoadFromEnv()
 	if err := cfg.Validate(); err != nil {
@@ -156,11 +158,37 @@ func runDashboard(stdout io.Writer, stderr io.Writer) int {
 	}
 
 	handler := tui.NewDashboardHandler(sqlite, runner)
-	if err := handler.Render(ctx, stdout); err != nil {
+	snapshot, err := handler.Snapshot(ctx)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	if dashboardHasInteractiveTerminal(stdin, stdout) {
+		if err := tui.RunInteractiveDashboard(ctx, snapshot, handler.Snapshot, stdin, stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if err := tui.RenderDashboardSnapshot(stdout, snapshot); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
+}
+
+func dashboardHasInteractiveTerminal(stdin io.Reader, stdout io.Writer) bool {
+	input, inputOK := stdin.(*os.File)
+	output, outputOK := stdout.(*os.File)
+	if !inputOK || !outputOK {
+		return false
+	}
+	return isatty.IsTerminal(input.Fd()) && isatty.IsTerminal(output.Fd())
 }
 
 func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {

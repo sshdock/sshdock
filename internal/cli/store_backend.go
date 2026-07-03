@@ -292,7 +292,7 @@ func (b *StoreBackend) AddSSHKey(name string, publicKey string) error {
 		}
 	}
 	if b.dashboardAuthorizedKeysPath != "" {
-		if err := sshaccess.WriteAuthorizedKeys(b.dashboardAuthorizedKeysPath, sshAccessKeys(keys), b.dashboardCommand); err != nil {
+		if err := sshaccess.WriteDashboardAuthorizedKeys(b.dashboardAuthorizedKeysPath, sshAccessKeys(keys), b.dashboardCommand); err != nil {
 			return fmt.Errorf("write dashboard authorized_keys: %w", err)
 		}
 	}

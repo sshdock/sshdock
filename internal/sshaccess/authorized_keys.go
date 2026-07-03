@@ -19,7 +19,28 @@ func RenderAuthorizedKeys(keys []Key, receiveCommand string) string {
 	if receiveCommand == "" {
 		receiveCommand = "rhumbased git-receive"
 	}
+	return renderAuthorizedKeys(keys, receiveCommand, []string{
+		"no-pty",
+		"no-port-forwarding",
+		"no-agent-forwarding",
+		"no-X11-forwarding",
+		"no-user-rc",
+	})
+}
 
+func RenderDashboardAuthorizedKeys(keys []Key, dashboardCommand string) string {
+	if dashboardCommand == "" {
+		dashboardCommand = "rhumbased dashboard"
+	}
+	return renderAuthorizedKeys(keys, dashboardCommand, []string{
+		"no-port-forwarding",
+		"no-agent-forwarding",
+		"no-X11-forwarding",
+		"no-user-rc",
+	})
+}
+
+func renderAuthorizedKeys(keys []Key, command string, options []string) string {
 	sorted := append([]Key(nil), keys...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].Name < sorted[j].Name
@@ -33,8 +54,9 @@ func RenderAuthorizedKeys(keys []Key, receiveCommand string) string {
 		}
 		fmt.Fprintf(
 			&builder,
-			`command="exec %s",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc %s rhumbase-key:%s`+"\n",
-			escapeAuthorizedKeysCommand(receiveCommand),
+			`command="exec %s",%s %s rhumbase-key:%s`+"\n",
+			escapeAuthorizedKeysCommand(command),
+			strings.Join(options, ","),
 			publicKey,
 			key.Name,
 		)
@@ -49,6 +71,15 @@ func WriteAuthorizedKeys(path string, keys []Key, receiveCommand string) error {
 	}
 
 	content := RenderAuthorizedKeys(keys, receiveCommand)
+	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+func WriteDashboardAuthorizedKeys(path string, keys []Key, dashboardCommand string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+
+	content := RenderDashboardAuthorizedKeys(keys, dashboardCommand)
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 

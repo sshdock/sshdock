@@ -352,7 +352,6 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 	}
 	for _, want := range []string{
 		`command="exec /usr/local/bin/rhumbased dashboard"`,
-		`no-pty`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
 		`no-X11-forwarding`,
@@ -361,6 +360,9 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		if !strings.Contains(string(renderedDashboard), want) {
 			t.Fatalf("dashboard authorized_keys missing %q:\n%s", want, renderedDashboard)
 		}
+	}
+	if strings.Contains(string(renderedDashboard), "no-pty") {
+		t.Fatalf("dashboard authorized_keys should allow PTY:\n%s", renderedDashboard)
 	}
 }
 

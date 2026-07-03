@@ -105,6 +105,12 @@ func TestRunDashboardRendersOnce(t *testing.T) {
 	}
 }
 
+func TestDashboardHasInteractiveTerminalRejectsNonTTYWriters(t *testing.T) {
+	if dashboardHasInteractiveTerminal(strings.NewReader(""), &bytes.Buffer{}) {
+		t.Fatal("dashboardHasInteractiveTerminal returned true for non-TTY streams")
+	}
+}
+
 func TestRunDaemonValidatesConfig(t *testing.T) {
 	t.Setenv("RHUMBASE_GIT_HOST", " ")
 	var stdout bytes.Buffer

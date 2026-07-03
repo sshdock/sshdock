@@ -241,7 +241,7 @@ Expected operator entry point:
 ssh dashboard@server
 ```
 
-The production dashboard uses host `sshd` on port `22`, like the Git receive path. The `dashboard` account is an SSH entry point only; each authorized key is restricted to a forced command that renders the dashboard once.
+The production dashboard uses host `sshd` on port `22`, like the Git receive path. The `dashboard` account is an SSH entry point only; each authorized key is restricted to a forced command. With a PTY, the command opens an interactive TUI. Without a PTY, `ssh -T dashboard@server` renders plain text and exits for scripts and smoke tests.
 
 Default dashboard SSH settings:
 
@@ -270,10 +270,10 @@ The bootstrap script installs `/usr/local/bin/rhumbase-dashboard` and a narrow `
 Each rendered dashboard key is restricted with:
 
 ```text
-command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
-The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, writes the dashboard to stdout, and exits. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
+The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state and queries Docker Compose for service status/logs. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 
@@ -373,7 +373,6 @@ Expected inbound ports:
 - 22/tcp or the server's configured SSH port
 - 80/tcp for HTTP and ACME HTTP challenges
 - 443/tcp for HTTPS
-- Rhumbase dashboard SSH listen address, if separate from the system SSH daemon
 
 No web dashboard port should be opened.
 

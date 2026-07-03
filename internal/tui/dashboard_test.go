@@ -93,6 +93,51 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 	}
 }
 
+func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	store := &fakeDashboardStore{
+		apps: []app.App{
+			{ID: "my-app", Name: "my-app", NodeID: "local", Status: app.AppStatusHealthy},
+		},
+		releasesByApp: map[string][]app.Release{
+			"my-app": {
+				{ID: "rel_new", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/tmp/apps/my-app/worktree/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+			},
+		},
+		domainsByApp: map[string][]app.Domain{
+			"my-app": {
+				{ID: "dom_1", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true},
+			},
+		},
+		deploymentsByApp: map[string][]app.Deployment{
+			"my-app": {
+				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
+			},
+		},
+	}
+	runner := &compose.FakeRunner{
+		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
+		LogOutput: "first log\nsecond log\n",
+	}
+	handler := NewDashboardHandler(store, runner)
+
+	snapshot, err := handler.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	if len(snapshot.Apps.Rows()) != 1 {
+		t.Fatalf("snapshot apps = %#v", snapshot.Apps.Rows())
+	}
+	if len(snapshot.AppsByID["my-app"].Detail.Services()) != 1 {
+		t.Fatalf("snapshot detail services = %#v", snapshot.AppsByID["my-app"].Detail.Services())
+	}
+	if got := snapshot.AppsByID["my-app"].Logs["web"].Lines; len(got) != 2 || got[0] != "first log" || got[1] != "second log" {
+		t.Fatalf("snapshot logs = %#v", got)
+	}
+}
+
 func TestDashboardHandlerRendersEmptyAppList(t *testing.T) {
 	ctx := context.Background()
 	var output bytes.Buffer

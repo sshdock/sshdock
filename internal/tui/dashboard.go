@@ -23,6 +23,17 @@ type DashboardHandler struct {
 	runner compose.Runner
 }
 
+type DashboardSnapshot struct {
+	Apps     AppListScreen
+	AppOrder []string
+	AppsByID map[string]DashboardAppSnapshot
+}
+
+type DashboardAppSnapshot struct {
+	Detail AppDetailScreen
+	Logs   map[string]LogsView
+}
+
 func NewDashboardHandler(store DashboardStore, runner compose.Runner) *DashboardHandler {
 	return &DashboardHandler{store: store, runner: runner}
 }
@@ -32,53 +43,73 @@ func (h *DashboardHandler) HandleSession(ctx context.Context, session Session) e
 }
 
 func (h *DashboardHandler) Render(ctx context.Context, writer io.Writer) error {
+	snapshot, err := h.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	return RenderDashboardSnapshot(writer, snapshot)
+}
+
+func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, error) {
 	apps, err := h.store.ListApps(ctx)
 	if err != nil {
-		return fmt.Errorf("list apps: %w", err)
+		return DashboardSnapshot{}, fmt.Errorf("list apps: %w", err)
 	}
 
-	releasesByApp := map[string][]app.Release{}
 	latestReleases := map[string]app.Release{}
 	domainsByApp := map[string][]app.Domain{}
-	deploymentsByApp := map[string][]app.Deployment{}
+	appOrder := make([]string, 0, len(apps))
+	appsByID := make(map[string]DashboardAppSnapshot, len(apps))
 	for _, model := range apps {
+		appOrder = append(appOrder, model.ID)
 		releases, err := h.store.ListReleasesByApp(ctx, model.ID)
 		if err != nil {
-			return fmt.Errorf("list releases for %s: %w", model.ID, err)
+			return DashboardSnapshot{}, fmt.Errorf("list releases for %s: %w", model.ID, err)
 		}
-		releasesByApp[model.ID] = releases
 		if latest, ok := latestRelease(releases); ok {
 			latestReleases[model.ID] = latest
 		}
 
 		domains, err := h.store.ListDomainsByApp(ctx, model.ID)
 		if err != nil {
-			return fmt.Errorf("list domains for %s: %w", model.ID, err)
+			return DashboardSnapshot{}, fmt.Errorf("list domains for %s: %w", model.ID, err)
 		}
 		domainsByApp[model.ID] = domains
 
 		deployments, err := h.store.ListDeploymentsByApp(ctx, model.ID)
 		if err != nil {
-			return fmt.Errorf("list deployments for %s: %w", model.ID, err)
+			return DashboardSnapshot{}, fmt.Errorf("list deployments for %s: %w", model.ID, err)
 		}
-		deploymentsByApp[model.ID] = deployments
+
+		services, logsByService, err := h.serviceStatusAndLogs(ctx, model, releases)
+		if err != nil {
+			return DashboardSnapshot{}, err
+		}
+		view := NewAppDetailView(model, services, domains, releases, deployments)
+		appsByID[model.ID] = DashboardAppSnapshot{
+			Detail: NewAppDetailScreen(view),
+			Logs:   logsByService,
+		}
 	}
 
+	return DashboardSnapshot{
+		Apps:     NewAppListScreen(NewAppListView(apps, latestReleases, domainsByApp)),
+		AppOrder: appOrder,
+		AppsByID: appsByID,
+	}, nil
+}
+
+func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error {
 	if _, err := fmt.Fprintln(writer, "Rhumbase Dashboard"); err != nil {
 		return err
 	}
-	if err := renderAppList(writer, NewAppListScreen(NewAppListView(apps, latestReleases, domainsByApp))); err != nil {
+	if err := renderAppList(writer, snapshot.Apps); err != nil {
 		return err
 	}
 
-	for _, model := range apps {
-		releases := releasesByApp[model.ID]
-		services, logsByService, err := h.serviceStatusAndLogs(ctx, model, releases)
-		if err != nil {
-			return err
-		}
-		view := NewAppDetailView(model, services, domainsByApp[model.ID], releases, deploymentsByApp[model.ID])
-		if err := renderAppDetail(writer, NewAppDetailScreen(view), logsByService); err != nil {
+	for _, appID := range snapshot.AppOrder {
+		appSnapshot := snapshot.AppsByID[appID]
+		if err := renderAppDetail(writer, appSnapshot.Detail, appSnapshot.Logs); err != nil {
 			return err
 		}
 	}

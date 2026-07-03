@@ -195,6 +195,31 @@ func TestServiceRollbackReleaseStartsDeploymentForKnownRelease(t *testing.T) {
 	assertEventTypes(t, store.events["app_1"], []string{"rollback.triggered", "rollback.succeeded"})
 }
 
+func TestServiceRollbackReleaseChecksOutSelectedCommitBeforeDeploy(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	checkout := &fakeWorktreeCheckout{}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithWorktreeCheckout(checkout))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
+	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	_, err := service.RollbackRelease(ctx, "app_1", "rel_good", "dep_rollback_1")
+	if err != nil {
+		t.Fatalf("RollbackRelease: %v", err)
+	}
+	if len(checkout.calls) != 1 {
+		t.Fatalf("checkout calls = %#v", checkout.calls)
+	}
+	if checkout.calls[0] != (checkoutCall{repoPath: "/apps/app_1/repo.git", worktreePath: "/apps/app_1/worktree", commitSHA: "good"}) {
+		t.Fatalf("checkout call = %#v", checkout.calls[0])
+	}
+	if len(runner.deploys) != 1 {
+		t.Fatalf("deploys = %#v", runner.deploys)
+	}
+}
+
 func TestServiceRollbackRejectsReleaseFromDifferentApp(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
@@ -319,6 +344,21 @@ type fakeRecoveryRunner struct {
 
 	deployErr  error
 	restartErr error
+}
+
+type checkoutCall struct {
+	repoPath     string
+	worktreePath string
+	commitSHA    string
+}
+
+type fakeWorktreeCheckout struct {
+	calls []checkoutCall
+}
+
+func (f *fakeWorktreeCheckout) Checkout(_ context.Context, repoPath string, worktreePath string, commitSHA string) error {
+	f.calls = append(f.calls, checkoutCall{repoPath: repoPath, worktreePath: worktreePath, commitSHA: commitSHA})
+	return nil
 }
 
 func (f *fakeRecoveryRunner) Deploy(_ context.Context, request compose.DeployRequest) error {

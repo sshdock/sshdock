@@ -28,11 +28,12 @@ type serviceStore interface {
 }
 
 type Service struct {
-	store   serviceStore
-	now     func() time.Time
-	logs    logsRunner
-	deploy  deployRunner
-	recover recoveryRunner
+	store    serviceStore
+	now      func() time.Time
+	logs     logsRunner
+	deploy   deployRunner
+	recover  recoveryRunner
+	checkout WorktreeCheckout
 }
 
 type ServiceOption func(*Service)
@@ -48,6 +49,10 @@ type deployRunner interface {
 type recoveryRunner interface {
 	Deploy(ctx context.Context, request compose.DeployRequest) error
 	Restart(ctx context.Context, request compose.RestartRequest) error
+}
+
+type WorktreeCheckout interface {
+	Checkout(ctx context.Context, repoPath string, worktreePath string, commitSHA string) error
 }
 
 func NewService(store serviceStore, options ...ServiceOption) *Service {
@@ -90,6 +95,12 @@ func WithRecoveryRunner(runner recoveryRunner) ServiceOption {
 	return func(service *Service) {
 		service.deploy = runner
 		service.recover = runner
+	}
+}
+
+func WithWorktreeCheckout(checkout WorktreeCheckout) ServiceOption {
+	return func(service *Service) {
+		service.checkout = checkout
 	}
 }
 
@@ -196,6 +207,13 @@ func (s *Service) RollbackRelease(ctx context.Context, appID string, releaseID s
 		return deployment, nil
 	}
 
+	if err := s.checkoutRelease(ctx, model, release); err != nil {
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "rollback.failed", "Rollback failed for release "+releaseID+": "+err.Error(), err.Error())
+		deployment.Status = DeploymentStatusFailed
+		deployment.FinishedAt = s.now()
+		deployment.ErrorMessage = err.Error()
+		return deployment, err
+	}
 	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
 		ProjectDir:  projectDir(model, release),
@@ -260,6 +278,13 @@ func (s *Service) RedeployLatest(ctx context.Context, appID string, deploymentID
 		return deployment, nil
 	}
 
+	if err := s.checkoutRelease(ctx, model, release); err != nil {
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "redeploy.failed", "Redeploy failed for release "+release.ID+": "+err.Error(), err.Error())
+		deployment.Status = DeploymentStatusFailed
+		deployment.FinishedAt = s.now()
+		deployment.ErrorMessage = err.Error()
+		return deployment, err
+	}
 	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
 		ProjectDir:  projectDir(model, release),
@@ -366,6 +391,13 @@ func (s *Service) latestGoodRelease(ctx context.Context, appID string) (App, Rel
 		}
 	}
 	return App{}, Release{}, fmt.Errorf("app %q has no successful release", appID)
+}
+
+func (s *Service) checkoutRelease(ctx context.Context, model App, release Release) error {
+	if s.checkout == nil {
+		return nil
+	}
+	return s.checkout.Checkout(ctx, model.RepoPath, projectDir(model, release), release.CommitSHA)
 }
 
 func (s *Service) startRecoveryDeployment(ctx context.Context, deploymentID string, appID string, releaseID string, eventType string, message string) (Deployment, error) {

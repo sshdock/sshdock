@@ -32,6 +32,7 @@ type StoreBackendConfig struct {
 	RepoSetupper                ReceiveRepoSetupper
 	Router                      routeSyncer
 	RecoveryRunner              compose.Runner
+	RecoveryCheckout            appmodel.WorktreeCheckout
 	Now                         func() time.Time
 }
 
@@ -51,6 +52,7 @@ type StoreBackend struct {
 	repoSetupper                ReceiveRepoSetupper
 	router                      routeSyncer
 	recoveryRunner              compose.Runner
+	recoveryCheckout            appmodel.WorktreeCheckout
 	now                         func() time.Time
 }
 
@@ -77,6 +79,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		repoSetupper:                cfg.RepoSetupper,
 		router:                      cfg.Router,
 		recoveryRunner:              cfg.RecoveryRunner,
+		recoveryCheckout:            cfg.RecoveryCheckout,
 		now:                         cfg.Now,
 	}
 }
@@ -312,6 +315,9 @@ func (b *StoreBackend) recoveryService() *appmodel.Service {
 	options := []appmodel.ServiceOption{appmodel.WithClock(b.now)}
 	if b.recoveryRunner != nil {
 		options = append(options, appmodel.WithRecoveryRunner(b.recoveryRunner))
+	}
+	if b.recoveryCheckout != nil {
+		options = append(options, appmodel.WithWorktreeCheckout(b.recoveryCheckout))
 	}
 	return appmodel.NewService(b.store, options...)
 }

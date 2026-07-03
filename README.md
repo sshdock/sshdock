@@ -89,6 +89,8 @@ Open the interactive SSH dashboard:
 ssh dashboard@server
 ```
 
+Useful dashboard keys: `j`/`k` or arrows select apps, `/` filters the app list, `g`/`G` jumps to the first or last app, `tab` switches tabs, `u`/`d` scroll logs, `r` refreshes, and `q` quits.
+
 Attach a domain:
 
 ```bash
@@ -117,7 +119,7 @@ Current MVP state:
 - `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites both Git receive and dashboard `authorized_keys` files with forced commands.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
-- `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
+- `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive app/detail panels, app filtering, tabs, log scrolling, refresh, and jump keys when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
 - `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
 - `rhumbase diagnostics` checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations with actionable pass/fail output.
 - Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; dependency setup and Caddy imports are idempotent, and cleanup remains scoped to Rhumbase-managed image tags.

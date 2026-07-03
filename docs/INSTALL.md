@@ -243,6 +243,19 @@ ssh dashboard@server
 
 The production dashboard uses host `sshd` on port `22`, like the Git receive path. The `dashboard` account is an SSH entry point only; each authorized key is restricted to a forced command. With a PTY, the command opens an interactive TUI. Without a PTY, `ssh -T dashboard@server` renders plain text and exits for scripts and smoke tests.
 
+Interactive dashboard controls:
+
+```text
+j/k or arrows  select apps
+g/G            jump to first or last app
+/              filter apps
+tab            switch detail tabs
+u/d            scroll logs
+r              refresh
+q              quit
+?              toggle help
+```
+
 Default dashboard SSH settings:
 
 ```text

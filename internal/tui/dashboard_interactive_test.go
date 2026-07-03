@@ -88,6 +88,72 @@ func TestInteractiveDashboardModelTabsScrollRefreshAndQuit(t *testing.T) {
 	}
 }
 
+func TestInteractiveDashboardModelFiltersApps(t *testing.T) {
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 28})
+	model = updated.(InteractiveDashboardModel)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	model = updated.(InteractiveDashboardModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t', 'w', 'o'}})
+	model = updated.(InteractiveDashboardModel)
+
+	view := model.View()
+	if !strings.Contains(view, "filter: two") {
+		t.Fatalf("filter input is not visible:\n%s", view)
+	}
+	if !strings.Contains(view, "two") || strings.Contains(view, " one ") {
+		t.Fatalf("filter did not narrow app list to two:\n%s", view)
+	}
+	if !strings.Contains(view, "worker running") {
+		t.Fatalf("filter did not select matching app detail:\n%s", view)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(InteractiveDashboardModel)
+	view = model.View()
+	if !strings.Contains(view, "one") || !strings.Contains(view, "two") {
+		t.Fatalf("escape did not clear filter:\n%s", view)
+	}
+}
+
+func TestInteractiveDashboardModelJumpKeysAndStatus(t *testing.T) {
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 110, Height: 28})
+	model = updated.(InteractiveDashboardModel)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	model = updated.(InteractiveDashboardModel)
+	if view := model.View(); !strings.Contains(view, "App two") || !strings.Contains(view, "apps 2") {
+		t.Fatalf("G did not jump to last app or status is missing:\n%s", view)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	model = updated.(InteractiveDashboardModel)
+	if view := model.View(); !strings.Contains(view, "App one") || !strings.Contains(view, "focus apps") {
+		t.Fatalf("g did not jump to first app or focus status is missing:\n%s", view)
+	}
+}
+
+func TestInteractiveDashboardModelCompactLayoutIncludesChrome(t *testing.T) {
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 22})
+	model = updated.(InteractiveDashboardModel)
+
+	view := model.View()
+	for _, want := range []string{
+		"Rhumbase",
+		"Apps",
+		"App one",
+		"apps 2",
+		"/ filter",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("compact view missing %q:\n%s", want, view)
+		}
+	}
+}
+
 func testDashboardSnapshot() DashboardSnapshot {
 	return DashboardSnapshot{
 		Apps: NewAppListScreen(AppListView{Items: []AppListItem{

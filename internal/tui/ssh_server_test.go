@@ -86,6 +86,29 @@ func TestSSHServerRejectsWrongDashboardUserOrKey(t *testing.T) {
 	}
 }
 
+func TestLoadAuthorizedKeysAllowsMissingOrEmptyFile(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "missing_authorized_keys")
+	keys, err := loadAuthorizedKeys(missingPath)
+	if err != nil {
+		t.Fatalf("load missing authorized_keys: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("missing authorized_keys loaded %d keys, want 0", len(keys))
+	}
+
+	emptyPath := filepath.Join(t.TempDir(), "authorized_keys")
+	if err := os.WriteFile(emptyPath, []byte("\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile empty authorized_keys: %v", err)
+	}
+	keys, err = loadAuthorizedKeys(emptyPath)
+	if err != nil {
+		t.Fatalf("load empty authorized_keys: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("empty authorized_keys loaded %d keys, want 0", len(keys))
+	}
+}
+
 func runSSHServerForTest(t *testing.T, ctx context.Context, server *SSHServer, listener net.Listener) {
 	t.Helper()
 	done := make(chan error, 1)

@@ -39,8 +39,8 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.GitAuthorizedKeysPath != filepath.Join(cfg.GitHomeDir, ".ssh", "authorized_keys") {
 		t.Fatalf("GitAuthorizedKeysPath = %q, want path under git home", cfg.GitAuthorizedKeysPath)
 	}
-	if cfg.GitReceiveCommand == "" {
-		t.Fatal("GitReceiveCommand is empty")
+	if cfg.GitReceiveCommand != "sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive" {
+		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
 	}
 	if cfg.DashboardHostKeyPath != filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key") {
 		t.Fatalf("DashboardHostKeyPath = %q, want path under dashboard data dir", cfg.DashboardHostKeyPath)

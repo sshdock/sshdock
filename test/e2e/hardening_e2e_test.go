@@ -111,6 +111,18 @@ exit 1
 printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
+	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
+printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
+printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
+printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 	writeFakeCommand(t, fakeBinDir, "ssh", `#!/bin/sh
 echo OpenSSH_fake
 exit 0

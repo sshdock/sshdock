@@ -162,6 +162,9 @@ func (s sshDashboardSession) Write(data []byte) (int, error) {
 
 func loadAuthorizedKeys(path string) (map[string]bool, error) {
 	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]bool{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -175,9 +178,6 @@ func loadAuthorizedKeys(path string) (map[string]bool, error) {
 		}
 		keys[string(key.Marshal())] = true
 		remaining = rest
-	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("dashboard authorized_keys is empty")
 	}
 	return keys, nil
 }

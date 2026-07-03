@@ -33,6 +33,32 @@ run() {
 	"$@"
 }
 
+run_apt_get() {
+	local attempt output status
+	attempt=1
+	while true; do
+		printf '+ apt-get %s\n' "$*" >&2
+		set +e
+		output="$(apt-get "$@" 2>&1)"
+		status=$?
+		set -e
+		if [ -n "$output" ]; then
+			printf '%s\n' "$output" >&2
+		fi
+		if [ "$status" -eq 0 ]; then
+			return 0
+		fi
+		if ! printf '%s\n' "$output" | grep -Eq 'Could not get lock|Unable to acquire.*lock|dpkg frontend lock'; then
+			return "$status"
+		fi
+		if [ "$attempt" -ge "$APT_LOCK_RETRIES" ]; then
+			return "$status"
+		fi
+		attempt=$((attempt + 1))
+		sleep "$APT_LOCK_WAIT_SECONDS"
+	done
+}
+
 command_works() {
 	local name="$1"
 	shift
@@ -52,6 +78,7 @@ check_runtime_dependencies() {
 	need_command git
 	need_command ssh
 	need_command sshd
+	need_command sudo
 
 	run docker version >/dev/null
 	run docker compose version >/dev/null
@@ -60,6 +87,7 @@ check_runtime_dependencies() {
 	run git --version >/dev/null
 	run ssh -V >/dev/null 2>&1 || true
 	run sshd -V >/dev/null 2>&1 || true
+	run sudo -V >/dev/null
 }
 
 detect_deb_arch() {
@@ -171,8 +199,8 @@ install_dependencies() {
 	need_command systemctl
 	detect_os_release
 
-	run apt-get update
-	run apt-get install -y ca-certificates curl gnupg git openssh-server debian-keyring debian-archive-keyring apt-transport-https
+	run_apt_get update
+	run_apt_get install -y ca-certificates curl gnupg git openssh-server sudo debian-keyring debian-archive-keyring apt-transport-https
 
 	if ! command_works docker version || ! command_works docker compose version; then
 		local conflict
@@ -181,14 +209,14 @@ install_dependencies() {
 			die "conflicting Docker package $conflict is installed but Docker is not working; remove or repair it before running bootstrap"
 		fi
 		write_docker_apt_source
-		run apt-get update
-		run apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+		run_apt_get update
+		run_apt_get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 	fi
 
 	if ! command_works caddy version; then
 		write_caddy_apt_source
-		run apt-get update
-		run apt-get install -y caddy
+		run_apt_get update
+		run_apt_get install -y caddy
 	fi
 
 	run systemctl enable --now docker
@@ -222,6 +250,8 @@ ensure_git_user() {
 		return
 	fi
 	ensure_system_user "$GIT_USER" "$GIT_HOME_DIR" "$GIT_SHELL"
+	need_command usermod
+	run usermod --shell "$GIT_SHELL" "$GIT_USER"
 }
 
 ensure_system_user() {
@@ -338,7 +368,7 @@ download_release() {
 }
 
 install_binaries() {
-	local bin_dir_actual source bin
+	local bin_dir_actual source bin target tmp_bin
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	if [ -z "$SOURCE_BIN_DIR" ]; then
 		download_release
@@ -349,9 +379,56 @@ install_binaries() {
 		if [ ! -x "$source/$bin" ]; then
 			die "$source/$bin is required and must be executable"
 		fi
-		run cp "$source/$bin" "$bin_dir_actual/$bin"
-		run chmod 0755 "$bin_dir_actual/$bin"
+		target="$bin_dir_actual/$bin"
+		tmp_bin="$bin_dir_actual/.$bin.tmp.$$"
+		run cp "$source/$bin" "$tmp_bin"
+		run chmod 0755 "$tmp_bin"
+		run mv -f "$tmp_bin" "$target"
 	done
+}
+
+write_git_receive_wrapper() {
+	local wrapper_actual
+	wrapper_actual="$(prefix_path "$GIT_RECEIVE_WRAPPER_PATH")"
+
+	run mkdir -p "$(dirname "$wrapper_actual")"
+	cat > "$wrapper_actual" <<WRAPPER
+#!/bin/sh
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export RHUMBASE_DATA_DIR=$DATA_DIR
+export RHUMBASE_SQLITE_DB_PATH=$DATA_DIR/rhumbase.db
+export RHUMBASE_APPS_DIR=$APPS_DIR
+export RHUMBASE_GIT_HOST=$GIT_HOST
+export RHUMBASE_GIT_USER=$GIT_USER
+export RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
+export RHUMBASE_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
+export RHUMBASE_COMPOSE_RUNNER=docker
+export RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+exec $INSTALL_BIN_DIR/rhumbased git-receive
+WRAPPER
+	run chmod 0755 "$wrapper_actual"
+}
+
+configure_git_sudoers() {
+	if [ "$SKIP_USER" = "1" ]; then
+		return
+	fi
+	local sudoers_actual sudoers_tmp
+	sudoers_actual="$(prefix_path "$SUDOERS_DIR/rhumbase-git-receive")"
+	sudoers_tmp="$(dirname "$sudoers_actual")/.rhumbase-git-receive.tmp.$$"
+
+	run mkdir -p "$(dirname "$sudoers_actual")"
+	cat > "$sudoers_tmp" <<SUDOERS
+Defaults:$GIT_USER env_keep += "SSH_ORIGINAL_COMMAND"
+$GIT_USER ALL=($DAEMON_USER) NOPASSWD: $GIT_RECEIVE_WRAPPER_PATH
+SUDOERS
+	run chmod 0440 "$sudoers_tmp"
+	if command -v visudo >/dev/null 2>&1; then
+		run visudo -cf "$sudoers_tmp"
+	fi
+	run mv -f "$sudoers_tmp" "$sudoers_actual"
+	run chmod 0440 "$sudoers_actual"
 }
 
 write_systemd_unit() {
@@ -401,7 +478,8 @@ reload_systemd() {
 		return
 	fi
 	run systemctl daemon-reload
-	run systemctl enable --now rhumbased.service
+	run systemctl enable rhumbased.service
+	run systemctl restart rhumbased.service
 }
 
 configure_caddy_import() {
@@ -455,11 +533,15 @@ GIT_HOST="${RHUMBASE_GIT_HOST:-server}"
 GIT_USER="${RHUMBASE_GIT_USER:-git}"
 GIT_HOME_DIR="${RHUMBASE_GIT_HOME_DIR:-$DATA_DIR/git}"
 GIT_AUTHORIZED_KEYS_PATH="${RHUMBASE_GIT_AUTHORIZED_KEYS_PATH:-$GIT_HOME_DIR/.ssh/authorized_keys}"
-GIT_SHELL="${RHUMBASE_GIT_SHELL:-/usr/bin/git-shell}"
+GIT_SHELL="${RHUMBASE_GIT_SHELL:-/bin/sh}"
+GIT_RECEIVE_WRAPPER_PATH="${RHUMBASE_GIT_RECEIVE_WRAPPER_PATH:-$INSTALL_BIN_DIR/rhumbase-git-receive}"
 DAEMON_USER="${RHUMBASE_DAEMON_USER:-rhumbase}"
+SUDOERS_DIR="${RHUMBASE_SUDOERS_DIR:-/etc/sudoers.d}"
 SKIP_USER="${RHUMBASE_BOOTSTRAP_SKIP_USER:-0}"
 SKIP_CHOWN="${RHUMBASE_BOOTSTRAP_SKIP_CHOWN:-0}"
 SKIP_SYSTEMD_RELOAD="${RHUMBASE_BOOTSTRAP_SKIP_SYSTEMD_RELOAD:-0}"
+APT_LOCK_RETRIES="${RHUMBASE_BOOTSTRAP_APT_LOCK_RETRIES:-12}"
+APT_LOCK_WAIT_SECONDS="${RHUMBASE_BOOTSTRAP_APT_LOCK_WAIT_SECONDS:-5}"
 INSTALL_DEPS="${RHUMBASE_BOOTSTRAP_INSTALL_DEPS:-}"
 if [ -z "$INSTALL_DEPS" ]; then
 	if [ "$BOOTSTRAP_ROOT" = "/" ]; then
@@ -487,6 +569,8 @@ ensure_git_user
 prepare_directories
 ensure_daemon_docker_access
 install_binaries
+write_git_receive_wrapper
+configure_git_sudoers
 write_systemd_unit
 configure_caddy_import
 verify_installed_binaries

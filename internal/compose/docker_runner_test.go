@@ -187,6 +187,42 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	}
 }
 
+func TestParseServiceStatusesAcceptsJSONArrayAndJSONLines(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+	}{
+		{
+			name:   "array",
+			output: `[{"Service":"web","State":"running"}]`,
+		},
+		{
+			name: "json lines",
+			output: `{"Service":"web","State":"running"}
+{"Name":"worker","State":"exited"}
+`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			statuses, err := parseServiceStatuses(test.output)
+			if err != nil {
+				t.Fatalf("parseServiceStatuses: %v", err)
+			}
+			if len(statuses) == 0 {
+				t.Fatalf("statuses = %#v", statuses)
+			}
+			if statuses[0].Name != "web" || statuses[0].State != "running" {
+				t.Fatalf("first status = %#v", statuses[0])
+			}
+			if test.name == "json lines" && (len(statuses) != 2 || statuses[1].Name != "worker" || statuses[1].State != "exited") {
+				t.Fatalf("json lines statuses = %#v", statuses)
+			}
+		})
+	}
+}
+
 type recordingExecutor struct {
 	Commands []Command
 	Outputs  []string

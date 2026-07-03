@@ -41,7 +41,7 @@ func Default() Config {
 		GitHomeDir:                  filepath.Join(dataDir, "git"),
 		GitHost:                     "server",
 		GitAuthorizedKeysPath:       filepath.Join(dataDir, "git", ".ssh", "authorized_keys"),
-		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
+		GitReceiveCommand:           "sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive",
 		CaddyConfigPath:             "/etc/caddy/rhumbase.caddyfile",
 	}
 }

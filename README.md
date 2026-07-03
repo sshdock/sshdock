@@ -110,11 +110,11 @@ Current MVP state:
 - `rhumbase` persists app and domain metadata in SQLite.
 - `rhumbase apps create` creates a local bare Git repository and installs a `post-receive` hook.
 - Local Git pushes can drive `rhumbased git-hook` and record releases/deployments when `rhumbased` is on `PATH`.
-- `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths.
+- `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths; the installer hands off from the locked-down `git` SSH user to the `rhumbase` daemon user through a narrow sudoers rule.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `rhumbased.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
 - `rhumbase server domain set <domain>` persists the Git host used in app remote output.
-- `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with a forced `rhumbased git-receive` command.
+- `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites the Git receive `authorized_keys` file with the forced receive command.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
 - `rhumbased` starts an SSH dashboard on `RHUMBASE_SSH_LISTEN_ADDR`, authenticates `RHUMBASE_DASHBOARD_USER` with `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`, and renders deployed app status, services, domains, releases, deployments, and logs.

@@ -292,8 +292,12 @@ git
 The bootstrap script creates or validates this user with:
 
 ```bash
-useradd --system --home /var/lib/rhumbase/git --shell /usr/bin/git-shell git
+useradd --system --home /var/lib/rhumbase/git --shell /bin/sh git
 ```
+
+The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Deploy access is still restricted by the generated `authorized_keys` forced command and SSH options.
+
+The bootstrap script also installs `/usr/local/bin/rhumbase-git-receive` and a narrow `/etc/sudoers.d/rhumbase-git-receive` rule so the SSH-only `git` account can hand off Git receive work to the `rhumbase` daemon user. The sudoers rule preserves `SSH_ORIGINAL_COMMAND`, which is how Rhumbase recovers the requested `<app>.git` path.
 
 Deploy keys are managed on the server with:
 
@@ -315,13 +319,13 @@ The installer keeps `/var/lib/rhumbase/git`, `/var/lib/rhumbase/git/.ssh`, and `
 Each rendered key is restricted with:
 
 ```text
-command="exec /usr/local/bin/rhumbased git-receive",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
 The Git SSH entry point should run a forced command equivalent to:
 
 ```text
-rhumbased git-receive
+sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive
 ```
 
 `rhumbased git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, creates the app if needed, and then streams the push into the app's bare repository.

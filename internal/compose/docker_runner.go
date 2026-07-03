@@ -3,7 +3,9 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -285,17 +287,32 @@ func prunableReleases(successfulReleaseSHAs []string, keepRecent int) []string {
 }
 
 func parseServiceStatuses(output string) ([]ServiceStatus, error) {
-	if strings.TrimSpace(output) == "" {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
 		return nil, nil
 	}
 
-	var rows []struct {
+	type statusRow struct {
 		Service string `json:"Service"`
 		Name    string `json:"Name"`
 		State   string `json:"State"`
 	}
-	if err := json.Unmarshal([]byte(output), &rows); err != nil {
-		return nil, err
+	var rows []statusRow
+	if strings.HasPrefix(trimmed, "[") {
+		if err := json.Unmarshal([]byte(trimmed), &rows); err != nil {
+			return nil, err
+		}
+	} else {
+		decoder := json.NewDecoder(strings.NewReader(trimmed))
+		for {
+			var row statusRow
+			if err := decoder.Decode(&row); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			rows = append(rows, row)
+		}
 	}
 
 	statuses := make([]ServiceStatus, 0, len(rows))

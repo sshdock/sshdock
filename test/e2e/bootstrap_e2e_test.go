@@ -33,6 +33,10 @@ exit 0
 printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
+	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
+printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
 printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
@@ -47,6 +51,14 @@ exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
 printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
+printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
+printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 
@@ -65,9 +77,34 @@ exit 0
 
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase"))
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbased"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-git-receive"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/apps"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/dashboard"))
+
+	wrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-git-receive"))
+	for _, want := range []string{
+		"export RHUMBASE_DATA_DIR=/var/lib/rhumbase",
+		"export RHUMBASE_APPS_DIR=/var/lib/rhumbase/apps",
+		"export RHUMBASE_COMPOSE_RUNNER=docker",
+		"exec /usr/local/bin/rhumbased git-receive",
+	} {
+		if !strings.Contains(wrapper, want) {
+			t.Fatalf("git receive wrapper missing %q:\n%s", want, wrapper)
+		}
+	}
+
+	sudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-git-receive")
+	sudoers := readFile(t, sudoersPath)
+	for _, want := range []string{
+		`Defaults:git env_keep += "SSH_ORIGINAL_COMMAND"`,
+		"git ALL=(rhumbase) NOPASSWD: /usr/local/bin/rhumbase-git-receive",
+	} {
+		if !strings.Contains(sudoers, want) {
+			t.Fatalf("sudoers missing %q:\n%s", want, sudoers)
+		}
+	}
+	assertFileMode(t, sudoersPath, 0o440)
 
 	unitPath := filepath.Join(installRoot, "etc/systemd/system/rhumbased.service")
 	unit := readFile(t, unitPath)
@@ -97,10 +134,14 @@ exit 0
 		"docker compose version",
 		"caddy version",
 		"systemctl --version",
+		"sudo -V",
 		"useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase",
-		"useradd --system --home /var/lib/rhumbase/git --shell /usr/bin/git-shell git",
+		"useradd --system --home /var/lib/rhumbase/git --shell /bin/sh git",
+		"usermod --shell /bin/sh git",
+		"visudo -cf ",
 		"systemctl daemon-reload",
-		"systemctl enable --now rhumbased.service",
+		"systemctl enable rhumbased.service",
+		"systemctl restart rhumbased.service",
 	} {
 		if !strings.Contains(fakeLog, want) {
 			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
@@ -156,7 +197,7 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 	fakeLog := readFile(t, fakeLogPath)
 	for _, want := range []string{
 		"apt-get update",
-		"apt-get install -y ca-certificates curl gnupg git openssh-server debian-keyring debian-archive-keyring apt-transport-https",
+		"apt-get install -y ca-certificates curl gnupg git openssh-server sudo debian-keyring debian-archive-keyring apt-transport-https",
 		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
 		"chmod a+r " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
 		"apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
@@ -168,6 +209,8 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 		"systemctl enable --now ssh",
 		"systemctl enable --now caddy",
 		"usermod -aG docker rhumbase",
+		"usermod --shell /bin/sh git",
+		"visudo -cf ",
 		"chown -R rhumbase:rhumbase " + filepath.Join(installRoot, "var/lib/rhumbase"),
 		"chown -R git:git " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
 		"chmod 0755 " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
@@ -245,7 +288,7 @@ func TestBootstrapSkipsDependencyInstallWhenRuntimeAlreadyWorks(t *testing.T) {
 		t.Fatalf("bootstrap installed Caddy even though runtime worked:\n%s", fakeLog)
 	}
 	for _, want := range []string{
-		"apt-get install -y ca-certificates curl gnupg git openssh-server debian-keyring debian-archive-keyring apt-transport-https",
+		"apt-get install -y ca-certificates curl gnupg git openssh-server sudo debian-keyring debian-archive-keyring apt-transport-https",
 		"docker version",
 		"docker compose version",
 		"caddy version",
@@ -253,6 +296,53 @@ func TestBootstrapSkipsDependencyInstallWhenRuntimeAlreadyWorks(t *testing.T) {
 		if !strings.Contains(fakeLog, want) {
 			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
 		}
+	}
+}
+
+func TestBootstrapRetriesAptLocks(t *testing.T) {
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	sourceBinDir := buildBootstrapSourceBinaries(t, root, tmp)
+
+	fakeBinDir := filepath.Join(tmp, "fake-bin")
+	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
+	writeDependencyInstallFakeCommands(t, fakeBinDir)
+	writeFakeCommand(t, fakeBinDir, "apt-get", `#!/bin/sh
+printf 'apt-get %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+lock_marker="$(dirname "$0")/apt-lock-seen"
+if [ ! -f "$lock_marker" ]; then
+	touch "$lock_marker"
+	printf 'E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 123 (unattended-upgr)\n' >&2
+	printf 'E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?\n' >&2
+	exit 100
+fi
+case " $* " in
+	*" docker-ce "*)
+		touch "$(dirname "$0")/docker-installed"
+		;;
+	*" caddy "*)
+		touch "$(dirname "$0")/caddy-installed"
+		;;
+esac
+exit 0
+`)
+
+	env := append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RHUMBASE_TAG=test-local",
+		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
+		"RHUMBASE_BOOTSTRAP_APT_LOCK_WAIT_SECONDS=0",
+		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
+	)
+
+	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
+
+	fakeLog := readFile(t, fakeLogPath)
+	if count := strings.Count(fakeLog, "apt-get update"); count < 2 {
+		t.Fatalf("apt-get update attempts = %d, want retry:\n%s", count, fakeLog)
 	}
 }
 
@@ -284,6 +374,16 @@ func TestBootstrapRejectsUnsupportedInstallOS(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "unsupported OS fedora") {
 		t.Fatalf("bootstrap unsupported OS output = %s", output)
+	}
+}
+
+func TestBootstrapUsesAtomicBinaryReplacement(t *testing.T) {
+	script := readFile(t, filepath.Join("..", "..", "scripts/bootstrap.sh"))
+	if !strings.Contains(script, `mv -f "$tmp_bin" "$target"`) {
+		t.Fatalf("bootstrap should replace binaries with atomic mv to avoid ETXTBSY:\n%s", script)
+	}
+	if strings.Contains(script, `cp "$source/$bin" "$bin_dir_actual/$bin"`) {
+		t.Fatalf("bootstrap still copies directly over installed binaries:\n%s", script)
 	}
 }
 
@@ -409,6 +509,10 @@ exit 0
 printf 'sshd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
+	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
+printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
 printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
@@ -427,6 +531,10 @@ exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
 printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
+printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "chown", `#!/bin/sh

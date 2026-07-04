@@ -165,7 +165,6 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		"RHUMBASE_DASHBOARD_COMMAND="+dashboardCommand,
 		"RHUMBASE_COMPOSE_RUNNER="+composeRunner,
 	)
-	runCommand(t, root, cliEnv, filepath.Join(installBinDir, "rhumbase"), "server", "domain", "set", "127.0.0.1")
 	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "rhumbase"), "ssh-keys", "add", "admin")
 
 	hostKeyPath := filepath.Join(tmp, "host_ed25519")

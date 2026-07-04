@@ -38,7 +38,7 @@ func TestCLIServerDomainAndSSHKeysEndToEnd(t *testing.T) {
 		"RHUMBASE_GIT_RECEIVE_COMMAND=/usr/local/bin/rhumbased git-receive",
 	)
 
-	runCommand(t, root, env, rhumbasePath, "server", "domain", "set", "rhumbase.example.com")
+	runCommand(t, root, env, rhumbasePath, "server", "domain", "set", "example.com")
 	output := runCommand(t, root, env, rhumbasePath, "apps", "create", "my-app")
 	if !strings.Contains(output, "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
 		t.Fatalf("apps create output missing persisted host:\n%s", output)

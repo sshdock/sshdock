@@ -64,10 +64,10 @@ sudo RHUMBASE_TAG=v0.1.0 bash bootstrap.sh
 sudo rhumbase diagnostics
 ```
 
-Configure the server Git host and authorize your key:
+Configure the server base domain and authorize your key:
 
 ```bash
-sudo rhumbase server domain set rhumbase.example.com
+sudo rhumbase server domain set example.com
 cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
 ```
 
@@ -99,7 +99,9 @@ Attach a domain:
 rhumbase domains attach my-app web example.com --port 3000
 ```
 
-For v0, Caddy runs on the host and proxies to a loopback-published Compose port. The app Compose file must publish the selected service on `127.0.0.1:<port>`, and the `--port` value is that host port:
+Manual domain attach remains the override/fallback path. With a base domain configured, Rhumbase automatically creates `<app>.<base-domain>` after a successful deploy when it can safely infer one public Compose service and one TCP host-published port.
+
+For v0, Caddy runs on the host and proxies to a loopback-published Compose port. App Compose files should publish the routed service on `127.0.0.1:<port>`. Auto-routing can infer short port forms such as `127.0.0.1:3000:80` and `3000:80`, plus long port form with `published` and `target`:
 
 ```yaml
 services:
@@ -117,10 +119,11 @@ Current MVP state:
 - `rhumbased git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths; the installer hands off from the locked-down `git` SSH user to the `rhumbase` daemon user through a narrow sudoers rule.
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `rhumbased.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
-- `rhumbase server domain set <domain>` persists the Git host used in app remote output.
+- `rhumbase server domain set <domain>` persists the base domain, derives the control host as `rhumbase.<domain>`, and makes app remote output use `git@rhumbase.<domain>:<app>.git`.
 - `rhumbase ssh-keys add <name>`, `rhumbase ssh-keys list`, and `rhumbase ssh-keys remove <name>` manage deploy/dashboard SSH keys and rewrite both Git receive and dashboard `authorized_keys` files with forced commands.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
-- `rhumbase domains attach <app> <service> <domain> --port <host-port>`, `rhumbase domains list <app>`, and `rhumbase domains detach <app> <domain>` persist domain state, rebuild the generated Caddyfile from SQLite, validate it, reload Caddy, and record domain/router events.
+- Successful deploys auto-route `<app>.<base-domain>` when the app name is DNS-label-safe and Compose exposes exactly one inferred TCP host port. Unsafe inference records `route.auto_skipped`; successful routing records `route.auto_attached` and Caddy reload events.
+- `rhumbase domains attach <app> <service> <domain> --port <host-port>`, `rhumbase domains list <app>`, and `rhumbase domains detach <app> <domain>` persist domain state, rebuild the generated Caddyfile from SQLite, validate it, reload Caddy, and record domain/router events for manual overrides.
 - `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive column tables, K9s-style command tips, app filtering, detail tabs including Events, log scrolling/follow, refresh, jump keys, and app lifecycle actions when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
 - TUI app actions cover restart app, restart service, redeploy latest release, rollback, attach domain, detach domain, and volume-preserving app removal through the same backend as the CLI.
 - Server setup, diagnostics, app creation, SSH key management, and binary/version commands stay CLI-only in v0.
@@ -155,7 +158,7 @@ The v0 Git URL format is intentionally flat:
 git@<server-domain>:<app>.git
 ```
 
-Namespace paths such as `git@<server-domain>:<owner>/<repo>.git` are future work because they require owner-aware SSH key authorization.
+With `rhumbase server domain set example.com`, the control host is `rhumbase.example.com` and the default app host is `<app>.example.com`. Namespace paths such as `git@<server-domain>:<owner>/<repo>.git` are future work because they require owner-aware SSH key authorization.
 
 Target result when runtime milestones are complete:
 

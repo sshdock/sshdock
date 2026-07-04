@@ -12,13 +12,13 @@ sudo RHUMBASE_TAG=v0.1.0 bash bootstrap.sh
 sudo rhumbase diagnostics
 
 cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
-sudo rhumbase server domain set rhumbase.example.com
+sudo rhumbase server domain set example.com
 
 git remote add rhumbase git@rhumbase.example.com:my-app.git
 git push rhumbase main
 ```
 
-Replace `v0.1.0` with the release tag you want to install. Replace `rhumbase.example.com` with a real domain that points at the server, or use the server IP while testing the Git push path.
+Replace `v0.1.0` with the release tag you want to install. Replace `example.com` with a real base domain. Point `rhumbase.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
 
 ## OS Assumptions
 
@@ -161,7 +161,7 @@ import /etc/caddy/rhumbase.caddyfile
 
 If `/etc/caddy/Caddyfile` already exists and lacks the import, the installer writes a one-time backup beside it before appending the import.
 
-For v0, Rhumbase assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`, and `rhumbase domains attach ... --port <port>` uses that host port as the upstream:
+For v0, Rhumbase assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`. With a base domain configured, successful deploys automatically create `<app>.<base-domain>` when Rhumbase can infer one public Compose service and one TCP host-published port:
 
 ```yaml
 services:
@@ -179,6 +179,8 @@ reverse_proxy 127.0.0.1:<port>
 
 `rhumbase domains attach` writes the generated config to `RHUMBASE_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads Caddy with `caddy reload --config <config-path>`.
 
+Manual `rhumbase domains attach <app> <service> <domain> --port <port>` remains available for custom domains, ambiguous Compose files, and apps that intentionally do not use the default `<app>.<base-domain>` route.
+
 Local tests may set:
 
 ```bash
@@ -191,6 +193,7 @@ When `RHUMBASE_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a m
 DNS and HTTPS limits:
 
 - Public DNS must point the domain at the server before normal public HTTP routing works.
+- For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `rhumbase.example.com A <server-ip>`.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
 - No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through a `dashboard` user forced command.
@@ -332,11 +335,11 @@ The bootstrap script also installs `/usr/local/bin/rhumbase-git-receive` and a n
 Deploy keys are managed on the server with:
 
 ```bash
-sudo rhumbase server domain set rhumbase.example.com
+sudo rhumbase server domain set example.com
 cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
 ```
 
-`rhumbase server domain set` stores the Git host in SQLite. App remote output prefers the persisted host over `RHUMBASE_GIT_HOST` after it is set.
+`rhumbase server domain set` stores the base domain in SQLite. App remote output derives `git@rhumbase.<base-domain>:<app>.git`; app URLs derive as `https://<app>.<base-domain>` after the first successful deploy creates the route.
 
 `rhumbase ssh-keys add` stores the key in SQLite and rewrites:
 

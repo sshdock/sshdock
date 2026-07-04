@@ -37,10 +37,10 @@ The diagnostics command checks config, runtime directories, Docker, Docker Compo
 
 ### `rhumbase server domain set <domain>`
 
-Set the Git host used in printed app remotes and Git push setup instructions.
+Set the canonical v0 base domain. Rhumbase derives the Git/dashboard control host as `rhumbase.<domain>` and default app hosts as `<app>.<domain>`.
 
 ```bash
-sudo rhumbase server domain set rhumbase.example.com
+sudo rhumbase server domain set example.com
 ```
 
 After this is set, app remotes use:
@@ -48,6 +48,8 @@ After this is set, app remotes use:
 ```text
 git@rhumbase.example.com:<app>.git
 ```
+
+Successful deploys also try to create `<app>.example.com` automatically when the Compose file exposes one safely inferred TCP host-published port. Existing legacy stored values that are already Git hosts continue to work for remote output.
 
 ### `rhumbase ssh-keys add <name>`
 
@@ -94,6 +96,12 @@ Output includes:
 ```bash
 git remote add rhumbase git@<server-domain>:my-app.git
 git push rhumbase main
+```
+
+When a base domain is configured, output also includes the expected default URL after the first successful deploy:
+
+```text
+default URL after first deploy: https://my-app.example.com
 ```
 
 Manual app creation remains useful for scripts and debugging. The default v0 user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
@@ -232,6 +240,14 @@ services:
 
 The command persists the domain, rebuilds the generated Caddyfile from SQLite state, validates it, reloads Caddy, and records domain/router events.
 
+With a base domain configured, this command is the manual override/fallback path. Deploy-time auto-routing creates `<app>.<base-domain>` only when the app name is DNS-label-safe and Compose inference is safe:
+
+- service `web` wins if it has exactly one TCP host-published port.
+- otherwise, the only service with exactly one TCP host-published port wins.
+- supported short forms include `127.0.0.1:3000:80` and `3000:80`.
+- supported long form includes `published: 3000` and `target: 80`.
+- ambiguous or missing published ports do not fail deploy; Rhumbase records `route.auto_skipped` with manual attach guidance.
+
 ### `rhumbase domains list <app>`
 
 List routed domains for an app.
@@ -350,7 +366,7 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `RHUMBASE_SQLITE_DB_PATH`: SQLite database path. Default: `$RHUMBASE_DATA_DIR/rhumbase.db`.
 - `RHUMBASE_APPS_DIR`: app repos and worktrees. Default: `$RHUMBASE_DATA_DIR/apps`.
 - `RHUMBASE_NODE_ID`: assigned node ID for app metadata. Default: `local`.
-- `RHUMBASE_GIT_HOST`: fallback Git host before `rhumbase server domain set`.
+- `RHUMBASE_GIT_HOST`: fallback Git host before `rhumbase server domain set`; new persisted config derives the control host from the base domain.
 - `RHUMBASE_GIT_AUTHORIZED_KEYS_PATH`: Git receive `authorized_keys` path.
 - `RHUMBASE_GIT_RECEIVE_COMMAND`: forced command for Git deploy keys.
 - `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`: dashboard `authorized_keys` path.

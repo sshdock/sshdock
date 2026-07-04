@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,16 @@ import (
 
 type DashboardRefreshFunc func(context.Context) (DashboardSnapshot, error)
 
+type DashboardActions interface {
+	RestartApp(appName string) error
+	RestartService(appName string, serviceName string) error
+	RedeployApp(appName string) error
+	RollbackApp(appName string, releaseID string) error
+	AttachDomain(appName string, serviceName string, domainName string, port int) error
+	DetachDomain(appName string, domainName string) error
+	RemoveApp(appName string) error
+}
+
 type dashboardFocus int
 
 const (
@@ -24,6 +35,7 @@ const (
 )
 
 const dashboardDualPaneMinWidth = 82
+const dashboardFollowInterval = 2 * time.Second
 
 func (f dashboardFocus) String() string {
 	switch f {
@@ -44,9 +56,47 @@ type dashboardLayout struct {
 	compactDetailInnerHeight int
 }
 
+type dashboardMode int
+
+const (
+	dashboardModeNormal dashboardMode = iota
+	dashboardModeActionMenu
+	dashboardModeActionChoice
+	dashboardModeActionInput
+	dashboardModeActionConfirm
+)
+
+type dashboardActionKind int
+
+const (
+	dashboardActionRestartApp dashboardActionKind = iota
+	dashboardActionRestartService
+	dashboardActionRedeploy
+	dashboardActionRollback
+	dashboardActionAttachDomain
+	dashboardActionDetachDomain
+	dashboardActionRemoveApp
+)
+
+type dashboardActionItem struct {
+	label string
+	kind  dashboardActionKind
+}
+
+var dashboardActionItems = []dashboardActionItem{
+	{label: "restart app", kind: dashboardActionRestartApp},
+	{label: "restart service", kind: dashboardActionRestartService},
+	{label: "redeploy latest", kind: dashboardActionRedeploy},
+	{label: "rollback release", kind: dashboardActionRollback},
+	{label: "attach domain", kind: dashboardActionAttachDomain},
+	{label: "detach domain", kind: dashboardActionDetachDomain},
+	{label: "remove app", kind: dashboardActionRemoveApp},
+}
+
 type InteractiveDashboardModel struct {
 	snapshot DashboardSnapshot
 	refresh  DashboardRefreshFunc
+	actions  DashboardActions
 
 	selected  int
 	tab       int
@@ -54,16 +104,34 @@ type InteractiveDashboardModel struct {
 	height    int
 	showHelp  bool
 	err       error
+	message   string
 	logs      viewport.Model
 	filter    textinput.Model
 	filtering bool
 	focus     dashboardFocus
+
+	mode          dashboardMode
+	actionIndex   int
+	choiceIndex   int
+	pendingAction dashboardActionKind
+	actionInput   textinput.Model
+	followLogs    bool
 }
 
 type dashboardRefreshMsg struct {
 	snapshot DashboardSnapshot
 	err      error
+	status   string
+	follow   bool
 }
+
+type dashboardActionMsg struct {
+	snapshot DashboardSnapshot
+	err      error
+	status   string
+}
+
+type dashboardFollowTickMsg struct{}
 
 var dashboardTabs = []string{"Summary", "Services", "Routes", "Releases", "Deploys", "Events", "Logs"}
 
@@ -92,23 +160,39 @@ func NewInteractiveDashboardModel(snapshot DashboardSnapshot, refresh DashboardR
 	filter.CharLimit = 80
 	filter.Width = 24
 
+	actionInput := textinput.New()
+	actionInput.Prompt = "> "
+	actionInput.CharLimit = 160
+	actionInput.Width = 48
+
 	model := InteractiveDashboardModel{
-		snapshot: snapshot,
-		refresh:  refresh,
-		width:    100,
-		height:   28,
-		showHelp: false,
-		logs:     viewport.New(80, 8),
-		filter:   filter,
-		focus:    dashboardFocusApps,
+		snapshot:    snapshot,
+		refresh:     refresh,
+		width:       100,
+		height:      28,
+		showHelp:    false,
+		logs:        viewport.New(80, 8),
+		filter:      filter,
+		focus:       dashboardFocusApps,
+		actionInput: actionInput,
 	}
 	model.syncLogViewport()
 	return model
 }
 
+func NewInteractiveDashboardModelWithActions(snapshot DashboardSnapshot, refresh DashboardRefreshFunc, actions DashboardActions) InteractiveDashboardModel {
+	model := NewInteractiveDashboardModel(snapshot, refresh)
+	model.actions = actions
+	return model
+}
+
 func RunInteractiveDashboard(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, input io.Reader, output io.Writer) error {
+	return RunInteractiveDashboardWithActions(ctx, snapshot, refresh, nil, input, output)
+}
+
+func RunInteractiveDashboardWithActions(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, actions DashboardActions, input io.Reader, output io.Writer) error {
 	program := tea.NewProgram(
-		NewInteractiveDashboardModel(snapshot, refresh),
+		NewInteractiveDashboardModelWithActions(snapshot, refresh, actions),
 		tea.WithContext(ctx),
 		tea.WithInput(input),
 		tea.WithOutput(output),
@@ -132,6 +216,9 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncLogViewport()
 		return m, nil
 	case tea.KeyMsg:
+		if m.mode != dashboardModeNormal {
+			return m.updateAction(msg)
+		}
 		if m.filtering {
 			return m.updateFilter(msg)
 		}
@@ -148,9 +235,11 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.jumpSelection(len(m.filteredAppOrder()) - 1)
 		case "tab":
 			m.tab = (m.tab + 1) % len(dashboardTabs)
+			m.disableFollowOutsideLogs()
 			m.logs.GotoTop()
 		case "shift+tab":
 			m.tab = (m.tab + len(dashboardTabs) - 1) % len(dashboardTabs)
+			m.disableFollowOutsideLogs()
 			m.logs.GotoTop()
 		case "enter":
 			m.focus = dashboardFocusDetail
@@ -166,14 +255,26 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filtering = true
 			m.focus = dashboardFocusApps
 			return m, m.filter.Focus()
+		case "a":
+			m.openActionMenu()
 		case "r":
 			if m.refresh == nil {
 				return m, nil
 			}
 			return m, func() tea.Msg {
 				snapshot, err := m.refresh(context.Background())
-				return dashboardRefreshMsg{snapshot: snapshot, err: err}
+				return dashboardRefreshMsg{snapshot: snapshot, err: err, status: "refreshed"}
 			}
+		case "f":
+			if dashboardTabs[m.tab] != "Logs" {
+				return m, nil
+			}
+			m.followLogs = !m.followLogs
+			if m.followLogs {
+				m.message = "logs follow on"
+				return m, dashboardFollowTickCmd()
+			}
+			m.message = "logs follow off"
 		}
 		m.syncLogViewport()
 		return m, nil
@@ -182,13 +283,35 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
-		selectedID, _ := m.selectedAppID()
-		m.snapshot = msg.snapshot
-		m.selected = m.indexForAppID(selectedID)
+		m.applySnapshot(msg.snapshot)
 		m.err = nil
-		m.clampSelection()
-		m.syncLogViewport()
+		if msg.status != "" {
+			m.message = msg.status
+		}
+		if m.followLogs && dashboardTabs[m.tab] == "Logs" {
+			return m, dashboardFollowTickCmd()
+		}
 		return m, nil
+	case dashboardActionMsg:
+		m.mode = dashboardModeNormal
+		m.actionInput.Blur()
+		m.actionInput.SetValue("")
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.applySnapshot(msg.snapshot)
+		m.err = nil
+		m.message = msg.status
+		return m, nil
+	case dashboardFollowTickMsg:
+		if !m.followLogs || dashboardTabs[m.tab] != "Logs" || m.refresh == nil {
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			snapshot, err := m.refresh(context.Background())
+			return dashboardRefreshMsg{snapshot: snapshot, err: err, status: "logs refreshed", follow: true}
+		}
 	default:
 		var cmd tea.Cmd
 		m.logs, cmd = m.logs.Update(msg)
@@ -232,6 +355,298 @@ func (m InteractiveDashboardModel) updateFilter(msg tea.KeyMsg) (tea.Model, tea.
 		m.syncLogViewport()
 	}
 	return m, cmd
+}
+
+func (m InteractiveDashboardModel) updateAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc", "q":
+		m.closeAction()
+		return m, nil
+	}
+
+	switch m.mode {
+	case dashboardModeActionMenu:
+		return m.updateActionMenu(msg)
+	case dashboardModeActionChoice:
+		return m.updateActionChoice(msg)
+	case dashboardModeActionInput, dashboardModeActionConfirm:
+		return m.updateActionInput(msg)
+	default:
+		return m, nil
+	}
+}
+
+func (m InteractiveDashboardModel) updateActionMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "down", "j":
+		m.actionIndex = minInt(len(dashboardActionItems)-1, m.actionIndex+1)
+	case "up", "k":
+		m.actionIndex = maxInt(0, m.actionIndex-1)
+	case "enter":
+		return m.selectAction()
+	}
+	return m, nil
+}
+
+func (m InteractiveDashboardModel) updateActionChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	choices := m.actionChoices()
+	switch msg.String() {
+	case "down", "j":
+		m.choiceIndex = minInt(len(choices)-1, m.choiceIndex+1)
+	case "up", "k":
+		m.choiceIndex = maxInt(0, m.choiceIndex-1)
+	case "enter":
+		return m.executeSelectedChoice(choices)
+	}
+	return m, nil
+}
+
+func (m InteractiveDashboardModel) updateActionInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "enter" {
+		if m.mode == dashboardModeActionConfirm {
+			return m.executeRemoveConfirmation()
+		}
+		return m.executeAttachInput()
+	}
+
+	var cmd tea.Cmd
+	m.actionInput, cmd = m.actionInput.Update(msg)
+	return m, cmd
+}
+
+func (m *InteractiveDashboardModel) openActionMenu() {
+	if m.actions == nil {
+		m.err = fmt.Errorf("dashboard actions are not configured")
+		return
+	}
+	if _, ok := m.selectedAppID(); !ok {
+		m.err = fmt.Errorf("no app selected")
+		return
+	}
+	m.err = nil
+	m.message = ""
+	m.mode = dashboardModeActionMenu
+	m.actionIndex = 0
+	m.choiceIndex = 0
+	m.focus = dashboardFocusDetail
+	m.actionInput.Blur()
+	m.actionInput.SetValue("")
+}
+
+func (m *InteractiveDashboardModel) closeAction() {
+	m.mode = dashboardModeNormal
+	m.err = nil
+	m.actionInput.Blur()
+	m.actionInput.SetValue("")
+}
+
+func (m InteractiveDashboardModel) selectAction() (tea.Model, tea.Cmd) {
+	if m.actionIndex < 0 || m.actionIndex >= len(dashboardActionItems) {
+		return m, nil
+	}
+	item := dashboardActionItems[m.actionIndex]
+	m.pendingAction = item.kind
+	m.choiceIndex = 0
+	m.err = nil
+	m.message = ""
+
+	switch item.kind {
+	case dashboardActionRestartApp, dashboardActionRedeploy:
+		return m, m.executeAction(item.kind, "", "", 0)
+	case dashboardActionRestartService, dashboardActionRollback, dashboardActionDetachDomain:
+		if len(m.actionChoices()) == 0 {
+			m.err = fmt.Errorf("no choices available for %s", item.label)
+			return m, nil
+		}
+		m.mode = dashboardModeActionChoice
+		return m, nil
+	case dashboardActionAttachDomain:
+		m.mode = dashboardModeActionInput
+		m.actionInput.Placeholder = "web app.example.com 3000"
+		m.actionInput.SetValue("")
+		return m, m.actionInput.Focus()
+	case dashboardActionRemoveApp:
+		m.mode = dashboardModeActionConfirm
+		m.actionInput.Placeholder = "type app name exactly"
+		m.actionInput.SetValue("")
+		return m, m.actionInput.Focus()
+	default:
+		return m, nil
+	}
+}
+
+type dashboardActionChoice struct {
+	label string
+	value string
+}
+
+func (m InteractiveDashboardModel) actionChoices() []dashboardActionChoice {
+	selected, ok := m.selectedApp()
+	if !ok {
+		return nil
+	}
+	switch m.pendingAction {
+	case dashboardActionRestartService:
+		services := selected.Detail.Services()
+		choices := make([]dashboardActionChoice, 0, len(services))
+		for _, service := range services {
+			choices = append(choices, dashboardActionChoice{
+				label: service.Name + " " + valueOrDash(service.State),
+				value: service.Name,
+			})
+		}
+		return choices
+	case dashboardActionRollback:
+		releases := selected.Detail.Releases()
+		choices := make([]dashboardActionChoice, 0, len(releases))
+		for _, release := range releases {
+			choices = append(choices, dashboardActionChoice{
+				label: release.ID + " " + valueOrDash(release.Status),
+				value: release.ID,
+			})
+		}
+		return choices
+	case dashboardActionDetachDomain:
+		domains := selected.Detail.Domains()
+		choices := make([]dashboardActionChoice, 0, len(domains))
+		for _, domain := range domains {
+			choices = append(choices, dashboardActionChoice{
+				label: domain.DomainName + " -> " + valueOrDash(domain.Target),
+				value: domain.DomainName,
+			})
+		}
+		return choices
+	default:
+		return nil
+	}
+}
+
+func (m InteractiveDashboardModel) executeSelectedChoice(choices []dashboardActionChoice) (tea.Model, tea.Cmd) {
+	if len(choices) == 0 {
+		m.err = fmt.Errorf("no choices available")
+		return m, nil
+	}
+	if m.choiceIndex < 0 {
+		m.choiceIndex = 0
+	}
+	if m.choiceIndex >= len(choices) {
+		m.choiceIndex = len(choices) - 1
+	}
+	choice := choices[m.choiceIndex]
+	switch m.pendingAction {
+	case dashboardActionRestartService:
+		return m, m.executeAction(m.pendingAction, choice.value, "", 0)
+	case dashboardActionRollback:
+		return m, m.executeAction(m.pendingAction, choice.value, "", 0)
+	case dashboardActionDetachDomain:
+		return m, m.executeAction(m.pendingAction, "", choice.value, 0)
+	default:
+		return m, nil
+	}
+}
+
+func (m InteractiveDashboardModel) executeAttachInput() (tea.Model, tea.Cmd) {
+	parts := strings.Fields(m.actionInput.Value())
+	if len(parts) != 3 {
+		m.err = fmt.Errorf("attach domain expects service domain port")
+		return m, nil
+	}
+	port, err := strconv.Atoi(parts[2])
+	if err != nil || port <= 0 {
+		m.err = fmt.Errorf("port must be a positive integer")
+		return m, nil
+	}
+	return m, m.executeAction(dashboardActionAttachDomain, parts[0], parts[1], port)
+}
+
+func (m InteractiveDashboardModel) executeRemoveConfirmation() (tea.Model, tea.Cmd) {
+	appName, ok := m.selectedAppID()
+	if !ok {
+		m.err = fmt.Errorf("no app selected")
+		return m, nil
+	}
+	if strings.TrimSpace(m.actionInput.Value()) != appName {
+		m.err = fmt.Errorf("confirmation did not match")
+		m.actionInput.SetValue("")
+		return m, nil
+	}
+	return m, m.executeAction(dashboardActionRemoveApp, "", "", 0)
+}
+
+func (m InteractiveDashboardModel) executeAction(kind dashboardActionKind, primary string, secondary string, port int) tea.Cmd {
+	appName, ok := m.selectedAppID()
+	if !ok {
+		return func() tea.Msg {
+			return dashboardActionMsg{err: fmt.Errorf("no app selected")}
+		}
+	}
+	actions := m.actions
+	refresh := m.refresh
+	current := m.snapshot
+	status := dashboardActionStatus(kind, primary, secondary)
+
+	return func() tea.Msg {
+		if actions == nil {
+			return dashboardActionMsg{err: fmt.Errorf("dashboard actions are not configured")}
+		}
+		var err error
+		switch kind {
+		case dashboardActionRestartApp:
+			err = actions.RestartApp(appName)
+		case dashboardActionRestartService:
+			err = actions.RestartService(appName, primary)
+		case dashboardActionRedeploy:
+			err = actions.RedeployApp(appName)
+		case dashboardActionRollback:
+			err = actions.RollbackApp(appName, primary)
+		case dashboardActionAttachDomain:
+			err = actions.AttachDomain(appName, primary, secondary, port)
+		case dashboardActionDetachDomain:
+			err = actions.DetachDomain(appName, secondary)
+		case dashboardActionRemoveApp:
+			err = actions.RemoveApp(appName)
+		}
+		if err != nil {
+			return dashboardActionMsg{err: err}
+		}
+		if refresh == nil {
+			return dashboardActionMsg{snapshot: current, status: status}
+		}
+		snapshot, err := refresh(context.Background())
+		if err != nil {
+			return dashboardActionMsg{err: err}
+		}
+		return dashboardActionMsg{snapshot: snapshot, status: status}
+	}
+}
+
+func dashboardActionStatus(kind dashboardActionKind, primary string, secondary string) string {
+	switch kind {
+	case dashboardActionRestartApp:
+		return "restart app complete"
+	case dashboardActionRestartService:
+		return "restart service " + valueOrDash(primary) + " complete"
+	case dashboardActionRedeploy:
+		return "redeploy latest complete"
+	case dashboardActionRollback:
+		return "rollback " + valueOrDash(primary) + " complete"
+	case dashboardActionAttachDomain:
+		return "attach " + valueOrDash(secondary) + " complete"
+	case dashboardActionDetachDomain:
+		return "detach " + valueOrDash(secondary) + " complete"
+	case dashboardActionRemoveApp:
+		return "remove app complete"
+	default:
+		return "action complete"
+	}
+}
+
+func dashboardFollowTickCmd() tea.Cmd {
+	return tea.Tick(dashboardFollowInterval, func(time.Time) tea.Msg {
+		return dashboardFollowTickMsg{}
+	})
 }
 
 func (m InteractiveDashboardModel) LogOffset() int {
@@ -292,6 +707,12 @@ func (m InteractiveDashboardModel) titleBar() string {
 		selected = fmt.Sprintf("%s %s on %s", metadata.Name, metadata.Status, metadata.NodeID)
 	}
 	line := fmt.Sprintf("Rhumbase Dashboard | %s | %s", selected, dashboardTabs[m.tab])
+	if m.followLogs {
+		line = fmt.Sprintf("%s | follow on", line)
+	}
+	if m.message != "" {
+		line = fmt.Sprintf("%s | %s", line, m.message)
+	}
 	if m.err != nil {
 		line = fmt.Sprintf("%s | %s", line, m.err.Error())
 	}
@@ -315,8 +736,20 @@ func (m InteractiveDashboardModel) statusBar() string {
 		line := strings.Join([]string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}, " | ")
 		return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
 	}
+	if m.mode != dashboardModeNormal {
+		parts := []string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}
+		if m.err != nil {
+			parts = append(parts, "error: "+m.err.Error())
+		}
+		line := strings.Join(parts, " | ")
+		return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
+	}
 	if m.focus == dashboardFocusDetail || dashboardTabs[m.tab] == "Logs" {
-		line := strings.Join([]string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}, " | ")
+		parts := []string{m.helpView(), fmt.Sprintf("apps %d", len(m.filteredAppOrder()))}
+		if m.followLogs {
+			parts = append(parts, "follow on")
+		}
+		line := strings.Join(parts, " | ")
 		return dashboardStatusStyle.Render(fitLine(line, maxInt(1, width-2)))
 	}
 	parts := []string{
@@ -328,6 +761,9 @@ func (m InteractiveDashboardModel) statusBar() string {
 	}
 	if m.err != nil {
 		parts = append(parts, "error: "+m.err.Error())
+	}
+	if m.message != "" {
+		parts = append(parts, m.message)
 	}
 	parts = append(parts, m.helpView())
 
@@ -386,6 +822,9 @@ func (m InteractiveDashboardModel) detailTitle() string {
 	if !ok {
 		return "Detail"
 	}
+	if m.mode != dashboardModeNormal {
+		return "Actions " + selected.Detail.Metadata().Name
+	}
 	return "App " + selected.Detail.Metadata().Name
 }
 
@@ -398,6 +837,10 @@ func (m InteractiveDashboardModel) detailContent(width int) string {
 	var builder strings.Builder
 	metadata := selected.Detail.Metadata()
 	fmt.Fprintf(&builder, "Status: %s | Node: %s\n", metadata.Status, metadata.NodeID)
+	if m.mode != dashboardModeNormal {
+		builder.WriteString(m.actionContent(width))
+		return builder.String()
+	}
 	builder.WriteString(m.tabsView())
 	builder.WriteString("\n")
 
@@ -552,18 +995,27 @@ func (m InteractiveDashboardModel) tabsView() string {
 
 func (m InteractiveDashboardModel) helpView() string {
 	if m.showHelp {
-		return "[?] hide  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [tab] tabs  [u/d] logs  [r] refresh  [q] quit"
+		return "[?] hide  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [tab] tabs  [a] actions  [u/d] logs  [r] refresh  [q] quit"
 	}
 	if m.filtering {
 		return "[type] filter  [esc] clear  [enter] apply"
 	}
+	if m.mode == dashboardModeActionInput {
+		return "[service domain port] attach  [enter] run  [esc] cancel"
+	}
+	if m.mode == dashboardModeActionConfirm {
+		return "[type app name exactly] confirm  [enter] remove  [esc] cancel"
+	}
+	if m.mode != dashboardModeNormal {
+		return "[j/k] choose  [enter] run  [esc] cancel"
+	}
 	if dashboardTabs[m.tab] == "Logs" {
-		return "[u/d] scroll  [pgup/pgdn] page  [tab] tabs  [esc] apps  [?] help"
+		return "[u/d] scroll  [f] follow  [pgup/pgdn] page  [tab] tabs  [esc] apps  [?] help"
 	}
 	if m.focus == dashboardFocusDetail {
-		return "[tab] next  [shift+tab] prev  [esc] apps  [?] help"
+		return "[tab] next  [shift+tab] prev  [a] actions  [esc] apps  [?] help"
 	}
-	return "[?] help  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [r] refresh  [q] quit"
+	return "[?] help  [/] filter  [j/k] select  [g/G] top/bottom  [enter] detail  [a] actions  [r] refresh  [q] quit"
 }
 
 func (m InteractiveDashboardModel) selectedApp() (DashboardAppSnapshot, bool) {
@@ -581,6 +1033,91 @@ func (m InteractiveDashboardModel) selectedAppID() (string, bool) {
 		return "", false
 	}
 	return order[m.selected], true
+}
+
+func (m InteractiveDashboardModel) actionContent(width int) string {
+	switch m.mode {
+	case dashboardModeActionMenu:
+		return m.actionMenuContent(width)
+	case dashboardModeActionChoice:
+		return m.actionChoiceContent(width)
+	case dashboardModeActionInput:
+		return strings.Join([]string{
+			"Attach domain",
+			"Enter: service domain port",
+			m.actionInput.View(),
+		}, "\n") + "\n"
+	case dashboardModeActionConfirm:
+		appName, _ := m.selectedAppID()
+		return strings.Join([]string{
+			"Remove app",
+			"Type app name exactly: " + appName,
+			m.actionInput.View(),
+		}, "\n") + "\n"
+	default:
+		return ""
+	}
+}
+
+func (m InteractiveDashboardModel) actionMenuContent(width int) string {
+	rows := make([][]string, 0, len(dashboardActionItems))
+	for i, item := range dashboardActionItems {
+		cursor := " "
+		if i == m.actionIndex {
+			cursor = ">"
+		}
+		rows = append(rows, []string{cursor, item.label})
+	}
+	return "Actions\n" + renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "", MinWidth: 1, Priority: 0},
+		{Header: "Action", MinWidth: 18, Flex: true, Priority: 0},
+	}, rows) + "\n"
+}
+
+func (m InteractiveDashboardModel) actionChoiceContent(width int) string {
+	choices := m.actionChoices()
+	if len(choices) == 0 {
+		return "No choices available\n"
+	}
+	rows := make([][]string, 0, len(choices))
+	for i, choice := range choices {
+		cursor := " "
+		if i == m.choiceIndex {
+			cursor = ">"
+		}
+		rows = append(rows, []string{cursor, choice.label})
+	}
+	return actionChoiceTitle(m.pendingAction) + "\n" + renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "", MinWidth: 1, Priority: 0},
+		{Header: "Choice", MinWidth: 18, Flex: true, Priority: 0},
+	}, rows) + "\n"
+}
+
+func actionChoiceTitle(kind dashboardActionKind) string {
+	switch kind {
+	case dashboardActionRestartService:
+		return "Choose service"
+	case dashboardActionRollback:
+		return "Choose release"
+	case dashboardActionDetachDomain:
+		return "Choose domain"
+	default:
+		return "Choose"
+	}
+}
+
+func (m *InteractiveDashboardModel) applySnapshot(snapshot DashboardSnapshot) {
+	selectedID, _ := m.selectedAppID()
+	m.snapshot = snapshot
+	m.selected = m.indexForAppID(selectedID)
+	m.clampSelection()
+	m.syncLogViewport()
+}
+
+func (m *InteractiveDashboardModel) disableFollowOutsideLogs() {
+	if dashboardTabs[m.tab] != "Logs" {
+		m.followLogs = false
+	}
 }
 
 func (m InteractiveDashboardModel) appOrder() []string {

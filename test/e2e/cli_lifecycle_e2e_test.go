@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 func TestCLILifecycleEndToEnd(t *testing.T) {
@@ -23,33 +23,33 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 	writeFakeCaddy(t, filepath.Join(binDir, "caddy"))
 
 	appName := "cli-lifecycle-app"
 	dataDir := filepath.Join(tmp, "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	caddyConfigPath := filepath.Join(tmp, "Caddyfile")
 	authorizedKeysPath := filepath.Join(tmp, "git", ".ssh", "authorized_keys")
 	dashboardAuthorizedKeysPath := filepath.Join(tmp, "dashboard", ".ssh", "authorized_keys")
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
-		"RHUMBASE_FAKE_COMPOSE_LOGS=web log\n",
-		"RHUMBASE_CADDY_CONFIG_PATH="+caddyConfigPath,
-		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
-		"RHUMBASE_GIT_RECEIVE_COMMAND="+rhumbasedPath+" git-receive",
-		"RHUMBASE_DASHBOARD_COMMAND="+rhumbasedPath+" dashboard",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
+		"SSHDOCK_FAKE_COMPOSE_LOGS=web log\n",
+		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
+		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
+		"SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
+		"SSHDOCK_GIT_RECEIVE_COMMAND="+sshdockdPath+" git-receive",
+		"SSHDOCK_DASHBOARD_COMMAND="+sshdockdPath+" dashboard",
 	)
 	cfg := config.LoadFromEnv()
 
-	runCommand(t, root, env, rhumbasePath, "apps", "create", appName)
+	runCommand(t, root, env, sshdockPath, "apps", "create", appName)
 
 	sourceDir := filepath.Join(tmp, "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -57,7 +57,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
@@ -70,30 +70,30 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, env, "push", "prod", "main")
 
 	domain := "example.com"
-	runCommand(t, root, env, rhumbasePath, "domains", "attach", appName, "web", domain, "--port", "3000")
+	runCommand(t, root, env, sshdockPath, "domains", "attach", appName, "web", domain, "--port", "3000")
 	publicKey := "ssh-ed25519 QUJDRA== admin@example.com\n"
-	runCommandInput(t, root, env, publicKey, rhumbasePath, "ssh-keys", "add", "admin")
+	runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"logs", appName, "web"}, []string{"web log"})
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"releases", "list", appName}, []string{releaseID, shortSHA(commitSHA)})
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"events", "list", appName}, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"domains", "list", appName}, []string{domain, "web", "3000"})
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"ssh-keys", "list"}, []string{"admin", "SHA256:"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"logs", appName, "web"}, []string{"web log"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"releases", "list", appName}, []string{releaseID, shortSHA(commitSHA)})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", appName}, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "list", appName}, []string{domain, "web", "3000"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"ssh-keys", "list"}, []string{"admin", "SHA256:"})
 
-	runCommand(t, root, env, rhumbasePath, "domains", "detach", appName, domain)
-	domainsOutput := runCommand(t, root, env, rhumbasePath, "domains", "list", appName)
+	runCommand(t, root, env, sshdockPath, "domains", "detach", appName, domain)
+	domainsOutput := runCommand(t, root, env, sshdockPath, "domains", "list", appName)
 	if !strings.Contains(domainsOutput, "no domains") {
 		t.Fatalf("domains list after detach = %q", domainsOutput)
 	}
 
-	runCommand(t, root, env, rhumbasePath, "ssh-keys", "remove", "admin")
-	keysOutput := runCommand(t, root, env, rhumbasePath, "ssh-keys", "list")
+	runCommand(t, root, env, sshdockPath, "ssh-keys", "remove", "admin")
+	keysOutput := runCommand(t, root, env, sshdockPath, "ssh-keys", "list")
 	if !strings.Contains(keysOutput, "no SSH keys") {
 		t.Fatalf("ssh-keys list after remove = %q", keysOutput)
 	}
 
-	runCommand(t, root, env, rhumbasePath, "apps", "remove", appName, "--force")
-	appsOutput := runCommand(t, root, env, rhumbasePath, "apps", "list")
+	runCommand(t, root, env, sshdockPath, "apps", "remove", appName, "--force")
+	appsOutput := runCommand(t, root, env, sshdockPath, "apps", "list")
 	if !strings.Contains(appsOutput, "no apps") {
 		t.Fatalf("apps list after remove = %q", appsOutput)
 	}
@@ -114,13 +114,13 @@ func writeFakeCaddy(t *testing.T, path string) {
 	}
 }
 
-func assertCLIOutputContains(t *testing.T, dir string, env []string, rhumbasePath string, args []string, wants []string) {
+func assertCLIOutputContains(t *testing.T, dir string, env []string, sshdockPath string, args []string, wants []string) {
 	t.Helper()
 
-	output := runCommand(t, dir, env, rhumbasePath, args...)
+	output := runCommand(t, dir, env, sshdockPath, args...)
 	for _, want := range wants {
 		if !strings.Contains(output, want) {
-			t.Fatalf("rhumbase %s output missing %q:\n%s", strings.Join(args, " "), want, output)
+			t.Fatalf("sshdock %s output missing %q:\n%s", strings.Join(args, " "), want, output)
 		}
 	}
 }

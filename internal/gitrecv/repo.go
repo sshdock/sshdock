@@ -81,7 +81,7 @@ func (m *RepoManager) renderPostReceiveHook(appName string, repoPath string) err
 
 	hook := fmt.Sprintf(`#!/bin/sh
 set -eu
-rhumbased git-hook --app %q --repo %q
+sshdockd git-hook --app %q --repo %q
 `, appName, repoPath)
 
 	return os.WriteFile(filepath.Join(hookDir, "post-receive"), []byte(hook), 0o755)

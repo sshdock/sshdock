@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
-	"github.com/iketiunn/rumbase/internal/tui"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/iketiunn/sshdock/internal/tui"
 )
 
 func TestSmokeVersionCommands(t *testing.T) {
@@ -23,14 +23,14 @@ func TestSmokeVersionCommands(t *testing.T) {
 		want string
 	}{
 		{
-			name: "rhumbase version",
-			args: []string{"run", "./cmd/rhumbase", "version"},
-			want: "rhumbase dev\n",
+			name: "sshdock version",
+			args: []string{"run", "./cmd/sshdock", "version"},
+			want: "sshdock dev\n",
 		},
 		{
-			name: "rhumbased version",
-			args: []string{"run", "./cmd/rhumbased", "version"},
-			want: "rhumbased dev\n",
+			name: "sshdockd version",
+			args: []string{"run", "./cmd/sshdockd", "version"},
+			want: "sshdockd dev\n",
 		},
 	}
 
@@ -54,7 +54,7 @@ func TestSmokeVersionCommands(t *testing.T) {
 func TestSmokeFakeAppLifecycle(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "rhumbase.db"))
+	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}

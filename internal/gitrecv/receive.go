@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 type receivePackStore interface {

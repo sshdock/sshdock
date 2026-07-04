@@ -42,7 +42,7 @@ func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 		ComposePath:  "compose.yml",
 		ReleaseID:    "rel_1",
 		CommitSHA:    "abc123",
-		ProjectName:  "rhumbase_my-app",
+		ProjectName:  "sshdock_my-app",
 		KeepReleases: 5,
 	}
 

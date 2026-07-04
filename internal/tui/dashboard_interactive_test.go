@@ -17,7 +17,7 @@ func TestInteractiveDashboardModelRendersAndNavigatesApps(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Rhumbase",
+		"SSHDock",
 		"App",
 		"State",
 		"Release",
@@ -238,7 +238,7 @@ func TestInteractiveDashboardModelCompactLayoutIncludesChrome(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Rhumbase",
+		"SSHDock",
 		"Apps",
 		"App one",
 		"apps 2",

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestServiceCreatesAndListsApps(t *testing.T) {

@@ -60,9 +60,9 @@ func InferDefaultRoute(path string) (RouteTarget, bool, string, error) {
 			names = append(names, candidate.ServiceName)
 		}
 		sort.Strings(names)
-		return RouteTarget{}, false, "ambiguous route: services " + strings.Join(names, ", ") + " each expose one host-published TCP port; attach manually with rhumbase domains attach", nil
+		return RouteTarget{}, false, "ambiguous route: services " + strings.Join(names, ", ") + " each expose one host-published TCP port; attach manually with sshdock domains attach", nil
 	}
-	return RouteTarget{}, false, "no service exposes exactly one host-published TCP port; publish one routed service port or attach manually with rhumbase domains attach", nil
+	return RouteTarget{}, false, "no service exposes exactly one host-published TCP port; publish one routed service port or attach manually with sshdock domains attach", nil
 }
 
 func inferredServicePorts(serviceNode *yaml.Node) []int {

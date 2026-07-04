@@ -1,72 +1,72 @@
-# Rhumbase CLI Commands
+# SSHDock CLI Commands
 
-This is the command reference for the v0 Rhumbase binaries.
+This is the command reference for the v0 SSHDock binaries.
 
-Rhumbase has two command-line entry points:
+SSHDock has two command-line entry points:
 
-- `rhumbase`: user and admin CLI.
-- `rhumbased`: daemon, Git receive, Git hook, and SSH dashboard entry point.
+- `sshdock`: user and admin CLI.
+- `sshdockd`: daemon, Git receive, Git hook, and SSH dashboard entry point.
 
-Most operators should use `rhumbase` directly and reach the dashboard through OpenSSH:
+Most operators should use `sshdock` directly and reach the dashboard through OpenSSH:
 
 ```bash
 ssh dashboard@server
 ```
 
-`rhumbased` commands are normally called by systemd, OpenSSH forced commands, or Git hooks.
+`sshdockd` commands are normally called by systemd, OpenSSH forced commands, or Git hooks.
 
-## `rhumbase`
+## `sshdock`
 
-### `rhumbase version`
+### `sshdock version`
 
 Print the CLI version.
 
 ```bash
-rhumbase version
+sshdock version
 ```
 
-### `rhumbase diagnostics`
+### `sshdock diagnostics`
 
-Check Rhumbase runtime readiness.
+Check SSHDock runtime readiness.
 
 ```bash
-sudo rhumbase diagnostics
+sudo sshdock diagnostics
 ```
 
 The diagnostics command checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations. A failed check exits non-zero and prints actionable failure text.
 
-### `rhumbase server domain set <domain>`
+### `sshdock server domain set <domain>`
 
-Set the canonical v0 base domain. Rhumbase derives the Git/dashboard control host as `rhumbase.<domain>` and default app hosts as `<app>.<domain>`.
+Set the canonical v0 base domain. SSHDock derives the Git/dashboard control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.
 
 ```bash
-sudo rhumbase server domain set example.com
+sudo sshdock server domain set example.com
 ```
 
 After this is set, app remotes use:
 
 ```text
-git@rhumbase.example.com:<app>.git
+git@sshdock.example.com:<app>.git
 ```
 
 Successful deploys also try to create `<app>.example.com` automatically when the Compose file exposes one safely inferred TCP host-published port. Existing legacy stored values that are already Git hosts continue to work for remote output.
 
-### `rhumbase ssh-keys add <name>`
+### `sshdock ssh-keys add <name>`
 
 Read one SSH public key from stdin, store it, and rewrite Git receive and dashboard `authorized_keys` files.
 
 ```bash
-cat ~/.ssh/id_ed25519.pub | sudo rhumbase ssh-keys add admin
+cat ~/.ssh/id_ed25519.pub | sudo sshdock ssh-keys add admin
 ```
 
 The same key can deploy through `git@<server-domain>:<app>.git` and open the SSH dashboard through `ssh dashboard@server`.
 
-### `rhumbase ssh-keys list`
+### `sshdock ssh-keys list`
 
 List configured SSH keys.
 
 ```bash
-sudo rhumbase ssh-keys list
+sudo sshdock ssh-keys list
 ```
 
 Output format:
@@ -75,27 +75,27 @@ Output format:
 <name>	<fingerprint>	<created-at>
 ```
 
-### `rhumbase ssh-keys remove <name>`
+### `sshdock ssh-keys remove <name>`
 
 Remove one SSH key and rewrite Git receive and dashboard `authorized_keys` files.
 
 ```bash
-sudo rhumbase ssh-keys remove admin
+sudo sshdock ssh-keys remove admin
 ```
 
-### `rhumbase apps create <name>`
+### `sshdock apps create <name>`
 
 Create app metadata, create the bare Git receive repository, install the `post-receive` hook, and print Git remote instructions.
 
 ```bash
-sudo rhumbase apps create my-app
+sudo sshdock apps create my-app
 ```
 
 Output includes:
 
 ```bash
-git remote add rhumbase git@<server-domain>:my-app.git
-git push rhumbase main
+git remote add sshdock git@<server-domain>:my-app.git
+git push sshdock main
 ```
 
 When a base domain is configured, output also includes the expected default URL after the first successful deploy:
@@ -106,12 +106,12 @@ default URL after first deploy: https://my-app.example.com
 
 Manual app creation remains useful for scripts and debugging. The default v0 user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
 
-### `rhumbase apps list`
+### `sshdock apps list`
 
 List apps from SQLite.
 
 ```bash
-sudo rhumbase apps list
+sudo sshdock apps list
 ```
 
 Output format:
@@ -120,66 +120,66 @@ Output format:
 <name>	<status>	<node-id>
 ```
 
-### `rhumbase apps info <name>`
+### `sshdock apps info <name>`
 
 Show one app's basic state.
 
 ```bash
-sudo rhumbase apps info my-app
+sudo sshdock apps info my-app
 ```
 
 Output includes name, status, and assigned node.
 
-### `rhumbase logs <app> [service] [-f]`
+### `sshdock logs <app> [service] [-f]`
 
 Show recent app or service logs through the configured Compose runner.
 
 ```bash
-sudo rhumbase logs my-app
-sudo rhumbase logs my-app web
-sudo rhumbase logs my-app web -f
+sudo sshdock logs my-app
+sudo sshdock logs my-app web
+sudo sshdock logs my-app web -f
 ```
 
 The Docker runner maps this to `docker compose logs --tail 100` for the app's latest deployed Compose project. `-f` adds Compose `--follow`.
 
-### `rhumbase apps restart <name> [service]`
+### `sshdock apps restart <name> [service]`
 
 Restart a whole app or one Compose service through the configured Compose runner.
 
 ```bash
-sudo rhumbase apps restart my-app
-sudo rhumbase apps restart my-app web
+sudo sshdock apps restart my-app
+sudo sshdock apps restart my-app web
 ```
 
-Whole-app restart maps to `docker compose restart` for the project when `RHUMBASE_COMPOSE_RUNNER=docker`. Service restart targets only the selected Compose service.
+Whole-app restart maps to `docker compose restart` for the project when `SSHDOCK_COMPOSE_RUNNER=docker`. Service restart targets only the selected Compose service.
 
-### `rhumbase apps redeploy <name>`
+### `sshdock apps redeploy <name>`
 
 Redeploy the latest good release.
 
 ```bash
-sudo rhumbase apps redeploy my-app
+sudo sshdock apps redeploy my-app
 ```
 
 Redeploy checks out the selected release commit into the app worktree, runs the configured Compose runner, and records a recovery deployment and events in SQLite.
 
-### `rhumbase apps rollback <name> <release-id>`
+### `sshdock apps rollback <name> <release-id>`
 
 Rollback an app to a selected release.
 
 ```bash
-sudo rhumbase apps rollback my-app rel_<short-sha>
+sudo sshdock apps rollback my-app rel_<short-sha>
 ```
 
 Rollback uses the stored release commit and Compose path, then records app, release, deployment, and event state.
 
-### `rhumbase apps remove <name> [--force]`
+### `sshdock apps remove <name> [--force]`
 
-Remove an app and its Rhumbase-managed server-side runtime resources.
+Remove an app and its SSHDock-managed server-side runtime resources.
 
 ```bash
-sudo rhumbase apps remove my-app
-sudo rhumbase apps remove my-app --force
+sudo sshdock apps remove my-app
+sudo sshdock apps remove my-app --force
 ```
 
 Without `--force`, the command asks you to type the app name before removal.
@@ -190,14 +190,14 @@ When a deployed release exists, the Docker runner first runs the equivalent of:
 docker compose down --remove-orphans
 ```
 
-It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It then removes only image refs matching `rhumbase/<app>/*`, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
+It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It then removes only image refs matching `sshdock/<app>/*`, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
 
-### `rhumbase releases list <app>`
+### `sshdock releases list <app>`
 
 List releases for an app so rollback ids are discoverable.
 
 ```bash
-sudo rhumbase releases list my-app
+sudo sshdock releases list my-app
 ```
 
 Output format:
@@ -206,12 +206,12 @@ Output format:
 <release-id>	<status>	<commit-sha>	<created-at>	<compose-path>
 ```
 
-### `rhumbase events list <app>`
+### `sshdock events list <app>`
 
 List persisted deploy, router, recovery, and cleanup events for an app.
 
 ```bash
-sudo rhumbase events list my-app
+sudo sshdock events list my-app
 ```
 
 Output format:
@@ -220,12 +220,12 @@ Output format:
 <created-at>	<event-type>	<message>
 ```
 
-### `rhumbase domains attach <app> <service> <domain> --port <port>`
+### `sshdock domains attach <app> <service> <domain> --port <port>`
 
 Attach a public domain to an app service and rebuild Caddy routes.
 
 ```bash
-sudo rhumbase domains attach my-app web example.com --port 3000
+sudo sshdock domains attach my-app web example.com --port 3000
 ```
 
 For v0, Caddy runs on the host and proxies to a loopback-published Compose port. The app Compose file must publish the selected service on `127.0.0.1:<port>`, and `--port` is that host port:
@@ -246,14 +246,14 @@ With a base domain configured, this command is the manual override/fallback path
 - otherwise, the only service with exactly one TCP host-published port wins.
 - supported short forms include `127.0.0.1:3000:80` and `3000:80`.
 - supported long form includes `published: 3000` and `target: 80`.
-- ambiguous or missing published ports do not fail deploy; Rhumbase records `route.auto_skipped` with manual attach guidance.
+- ambiguous or missing published ports do not fail deploy; SSHDock records `route.auto_skipped` with manual attach guidance.
 
-### `rhumbase domains list <app>`
+### `sshdock domains list <app>`
 
 List routed domains for an app.
 
 ```bash
-sudo rhumbase domains list my-app
+sudo sshdock domains list my-app
 ```
 
 Output format:
@@ -262,52 +262,52 @@ Output format:
 <domain>	<service>	<port>	<https>
 ```
 
-### `rhumbase domains detach <app> <domain>`
+### `sshdock domains detach <app> <domain>`
 
 Detach one domain from an app and rebuild Caddy routes.
 
 ```bash
-sudo rhumbase domains detach my-app example.com
+sudo sshdock domains detach my-app example.com
 ```
 
 The command deletes the domain row, records domain/router events, rebuilds the generated Caddyfile from remaining SQLite domain rows, validates it, and reloads Caddy.
 
-## `rhumbased`
+## `sshdockd`
 
-### `rhumbased version`
+### `sshdockd version`
 
 Print the daemon binary version.
 
 ```bash
-rhumbased version
+sshdockd version
 ```
 
-### `rhumbased` or `rhumbased serve`
+### `sshdockd` or `sshdockd serve`
 
 Run the direct SSH dashboard server.
 
 ```bash
-rhumbased serve
+sshdockd serve
 ```
 
-In the installed v0 path, dashboard access usually goes through host OpenSSH with a forced `rhumbased dashboard` command instead of exposing the direct dashboard listener.
+In the installed v0 path, dashboard access usually goes through host OpenSSH with a forced `sshdockd dashboard` command instead of exposing the direct dashboard listener.
 
-### `rhumbased daemon`
+### `sshdockd daemon`
 
-Run the daemon process used by `rhumbased.service`.
+Run the daemon process used by `sshdockd.service`.
 
 ```bash
-rhumbased daemon
+sshdockd daemon
 ```
 
 On startup it validates config, opens SQLite, runs migrations, and recovers deployed apps by redeploying each app's latest good release. It stays running until interrupted.
 
-### `rhumbased dashboard`
+### `sshdockd dashboard`
 
 Render the SSH dashboard.
 
 ```bash
-rhumbased dashboard
+sshdockd dashboard
 ```
 
 With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain text snapshot suitable for smoke tests and scripts:
@@ -330,28 +330,28 @@ Useful keys:
 - `r` refreshes the dashboard snapshot.
 - `q` quits.
 
-TUI app actions cover restart app, restart service, redeploy latest release, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `rhumbase apps restart`, `rhumbase apps redeploy`, `rhumbase apps rollback`, `rhumbase domains attach`, `rhumbase domains detach`, and `rhumbase apps remove`.
+TUI app actions cover restart app, restart service, redeploy latest release, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `sshdock apps restart`, `sshdock apps redeploy`, `sshdock apps rollback`, `sshdock domains attach`, `sshdock domains detach`, and `sshdock apps remove`.
 
 The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
 
-### `rhumbased git-receive`
+### `sshdockd git-receive`
 
 Receive pushes from OpenSSH forced-command wiring.
 
 ```bash
-rhumbased git-receive
+sshdockd git-receive
 ```
 
 This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. It supports flat v0 app paths and rejects namespace paths such as `owner/repo.git`.
 
 Operators normally do not run this manually.
 
-### `rhumbased git-hook --app <name> --repo <repo.git> [--worktree <path>]`
+### `sshdockd git-hook --app <name> --repo <repo.git> [--worktree <path>]`
 
 Handle a bare repository `post-receive` hook.
 
 ```bash
-rhumbased git-hook --app my-app --repo /var/lib/rhumbase/apps/my-app/repo.git
+sshdockd git-hook --app my-app --repo /var/lib/sshdock/apps/my-app/repo.git
 ```
 
 The hook reads pushed refs from stdin, checks out the selected commit, detects and validates `compose.yml` or `docker-compose.yml`, creates release and deployment records, runs the configured Compose runner, and records deployment events.
@@ -362,21 +362,21 @@ Operators normally do not run this manually.
 
 Production installs set these through the bootstrap script and systemd unit where needed:
 
-- `RHUMBASE_DATA_DIR`: runtime state root. Default: `/var/lib/rhumbase`.
-- `RHUMBASE_SQLITE_DB_PATH`: SQLite database path. Default: `$RHUMBASE_DATA_DIR/rhumbase.db`.
-- `RHUMBASE_APPS_DIR`: app repos and worktrees. Default: `$RHUMBASE_DATA_DIR/apps`.
-- `RHUMBASE_NODE_ID`: assigned node ID for app metadata. Default: `local`.
-- `RHUMBASE_GIT_HOST`: fallback Git host before `rhumbase server domain set`; new persisted config derives the control host from the base domain.
-- `RHUMBASE_GIT_AUTHORIZED_KEYS_PATH`: Git receive `authorized_keys` path.
-- `RHUMBASE_GIT_RECEIVE_COMMAND`: forced command for Git deploy keys.
-- `RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH`: dashboard `authorized_keys` path.
-- `RHUMBASE_DASHBOARD_COMMAND`: forced command for dashboard keys.
-- `RHUMBASE_CADDY_CONFIG_PATH`: generated Rhumbase Caddy route file.
-- `RHUMBASE_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
-- `RHUMBASE_COMPOSE_RUNNER`: `fake` for tests or `docker` for real Docker Compose.
+- `SSHDOCK_DATA_DIR`: runtime state root. Default: `/var/lib/sshdock`.
+- `SSHDOCK_SQLITE_DB_PATH`: SQLite database path. Default: `$SSHDOCK_DATA_DIR/sshdock.db`.
+- `SSHDOCK_APPS_DIR`: app repos and worktrees. Default: `$SSHDOCK_DATA_DIR/apps`.
+- `SSHDOCK_NODE_ID`: assigned node ID for app metadata. Default: `local`.
+- `SSHDOCK_GIT_HOST`: fallback Git host before `sshdock server domain set`; new persisted config derives the control host from the base domain.
+- `SSHDOCK_GIT_AUTHORIZED_KEYS_PATH`: Git receive `authorized_keys` path.
+- `SSHDOCK_GIT_RECEIVE_COMMAND`: forced command for Git deploy keys.
+- `SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH`: dashboard `authorized_keys` path.
+- `SSHDOCK_DASHBOARD_COMMAND`: forced command for dashboard keys.
+- `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
+- `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
+- `SSHDOCK_COMPOSE_RUNNER`: `fake` for tests or `docker` for real Docker Compose.
 
-For local development, set `RHUMBASE_DATA_DIR` to avoid writing to `/var/lib/rhumbase`:
+For local development, set `SSHDOCK_DATA_DIR` to avoid writing to `/var/lib/sshdock`:
 
 ```bash
-RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
+SSHDOCK_DATA_DIR=.tmp/sshdock go run ./cmd/sshdock apps list
 ```

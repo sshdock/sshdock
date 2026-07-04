@@ -1,24 +1,24 @@
-# Rhumbase Installation
+# SSHDock Installation
 
-This document defines the Dokku-style installation flow for Rhumbase v0.
+This document defines the Dokku-style installation flow for SSHDock v0.
 
 ## Quick Start
 
 Run this on a fresh Ubuntu LTS or Debian stable VPS:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/iketiunn/rhumbase/v0.1.0/scripts/bootstrap.sh
-sudo RHUMBASE_TAG=v0.1.0 bash bootstrap.sh
-sudo rhumbase diagnostics
+wget -O bootstrap.sh https://raw.githubusercontent.com/iketiunn/sshdock/v0.1.0/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.0 bash bootstrap.sh
+sudo sshdock diagnostics
 
-cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
-sudo rhumbase server domain set example.com
+cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
+sudo sshdock server domain set example.com
 
-git remote add rhumbase git@rhumbase.example.com:my-app.git
-git push rhumbase main
+git remote add sshdock git@sshdock.example.com:my-app.git
+git push sshdock main
 ```
 
-Replace `v0.1.0` with the release tag you want to install. Replace `example.com` with a real base domain. Point `rhumbase.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
+Replace `v0.1.0` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
 
 ## OS Assumptions
 
@@ -31,7 +31,7 @@ Expected baseline:
 - root or sudo access during setup
 - inbound SSH available for normal server access
 - ports 80 and 443 available for app traffic and ACME HTTP challenges
-- a dedicated data directory for Rhumbase state
+- a dedicated data directory for SSHDock state
 
 Recommended first targets:
 
@@ -40,18 +40,18 @@ Recommended first targets:
 
 ## Runtime Requirements
 
-Rhumbase v0 requires:
+SSHDock v0 requires:
 
 - Docker Engine
 - Docker Compose plugin, available as `docker compose`
 - Caddy
 - systemd
-- SQLite, via Rhumbase's embedded Go driver
+- SQLite, via SSHDock's embedded Go driver
 - Git
 - OpenSSH server
-- Rhumbase binaries:
-  - `rhumbase`
-  - `rhumbased`
+- SSHDock binaries:
+  - `sshdock`
+  - `sshdockd`
 
 By default, the bootstrap script installs missing apt dependencies on real root installs:
 
@@ -59,10 +59,10 @@ By default, the bootstrap script installs missing apt dependencies on real root 
 - Docker Engine and Docker Compose plugin from Docker's official apt repository
 - Caddy from Caddy's official Cloudsmith apt repository
 
-Set `RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
+Set `SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
 
 ```bash
-sudo RHUMBASE_TAG=v0.1.0 RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.0 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
 ```
 
 Check-only mode requires these commands to work before installation continues:
@@ -74,55 +74,55 @@ caddy version
 systemctl --version
 ```
 
-The first authorized push to `my-app.git` should create the app automatically. `rhumbase apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
+The first authorized push to `my-app.git` should create the app automatically. `sshdock apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
 
 ## Current Bootstrap Behavior
 
 Required input:
 
 ```bash
-RHUMBASE_TAG=<version>
+SSHDOCK_TAG=<version>
 ```
 
 Default install layout:
 
 ```text
-/usr/local/bin/rhumbase
-/usr/local/bin/rhumbased
-/var/lib/rhumbase/
-/var/lib/rhumbase/apps/
-/var/lib/rhumbase/git/
-/var/lib/rhumbase/git/.ssh/authorized_keys
-/etc/systemd/system/rhumbased.service
+/usr/local/bin/sshdock
+/usr/local/bin/sshdockd
+/var/lib/sshdock/
+/var/lib/sshdock/apps/
+/var/lib/sshdock/git/
+/var/lib/sshdock/git/.ssh/authorized_keys
+/etc/systemd/system/sshdockd.service
 /etc/caddy/Caddyfile
-/etc/caddy/rhumbase.caddyfile
+/etc/caddy/sshdock.caddyfile
 ```
 
 By default, `scripts/bootstrap.sh` downloads:
 
 ```text
-https://github.com/iketiunn/rhumbase/releases/download/<tag>/rhumbase_<tag>_linux_<arch>.tar.gz
+https://github.com/iketiunn/sshdock/releases/download/<tag>/sshdock_<tag>_linux_<arch>.tar.gz
 ```
 
 For local testing or unreleased builds, set:
 
 ```bash
-RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR=<dir-containing-rhumbase-and-rhumbased>
+SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR=<dir-containing-sshdock-and-sshdockd>
 ```
 
 The script supports a fake-root harness:
 
 ```bash
-RHUMBASE_TAG=test \
-RHUMBASE_BOOTSTRAP_ROOT=/tmp/rhumbase-root \
-RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR=bin \
-RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0 \
-RHUMBASE_BOOTSTRAP_SKIP_USER=1 \
-RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1 \
+SSHDOCK_TAG=test \
+SSHDOCK_BOOTSTRAP_ROOT=/tmp/sshdock-root \
+SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR=bin \
+SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 \
+SSHDOCK_BOOTSTRAP_SKIP_USER=1 \
+SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1 \
 scripts/bootstrap.sh
 ```
 
-The harness writes the same files under `RHUMBASE_BOOTSTRAP_ROOT` without mutating the host filesystem.
+The harness writes the same files under `SSHDOCK_BOOTSTRAP_ROOT` without mutating the host filesystem.
 
 ## Docker Requirement
 
@@ -133,9 +133,9 @@ docker version
 docker compose version
 ```
 
-The Rhumbase daemon must be able to run Docker Compose commands.
+The SSHDock daemon must be able to run Docker Compose commands.
 
-The installer adds the `rhumbase` daemon user to the `docker` group. It does not run broad Docker cleanup commands and fails with an actionable message if a conflicting non-official Docker package is installed while Docker is not working.
+The installer adds the `sshdock` daemon user to the `docker` group. It does not run broad Docker cleanup commands and fails with an actionable message if a conflicting non-official Docker package is installed while Docker is not working.
 
 ## Caddy Requirement
 
@@ -147,21 +147,21 @@ The install flow should verify:
 caddy version
 ```
 
-Rhumbase should write its generated route config to the configured Caddy config path, defaulting to:
+SSHDock should write its generated route config to the configured Caddy config path, defaulting to:
 
 ```text
-/etc/caddy/rhumbase.caddyfile
+/etc/caddy/sshdock.caddyfile
 ```
 
-The installer creates `/etc/caddy/rhumbase.caddyfile` if it is missing and ensures `/etc/caddy/Caddyfile` imports it exactly once:
+The installer creates `/etc/caddy/sshdock.caddyfile` if it is missing and ensures `/etc/caddy/Caddyfile` imports it exactly once:
 
 ```text
-import /etc/caddy/rhumbase.caddyfile
+import /etc/caddy/sshdock.caddyfile
 ```
 
 If `/etc/caddy/Caddyfile` already exists and lacks the import, the installer writes a one-time backup beside it before appending the import.
 
-For v0, Rhumbase assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`. With a base domain configured, successful deploys automatically create `<app>.<base-domain>` when Rhumbase can infer one public Compose service and one TCP host-published port:
+For v0, SSHDock assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`. With a base domain configured, successful deploys automatically create `<app>.<base-domain>` when SSHDock can infer one public Compose service and one TCP host-published port:
 
 ```yaml
 services:
@@ -171,47 +171,47 @@ services:
       - "127.0.0.1:3000:80"
 ```
 
-Rhumbase renders Caddy upstreams as:
+SSHDock renders Caddy upstreams as:
 
 ```text
 reverse_proxy 127.0.0.1:<port>
 ```
 
-`rhumbase domains attach` writes the generated config to `RHUMBASE_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads Caddy with `caddy reload --config <config-path>`.
+`sshdock domains attach` writes the generated config to `SSHDOCK_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads Caddy with `caddy reload --config <config-path>`.
 
-Manual `rhumbase domains attach <app> <service> <domain> --port <port>` remains available for custom domains, ambiguous Compose files, and apps that intentionally do not use the default `<app>.<base-domain>` route.
+Manual `sshdock domains attach <app> <service> <domain> --port <port>` remains available for custom domains, ambiguous Compose files, and apps that intentionally do not use the default `<app>.<base-domain>` route.
 
 Local tests may set:
 
 ```bash
-RHUMBASE_CADDY_CONFIG_PATH=/tmp/rhumbase.Caddyfile
-RHUMBASE_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
+SSHDOCK_CADDY_CONFIG_PATH=/tmp/sshdock.Caddyfile
+SSHDOCK_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
 ```
 
-When `RHUMBASE_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a matching `admin` global option and reload uses `--address`. Production installs can leave it unset and use Caddy's default admin endpoint.
+When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a matching `admin` global option and reload uses `--address`. Production installs can leave it unset and use Caddy's default admin endpoint.
 
 DNS and HTTPS limits:
 
 - Public DNS must point the domain at the server before normal public HTTP routing works.
-- For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `rhumbase.example.com A <server-ip>`.
+- For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `sshdock.example.com A <server-ip>`.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
 - No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through a `dashboard` user forced command.
 
 ## SQLite Data Path
 
-Default Rhumbase state lives under:
+Default SSHDock state lives under:
 
 ```text
-/var/lib/rhumbase/
+/var/lib/sshdock/
 ```
 
 Default files and directories:
 
 ```text
-/var/lib/rhumbase/rhumbase.db
-/var/lib/rhumbase/apps/
-/var/lib/rhumbase/dashboard/
+/var/lib/sshdock/sshdock.db
+/var/lib/sshdock/apps/
+/var/lib/sshdock/dashboard/
 ```
 
 The installer should create the data directory with ownership suitable for the daemon user.
@@ -219,16 +219,16 @@ The installer should create the data directory with ownership suitable for the d
 The default daemon user is:
 
 ```text
-rhumbase
+sshdock
 ```
 
 If the user does not exist, `scripts/bootstrap.sh` creates it with:
 
 ```bash
-useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase
+useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock
 ```
 
-The script creates `/var/lib/rhumbase` and `/var/lib/rhumbase/apps`, then assigns ownership to the daemon user during a real root install.
+The script creates `/var/lib/sshdock` and `/var/lib/sshdock/apps`, then assigns ownership to the daemon user during a real root install.
 
 ## SSH Dashboard User
 
@@ -263,41 +263,41 @@ Interactive dashboard controls:
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
-The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy the latest release, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `rhumbase apps remove`.
+The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy the latest release, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
 
 Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 
 Default dashboard SSH settings:
 
 ```text
-RHUMBASE_DASHBOARD_USER=dashboard
-RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/rhumbase/dashboard/.ssh/authorized_keys
-RHUMBASE_DASHBOARD_COMMAND="sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard"
+SSHDOCK_DASHBOARD_USER=dashboard
+SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/sshdock/dashboard/.ssh/authorized_keys
+SSHDOCK_DASHBOARD_COMMAND="sudo -n -u sshdock /usr/local/bin/sshdock-dashboard"
 ```
 
 The bootstrap script creates or validates this user with:
 
 ```bash
-useradd --system --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard
+useradd --system --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard
 ```
 
 The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Dashboard access is still restricted by generated `authorized_keys` options.
 
-The bootstrap script installs `/usr/local/bin/rhumbase-dashboard` and a narrow `/etc/sudoers.d/rhumbase-dashboard` rule so the SSH-only `dashboard` account can hand off dashboard rendering to the `rhumbase` daemon user.
+The bootstrap script installs `/usr/local/bin/sshdock-dashboard` and a narrow `/etc/sudoers.d/sshdock-dashboard` rule so the SSH-only `dashboard` account can hand off dashboard rendering to the `sshdock` daemon user.
 
-`rhumbase ssh-keys add` rewrites the dashboard key file:
+`sshdock ssh-keys add` rewrites the dashboard key file:
 
 ```text
-/var/lib/rhumbase/dashboard/.ssh/authorized_keys
+/var/lib/sshdock/dashboard/.ssh/authorized_keys
 ```
 
 Each rendered dashboard key is restricted with:
 
 ```text
-command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+command="exec sudo -n -u sshdock /usr/local/bin/sshdock-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
-The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
+The dashboard forced command runs `sshdockd dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 
@@ -325,62 +325,62 @@ git
 The bootstrap script creates or validates this user with:
 
 ```bash
-useradd --system --home /var/lib/rhumbase/git --shell /bin/sh git
+useradd --system --home /var/lib/sshdock/git --shell /bin/sh git
 ```
 
 The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Deploy access is still restricted by the generated `authorized_keys` forced command and SSH options.
 
-The bootstrap script also installs `/usr/local/bin/rhumbase-git-receive` and a narrow `/etc/sudoers.d/rhumbase-git-receive` rule so the SSH-only `git` account can hand off Git receive work to the `rhumbase` daemon user. The sudoers rule preserves `SSH_ORIGINAL_COMMAND`, which is how Rhumbase recovers the requested `<app>.git` path.
+The bootstrap script also installs `/usr/local/bin/sshdock-git-receive` and a narrow `/etc/sudoers.d/sshdock-git-receive` rule so the SSH-only `git` account can hand off Git receive work to the `sshdock` daemon user. The sudoers rule preserves `SSH_ORIGINAL_COMMAND`, which is how SSHDock recovers the requested `<app>.git` path.
 
 Deploy keys are managed on the server with:
 
 ```bash
-sudo rhumbase server domain set example.com
-cat ~/.ssh/authorized_keys | sudo rhumbase ssh-keys add admin
+sudo sshdock server domain set example.com
+cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
 ```
 
-`rhumbase server domain set` stores the base domain in SQLite. App remote output derives `git@rhumbase.<base-domain>:<app>.git`; app URLs derive as `https://<app>.<base-domain>` after the first successful deploy creates the route.
+`sshdock server domain set` stores the base domain in SQLite. App remote output derives `git@sshdock.<base-domain>:<app>.git`; app URLs derive as `https://<app>.<base-domain>` after the first successful deploy creates the route.
 
-`rhumbase ssh-keys add` stores the key in SQLite and rewrites:
+`sshdock ssh-keys add` stores the key in SQLite and rewrites:
 
 ```text
-/var/lib/rhumbase/git/.ssh/authorized_keys
+/var/lib/sshdock/git/.ssh/authorized_keys
 ```
 
-The installer keeps `/var/lib/rhumbase/git`, `/var/lib/rhumbase/git/.ssh`, and `authorized_keys` compatible with OpenSSH strict modes and owned by the `git` receive user.
+The installer keeps `/var/lib/sshdock/git`, `/var/lib/sshdock/git/.ssh`, and `authorized_keys` compatible with OpenSSH strict modes and owned by the `git` receive user.
 
 Each rendered key is restricted with:
 
 ```text
-command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+command="exec sudo -n -u sshdock /usr/local/bin/sshdock-git-receive",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
 The Git SSH entry point should run a forced command equivalent to:
 
 ```text
-sudo -n -u rhumbase /usr/local/bin/rhumbase-git-receive
+sudo -n -u sshdock /usr/local/bin/sshdock-git-receive
 ```
 
-`rhumbased git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, creates the app if needed, and then streams the push into the app's bare repository.
+`sshdockd git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, creates the app if needed, and then streams the push into the app's bare repository.
 
 ## systemd Service
 
-Rhumbase should run the daemon as a systemd service named:
+SSHDock should run the daemon as a systemd service named:
 
 ```text
-rhumbased.service
+sshdockd.service
 ```
 
 Expected service behavior:
 
 - start after Docker is available
-- run `rhumbased daemon`
+- run `sshdockd daemon`
 - restart on failure
 - use the configured data directory
-- use `RHUMBASE_COMPOSE_RUNNER=docker`
-- use `RHUMBASE_GIT_HOST=server` unless overridden at install time
-- use `/var/lib/rhumbase/git/.ssh/authorized_keys` as the Git receive key file unless overridden
-- use `/etc/caddy/rhumbase.caddyfile` as the generated Caddy config path unless overridden
+- use `SSHDOCK_COMPOSE_RUNNER=docker`
+- use `SSHDOCK_GIT_HOST=server` unless overridden at install time
+- use `/var/lib/sshdock/git/.ssh/authorized_keys` as the Git receive key file unless overridden
+- use `/etc/caddy/sshdock.caddyfile` as the generated Caddy config path unless overridden
 - run SQLite migrations on startup
 - redeploy each deployed app's latest good release on startup so Compose stacks recover after a host reboot
 - write logs to journald
@@ -388,8 +388,8 @@ Expected service behavior:
 Administrators should be able to inspect status with:
 
 ```bash
-systemctl status rhumbased
-journalctl -u rhumbased
+systemctl status sshdockd
+journalctl -u sshdockd
 ```
 
 ## Firewall Notes
@@ -400,7 +400,7 @@ Expected inbound ports:
 - 80/tcp for HTTP and ACME HTTP challenges
 - 443/tcp for HTTPS
 
-Open these ports in both the host firewall and the VPS provider's network firewall, security list, or security group. If Caddy can route on loopback but public HTTP/HTTPS times out, verify the provider-level ingress rules before changing Rhumbase config.
+Open these ports in both the host firewall and the VPS provider's network firewall, security list, or security group. If Caddy can route on loopback but public HTTP/HTTPS times out, verify the provider-level ingress rules before changing SSHDock config.
 
 No web dashboard port should be opened.
 
@@ -408,26 +408,26 @@ No web dashboard port should be opened.
 
 An upgrade should:
 
-1. Stop or reload `rhumbased` safely.
-2. Replace `rhumbase` and `rhumbased` binaries.
+1. Stop or reload `sshdockd` safely.
+2. Replace `sshdock` and `sshdockd` binaries.
 3. Run database migrations on daemon start.
-4. Preserve `/var/lib/rhumbase/`.
+4. Preserve `/var/lib/sshdock/`.
 5. Preserve generated app repositories, worktrees, releases, and SQLite state.
 6. Reload Caddy only after route config is valid.
 
-Upgrades must not prune Docker images broadly. Cleanup should remain scoped to Rhumbase-managed image tags.
+Upgrades must not prune Docker images broadly. Cleanup should remain scoped to SSHDock-managed image tags.
 
 ## Diagnostics
 
 Run:
 
 ```bash
-sudo rhumbase diagnostics
+sudo sshdock diagnostics
 ```
 
 The command checks:
 
-- required Rhumbase config values
+- required SSHDock config values
 - data, app, Git, dashboard, SQLite, and Caddy config directories
 - Docker and Docker Compose
 - Caddy
@@ -439,11 +439,11 @@ Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. A fai
 
 ## Backup And Restore
 
-For v0, backup the complete Rhumbase state directory before upgrades or host maintenance:
+For v0, backup the complete SSHDock state directory before upgrades or host maintenance:
 
 ```text
-/var/lib/rhumbase/
-  rhumbase.db
+/var/lib/sshdock/
+  sshdock.db
   apps/
     <app>/
       repo.git/
@@ -452,17 +452,17 @@ For v0, backup the complete Rhumbase state directory before upgrades or host mai
   dashboard/
 ```
 
-Also keep a copy of generated Caddy config, normally `/etc/caddy/rhumbase.caddyfile`, and any systemd unit overrides you add outside the default installer.
+Also keep a copy of generated Caddy config, normally `/etc/caddy/sshdock.caddyfile`, and any systemd unit overrides you add outside the default installer.
 
 Restore order:
 
-1. Stop `rhumbased`.
-2. Restore `/var/lib/rhumbase/` with original ownership.
+1. Stop `sshdockd`.
+2. Restore `/var/lib/sshdock/` with original ownership.
 3. Restore generated Caddy config if needed.
 4. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
-5. Start `rhumbased` and run `rhumbase diagnostics`.
+5. Start `sshdockd` and run `sshdock diagnostics`.
 
-After a reboot or restore, startup recovery may take a short time while `rhumbased` replays Compose deployments for apps that were previously deployed.
+After a reboot or restore, startup recovery may take a short time while `sshdockd` replays Compose deployments for apps that were previously deployed.
 
 ## Verification
 
@@ -475,8 +475,8 @@ make bootstrap-e2e
 The harness builds both binaries, runs `scripts/bootstrap.sh` under a temporary root, fakes apt, Docker, Caddy, SSH, and systemd commands, and asserts:
 
 - binaries are installed and executable
-- `/var/lib/rhumbase` and `/var/lib/rhumbase/apps` are created
-- `rhumbased.service` contains the production environment
+- `/var/lib/sshdock` and `/var/lib/sshdock/apps` are created
+- `sshdockd.service` contains the production environment
 - dependency installation, Docker, Compose, Caddy, ownership, and systemd checks are attempted
 - systemd reload and service enablement are attempted
 
@@ -494,4 +494,4 @@ Run the hardening harness with:
 make hardening-e2e
 ```
 
-This test runs bootstrap twice under a fake root, verifies data is preserved while binaries are replaced, and runs `rhumbase diagnostics` with fake runtime dependencies.
+This test runs bootstrap twice under a fake root, verifies data is preserved while binaries are replaced, and runs `sshdock diagnostics` with fake runtime dependencies.

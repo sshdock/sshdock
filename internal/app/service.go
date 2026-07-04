@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 var ErrNoSuccessfulRelease = errors.New("no successful release")

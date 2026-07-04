@@ -31,7 +31,7 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		dashboardSSHArgs(paths, server, false)...,
 	)
 	for _, want := range []string{
-		"Rhumbase Dashboard",
+		"SSHDock Dashboard",
 		appName,
 		"healthy",
 		"latest=succeeded",
@@ -54,7 +54,7 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		dashboardSSHArgs(paths, server, true)...,
 	)
 	for _, want := range []string{
-		"Rhumbase",
+		"SSHDock",
 		appName,
 		"Service",
 		"State",

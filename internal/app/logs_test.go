@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestServiceLogsRequestsRunnerLogs(t *testing.T) {

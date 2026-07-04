@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 func TestGitHookEndToEnd(t *testing.T) {
@@ -28,14 +28,14 @@ func TestGitHookEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	dataDir := filepath.Join(tmp, "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -43,10 +43,10 @@ func TestGitHookEndToEnd(t *testing.T) {
 
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
-	runCommand(t, root, env, rhumbasePath, "apps", "create", "my-app")
+	runCommand(t, root, env, sshdockPath, "apps", "create", "my-app")
 
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestGitHookEndToEnd(t *testing.T) {
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
@@ -126,8 +126,8 @@ func TestGitReceivePushToCreateEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	fakeSSHPath := filepath.Join(binDir, "fake-ssh")
 	if err := os.WriteFile(fakeSSHPath, []byte(`#!/bin/sh
@@ -150,15 +150,15 @@ if [ "$#" -lt 2 ]; then
 	exit 2
 fi
 shift
-SSH_ORIGINAL_COMMAND="$*" exec rhumbased git-receive
+SSH_ORIGINAL_COMMAND="$*" exec sshdockd git-receive
 `), 0o755); err != nil {
 		t.Fatalf("WriteFile fake ssh: %v", err)
 	}
 
 	appName := "push-app"
 	dataDir := filepath.Join(tmp, "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -170,7 +170,7 @@ SSH_ORIGINAL_COMMAND="$*" exec rhumbased git-receive
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
@@ -178,15 +178,15 @@ SSH_ORIGINAL_COMMAND="$*" exec rhumbased git-receive
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial push-to-create compose app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	runGit(t, sourceDir, nil, "remote", "add", "rhumbase", "git@server:"+appName+".git")
+	runGit(t, sourceDir, nil, "remote", "add", "sshdock", "git@server:"+appName+".git")
 
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GIT_SSH="+fakeSSHPath,
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
-	runGit(t, sourceDir, env, "push", "rhumbase", "main")
+	runGit(t, sourceDir, env, "push", "sshdock", "main")
 
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
@@ -229,8 +229,8 @@ SSH_ORIGINAL_COMMAND="$*" exec rhumbased git-receive
 }
 
 func TestGitHookDockerComposeEndToEnd(t *testing.T) {
-	if os.Getenv("RHUMBASE_E2E_DOCKER") != "1" {
-		t.Skip("set RHUMBASE_E2E_DOCKER=1 to run the Docker Compose e2e test")
+	if os.Getenv("SSHDOCK_E2E_DOCKER") != "1" {
+		t.Skip("set SSHDOCK_E2E_DOCKER=1 to run the Docker Compose e2e test")
 	}
 	requireGit(t)
 	requireDocker(t)
@@ -242,16 +242,16 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	appName := "docker-app"
 	projectName := compose.ProjectName(appName)
 	dataDir := filepath.Join(tmp, "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "docker")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "docker")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -265,10 +265,10 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=docker",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=docker",
 	)
-	runCommand(t, root, env, rhumbasePath, "apps", "create", appName)
+	runCommand(t, root, env, sshdockPath, "apps", "create", appName)
 
 	sourceDir := filepath.Join(tmp, "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -276,7 +276,7 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: nginx:alpine\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)

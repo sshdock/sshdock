@@ -28,7 +28,7 @@ func TestExternalDashboardSSHScreenCapture(t *testing.T) {
 		t.Fatalf("external dashboard capture config: %v", err)
 	}
 	if !ok {
-		t.Skip("set RHUMBASE_TUI_SCREENSHOT_SSH_TARGET=dashboard@host to capture a real external dashboard")
+		t.Skip("set SSHDOCK_TUI_SCREENSHOT_SSH_TARGET=dashboard@host to capture a real external dashboard")
 	}
 
 	manifest := captureDashboardSSHCommandSession(t, dashboardCommandCaptureOptions{
@@ -50,33 +50,33 @@ func TestExternalDashboardSSHScreenCapture(t *testing.T) {
 type getenvFunc func(string) string
 
 func externalDashboardCaptureConfigFromEnv(getenv getenvFunc) (externalDashboardCaptureConfig, bool, error) {
-	target := strings.TrimSpace(getenv("RHUMBASE_TUI_SCREENSHOT_SSH_TARGET"))
+	target := strings.TrimSpace(getenv("SSHDOCK_TUI_SCREENSHOT_SSH_TARGET"))
 	if target == "" {
 		return externalDashboardCaptureConfig{}, false, nil
 	}
 
-	rows, err := intFromEnv(getenv, "RHUMBASE_TUI_SCREENSHOT_ROWS", 32)
+	rows, err := intFromEnv(getenv, "SSHDOCK_TUI_SCREENSHOT_ROWS", 32)
 	if err != nil {
 		return externalDashboardCaptureConfig{}, false, err
 	}
-	cols, err := intFromEnv(getenv, "RHUMBASE_TUI_SCREENSHOT_COLS", 120)
+	cols, err := intFromEnv(getenv, "SSHDOCK_TUI_SCREENSHOT_COLS", 120)
 	if err != nil {
 		return externalDashboardCaptureConfig{}, false, err
 	}
-	timeout, err := durationFromEnv(getenv, "RHUMBASE_TUI_SCREENSHOT_TIMEOUT", 20*time.Second)
+	timeout, err := durationFromEnv(getenv, "SSHDOCK_TUI_SCREENSHOT_TIMEOUT", 20*time.Second)
 	if err != nil {
 		return externalDashboardCaptureConfig{}, false, err
 	}
-	maxTabs, err := intFromEnv(getenv, "RHUMBASE_TUI_SCREENSHOT_TABS", 8)
+	maxTabs, err := intFromEnv(getenv, "SSHDOCK_TUI_SCREENSHOT_TABS", 8)
 	if err != nil {
 		return externalDashboardCaptureConfig{}, false, err
 	}
 
 	args := []string{"-tt"}
-	if port := strings.TrimSpace(getenv("RHUMBASE_TUI_SCREENSHOT_SSH_PORT")); port != "" {
+	if port := strings.TrimSpace(getenv("SSHDOCK_TUI_SCREENSHOT_SSH_PORT")); port != "" {
 		args = append(args, "-p", port)
 	}
-	if identity := strings.TrimSpace(getenv("RHUMBASE_TUI_SCREENSHOT_SSH_IDENTITY")); identity != "" {
+	if identity := strings.TrimSpace(getenv("SSHDOCK_TUI_SCREENSHOT_SSH_IDENTITY")); identity != "" {
 		args = append(args, "-i", identity, "-o", "IdentitiesOnly=yes")
 	}
 	args = append(args,
@@ -85,7 +85,7 @@ func externalDashboardCaptureConfigFromEnv(getenv getenvFunc) (externalDashboard
 		target,
 	)
 
-	artifactDir := strings.TrimSpace(getenv("RHUMBASE_TUI_SCREENSHOT_DIR"))
+	artifactDir := strings.TrimSpace(getenv("SSHDOCK_TUI_SCREENSHOT_DIR"))
 	if artifactDir == "" {
 		artifactDir = filepath.Join("..", "..", "_artifacts", "tui-screenshots-vps")
 	}

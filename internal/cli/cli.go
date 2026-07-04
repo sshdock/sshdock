@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	domaincfg "github.com/iketiunn/rumbase/internal/domain"
+	domaincfg "github.com/iketiunn/sshdock/internal/domain"
 )
 
 type App struct {
@@ -335,7 +335,7 @@ func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "version" {
-		fmt.Fprintf(stdout, "rhumbase %s\n", r.version)
+		fmt.Fprintf(stdout, "sshdock %s\n", r.version)
 		return 0
 	}
 
@@ -371,8 +371,8 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		}
 
 		fmt.Fprintf(stdout, "created app %s\n", app.Name)
-		fmt.Fprintf(stdout, "git remote add rhumbase %s\n", remoteURL)
-		fmt.Fprintln(stdout, "git push rhumbase main")
+		fmt.Fprintf(stdout, "git remote add sshdock %s\n", remoteURL)
+		fmt.Fprintln(stdout, "git push sshdock main")
 		if app.DefaultURL != "" {
 			fmt.Fprintf(stdout, "default URL after first deploy: %s\n", app.DefaultURL)
 		}
@@ -655,7 +655,7 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 }
 
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: rhumbase version | diagnostics | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
+	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
 }
 
 func validatePublicKey(publicKey string) error {

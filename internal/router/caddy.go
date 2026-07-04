@@ -105,7 +105,7 @@ func (r *CaddyRouter) writeConfig(ctx context.Context, routes map[string]Route) 
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(r.configPath), ".rhumbase-caddy-*")
+	tmp, err := os.CreateTemp(filepath.Dir(r.configPath), ".sshdock-caddy-*")
 	if err != nil {
 		return err
 	}

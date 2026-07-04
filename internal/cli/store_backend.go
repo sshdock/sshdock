@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	appmodel "github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	domaincfg "github.com/iketiunn/rumbase/internal/domain"
-	"github.com/iketiunn/rumbase/internal/gitrecv"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/sshaccess"
-	"github.com/iketiunn/rumbase/internal/store"
+	appmodel "github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	domaincfg "github.com/iketiunn/sshdock/internal/domain"
+	"github.com/iketiunn/sshdock/internal/gitrecv"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/sshaccess"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 type ReceiveRepoSetupper interface {

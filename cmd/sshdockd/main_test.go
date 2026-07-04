@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/cli"
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/cli"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -21,7 +21,7 @@ func TestRunVersion(t *testing.T) {
 		t.Fatalf("run(version) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 
-	want := "rhumbased dev\n"
+	want := "sshdockd dev\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -32,7 +32,7 @@ func TestRunVersion(t *testing.T) {
 }
 
 func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "docker")
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "docker")
 
 	runner, err := hookRunnerFromEnv()
 	if err != nil {
@@ -44,8 +44,8 @@ func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
 }
 
 func TestHookRunnerFromEnvConfiguresFakeDeployError(t *testing.T) {
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
-	t.Setenv("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR", "compose failed")
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR", "compose failed")
 
 	runner, err := hookRunnerFromEnv()
 	if err != nil {
@@ -61,9 +61,9 @@ func TestHookRunnerFromEnvConfiguresFakeDeployError(t *testing.T) {
 }
 
 func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
-	t.Setenv("RHUMBASE_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
-	t.Setenv("RHUMBASE_FAKE_COMPOSE_LOGS", "first log\nsecond log\n")
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_LOGS", "first log\nsecond log\n")
 
 	runner, err := dashboardRunnerFromEnv()
 	if err != nil {
@@ -83,9 +83,9 @@ func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
 
 func TestRunDashboardRendersOnce(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -94,7 +94,7 @@ func TestRunDashboardRendersOnce(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 	for _, want := range []string{
-		"Rhumbase Dashboard",
+		"SSHDock Dashboard",
 		"Apps",
 		"No apps",
 	} {
@@ -154,7 +154,7 @@ func TestDashboardActionBackendMapsToCLIBackend(t *testing.T) {
 }
 
 func TestRunDaemonValidatesConfig(t *testing.T) {
-	t.Setenv("RHUMBASE_GIT_HOST", " ")
+	t.Setenv("SSHDOCK_GIT_HOST", " ")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -162,7 +162,7 @@ func TestRunDaemonValidatesConfig(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "RHUMBASE_GIT_HOST is required") {
+	if !strings.Contains(stderr.String(), "SSHDOCK_GIT_HOST is required") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -228,7 +228,7 @@ func TestRunGitReceiveRequiresSSHOriginalCommand(t *testing.T) {
 
 func TestRunGitReceiveValidatesConfig(t *testing.T) {
 	t.Setenv("SSH_ORIGINAL_COMMAND", "git-receive-pack 'my-app.git'")
-	t.Setenv("RHUMBASE_GIT_HOST", " ")
+	t.Setenv("SSHDOCK_GIT_HOST", " ")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -236,7 +236,7 @@ func TestRunGitReceiveValidatesConfig(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "RHUMBASE_GIT_HOST is required") {
+	if !strings.Contains(stderr.String(), "SSHDOCK_GIT_HOST is required") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }

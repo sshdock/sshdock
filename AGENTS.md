@@ -2,9 +2,9 @@
 
 ## Project
 
-Project name: Rhumbase
+Project name: SSHDock
 
-Rhumbase is an SSH-native PaaS for solo developers.
+SSHDock is an SSH-native PaaS for solo developers.
 
 North-star:
 
@@ -67,9 +67,9 @@ Reference lessons:
 - CapRover: simple app/database deployment and one-click app flow.
 - Dokploy: modern Compose-friendly PaaS.
 
-Rhumbase should not become a clone of these tools.
+SSHDock should not become a clone of these tools.
 
-Rhumbase should stay:
+SSHDock should stay:
 
 - SSH-native
 - Compose-first
@@ -91,8 +91,8 @@ Rhumbase should stay:
 
 ## Expected Repo Layout
 
-- `cmd/rhumbase/`: user/admin CLI
-- `cmd/rhumbased/`: daemon
+- `cmd/sshdock/`: user/admin CLI
+- `cmd/sshdockd/`: daemon
 - `internal/app/`: app registry and lifecycle models
 - `internal/gitrecv/`: git push receiver
 - `internal/compose/`: Docker Compose validation and deploy runner

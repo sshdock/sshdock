@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestNewAppListView(t *testing.T) {

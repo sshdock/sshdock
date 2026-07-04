@@ -14,15 +14,15 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	appmodel "github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/cli"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/gitrecv"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
-	"github.com/iketiunn/rumbase/internal/tui"
-	"github.com/iketiunn/rumbase/internal/version"
+	appmodel "github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/cli"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/iketiunn/sshdock/internal/gitrecv"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/iketiunn/sshdock/internal/tui"
+	"github.com/iketiunn/sshdock/internal/version"
 )
 
 func main() {
@@ -35,7 +35,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "version" {
-		fmt.Fprintf(stdout, "rhumbased %s\n", version.String())
+		fmt.Fprintf(stdout, "sshdockd %s\n", version.String())
 		return 0
 	}
 	if len(args) == 0 || (len(args) == 1 && args[0] == "serve") {
@@ -54,7 +54,7 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: rhumbased [serve] | daemon | dashboard | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | dashboard | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }
 
@@ -284,7 +284,7 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 2
 	}
 	if *appName == "" || *repoPath == "" {
-		fmt.Fprintln(stderr, "usage: rhumbased git-hook --app <name> --repo <repo.git> [--worktree <path>]")
+		fmt.Fprintln(stderr, "usage: sshdockd git-hook --app <name> --repo <repo.git> [--worktree <path>]")
 		return 2
 	}
 	if stdin == nil {
@@ -388,7 +388,7 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 }
 
 func hookRunnerFromEnv() (compose.Runner, error) {
-	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
+	runner := os.Getenv("SSHDOCK_COMPOSE_RUNNER")
 	if runner == "" || runner == "fake" {
 		return fakeRunnerFromEnv(), nil
 	}
@@ -396,29 +396,29 @@ func hookRunnerFromEnv() (compose.Runner, error) {
 		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
 	}
 
-	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+	return nil, fmt.Errorf("unsupported SSHDOCK_COMPOSE_RUNNER %q", runner)
 }
 
 func dashboardRunnerFromEnv() (compose.Runner, error) {
-	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
+	runner := os.Getenv("SSHDOCK_COMPOSE_RUNNER")
 	if runner == "" || runner == "fake" {
 		fake := fakeRunnerFromEnv()
-		fake.Services = parseFakeServices(os.Getenv("RHUMBASE_FAKE_COMPOSE_SERVICES"))
-		fake.LogOutput = os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS")
+		fake.Services = parseFakeServices(os.Getenv("SSHDOCK_FAKE_COMPOSE_SERVICES"))
+		fake.LogOutput = os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS")
 		return fake, nil
 	}
 	if runner == "docker" {
 		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
 	}
 
-	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+	return nil, fmt.Errorf("unsupported SSHDOCK_COMPOSE_RUNNER %q", runner)
 }
 
 func fakeRunnerFromEnv() *compose.FakeRunner {
 	return &compose.FakeRunner{
-		DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
-		RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
-		RemoveErr:  envError("RHUMBASE_FAKE_COMPOSE_REMOVE_ERROR"),
+		DeployErr:  envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"),
+		RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
+		RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 	}
 }
 

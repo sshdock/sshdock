@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	domaincfg "github.com/iketiunn/rumbase/internal/domain"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	domaincfg "github.com/iketiunn/sshdock/internal/domain"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 type postReceiveStore interface {
@@ -288,7 +288,7 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, comp
 func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName string, deploymentID string, reason string, createdAt time.Time) error {
 	message := "Skipped automatic route: " + reason
 	if !strings.Contains(message, "domains attach") {
-		message += "; attach manually with rhumbase domains attach"
+		message += "; attach manually with sshdock domains attach"
 	}
 	return h.store.CreateEvent(ctx, app.Event{
 		ID:        EventID(deploymentID, "route_auto_skipped"),

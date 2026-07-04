@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/config"
+	"github.com/iketiunn/sshdock/internal/config"
 )
 
 func TestRunReportsOKWhenConfigDependenciesAndDirsAreUsable(t *testing.T) {
@@ -63,7 +63,7 @@ func TestRunReportsActionableFailures(t *testing.T) {
 		t.Fatalf("report OK = true, want false")
 	}
 	for _, want := range []string{
-		"RHUMBASE_GIT_HOST is required",
+		"SSHDOCK_GIT_HOST is required",
 		"data dir",
 		"missing-data",
 		"docker missing",
@@ -91,20 +91,20 @@ func (f *fakeExecutor) Run(_ context.Context, command Command) (string, error) {
 func diagnosticsConfig(root string) config.Config {
 	return config.Config{
 		DataDir:                     filepath.Join(root, "data"),
-		SQLiteDBPath:                filepath.Join(root, "data", "rhumbase.db"),
+		SQLiteDBPath:                filepath.Join(root, "data", "sshdock.db"),
 		AppsDir:                     filepath.Join(root, "data", "apps"),
 		NodeID:                      "local",
 		SSHListenAddr:               ":2222",
 		DashboardUser:               "dashboard",
 		DashboardHostKeyPath:        filepath.Join(root, "data", "dashboard", "ssh_host_rsa_key"),
 		DashboardAuthorizedKeysPath: filepath.Join(root, "data", "dashboard", ".ssh", "authorized_keys"),
-		DashboardCommand:            "/usr/local/bin/rhumbased dashboard",
+		DashboardCommand:            "/usr/local/bin/sshdockd dashboard",
 		GitUser:                     "git",
 		GitHomeDir:                  filepath.Join(root, "data", "git"),
 		GitHost:                     "server",
 		GitAuthorizedKeysPath:       filepath.Join(root, "data", "git", ".ssh", "authorized_keys"),
-		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
-		CaddyConfigPath:             filepath.Join(root, "caddy", "rhumbase.caddyfile"),
+		GitReceiveCommand:           "/usr/local/bin/sshdockd git-receive",
+		CaddyConfigPath:             filepath.Join(root, "caddy", "sshdock.caddyfile"),
 	}
 }
 

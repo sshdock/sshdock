@@ -134,7 +134,7 @@ func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error 
 	output, err := r.executor.Run(ctx, Command{
 		Name: "docker",
 		Dir:  request.ProjectDir,
-		Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=rhumbase/" + request.AppName + "/*"},
+		Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=sshdock/" + request.AppName + "/*"},
 	})
 	if err != nil {
 		return err
@@ -253,7 +253,7 @@ func ProjectName(appName string) string {
 	if normalized == "" {
 		normalized = "app"
 	}
-	return "rhumbase_" + normalized
+	return "sshdock_" + normalized
 }
 
 func detectBuildServices(composePath string) ([]string, error) {
@@ -300,7 +300,7 @@ func mappingValue(node *yaml.Node, key string) *yaml.Node {
 }
 
 func writeReleaseOverride(projectDir string, appName string, commitSHA string, services []string) (string, error) {
-	overrideDir := filepath.Join(projectDir, ".rhumbase")
+	overrideDir := filepath.Join(projectDir, ".sshdock")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		return "", err
 	}
@@ -325,7 +325,7 @@ func writeReleaseOverride(projectDir string, appName string, commitSHA string, s
 }
 
 func releaseImage(appName string, serviceName string, tag string) string {
-	return "rhumbase/" + appName + "/" + serviceName + ":" + tag
+	return "sshdock/" + appName + "/" + serviceName + ":" + tag
 }
 
 func latestImage(appName string, serviceName string) string {

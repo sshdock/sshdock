@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/sshdock/internal/app"
 )
 
 func TestSQLiteStoreApps(t *testing.T) {
@@ -339,7 +339,7 @@ func TestSQLiteStoreServerConfig(t *testing.T) {
 	if _, err := store.GetServerConfig(ctx); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetServerConfig error = %v, want ErrNotFound", err)
 	}
-	if err := store.SetServerConfig(ctx, ServerConfig{BaseDomain: "example.com", GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}); err != nil {
+	if err := store.SetServerConfig(ctx, ServerConfig{BaseDomain: "example.com", GitHost: "sshdock.example.com", UpdatedAt: updatedAt}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
 
@@ -347,7 +347,7 @@ func TestSQLiteStoreServerConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetServerConfig: %v", err)
 	}
-	want := ServerConfig{BaseDomain: "example.com", GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}
+	want := ServerConfig{BaseDomain: "example.com", GitHost: "sshdock.example.com", UpdatedAt: updatedAt}
 	if got != want {
 		t.Fatalf("server config = %#v, want %#v", got, want)
 	}
@@ -358,7 +358,7 @@ func TestSQLiteStoreServerConfigKeepsLegacyGitHost(t *testing.T) {
 	store := newTestStore(t, ctx)
 	updatedAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 
-	if err := store.SetServerConfig(ctx, ServerConfig{GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}); err != nil {
+	if err := store.SetServerConfig(ctx, ServerConfig{GitHost: "sshdock.example.com", UpdatedAt: updatedAt}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
 
@@ -366,7 +366,7 @@ func TestSQLiteStoreServerConfigKeepsLegacyGitHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetServerConfig: %v", err)
 	}
-	want := ServerConfig{GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}
+	want := ServerConfig{GitHost: "sshdock.example.com", UpdatedAt: updatedAt}
 	if got != want {
 		t.Fatalf("server config = %#v, want %#v", got, want)
 	}
@@ -496,7 +496,7 @@ func TestSQLiteStoreMissingRowsReturnNotFound(t *testing.T) {
 func newTestStore(t *testing.T, ctx context.Context) *SQLiteStore {
 	t.Helper()
 
-	store, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "rhumbase.db"))
+	store, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}

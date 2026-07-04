@@ -14,18 +14,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/cli"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
-	"github.com/iketiunn/rumbase/internal/tui"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/cli"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/iketiunn/sshdock/internal/tui"
 )
 
 func TestTUIActionsEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
-	dbPath := filepath.Join(tmp, "rhumbase.db")
+	dbPath := filepath.Join(tmp, "sshdock.db")
 	sqlite, err := store.OpenSQLite(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)

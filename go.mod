@@ -1,4 +1,4 @@
-module github.com/iketiunn/rumbase
+module github.com/iketiunn/sshdock
 
 go 1.26
 

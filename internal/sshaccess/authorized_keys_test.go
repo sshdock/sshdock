@@ -17,17 +17,17 @@ func TestRenderAuthorizedKeysRestrictsDeployKeys(t *testing.T) {
 		},
 	}
 
-	rendered := RenderAuthorizedKeys(keys, "/usr/local/bin/rhumbased git-receive")
+	rendered := RenderAuthorizedKeys(keys, "/usr/local/bin/sshdockd git-receive")
 
 	for _, want := range []string{
-		`command="exec /usr/local/bin/rhumbased git-receive"`,
+		`command="exec /usr/local/bin/sshdockd git-receive"`,
 		`no-pty`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
 		`no-X11-forwarding`,
 		`no-user-rc`,
 		`ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com`,
-		`rhumbase-key:admin`,
+		`sshdock-key:admin`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("authorized_keys missing %q:\n%s", want, rendered)
@@ -44,16 +44,16 @@ func TestRenderDashboardAuthorizedKeysAllowsPTYButKeepsForwardingRestrictions(t 
 		},
 	}
 
-	rendered := RenderDashboardAuthorizedKeys(keys, "/usr/local/bin/rhumbased dashboard")
+	rendered := RenderDashboardAuthorizedKeys(keys, "/usr/local/bin/sshdockd dashboard")
 
 	for _, want := range []string{
-		`command="exec /usr/local/bin/rhumbased dashboard"`,
+		`command="exec /usr/local/bin/sshdockd dashboard"`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
 		`no-X11-forwarding`,
 		`no-user-rc`,
 		`ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com`,
-		`rhumbase-key:admin`,
+		`sshdock-key:admin`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("dashboard authorized_keys missing %q:\n%s", want, rendered)
@@ -68,7 +68,7 @@ func TestWriteAuthorizedKeysCreatesParentDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
 	keys := []Key{{Name: "admin", PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey"}}
 
-	if err := WriteAuthorizedKeys(path, keys, "rhumbased git-receive"); err != nil {
+	if err := WriteAuthorizedKeys(path, keys, "sshdockd git-receive"); err != nil {
 		t.Fatalf("WriteAuthorizedKeys: %v", err)
 	}
 

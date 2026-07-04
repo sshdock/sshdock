@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/sshdock/internal/app"
 	_ "modernc.org/sqlite"
 )
 

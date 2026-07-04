@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
-APP_NAME := rhumbase
-DAEMON_NAME := rhumbased
+APP_NAME := sshdock
+DAEMON_NAME := sshdockd
 GO_PACKAGES := ./...
 
 .PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e wildcard-domain-e2e ci build clean check-tools
@@ -26,7 +26,7 @@ e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd)' -v
 
 e2e-docker:
-	RHUMBASE_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestGitHookDockerComposeEndToEnd -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestGitHookDockerComposeEndToEnd -v
 
 ssh-e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'Test(CLI|OpenSSH)' -v
@@ -68,8 +68,8 @@ ci: check-tools fmt lint test smoke build
 
 build:
 	mkdir -p bin
-	go build -o bin/$(APP_NAME) ./cmd/rhumbase
-	go build -o bin/$(DAEMON_NAME) ./cmd/rhumbased
+	go build -o bin/$(APP_NAME) ./cmd/sshdock
+	go build -o bin/$(DAEMON_NAME) ./cmd/sshdockd
 
 clean:
 	rm -rf bin
@@ -79,7 +79,7 @@ check-tools:
 	@command -v go >/dev/null 2>&1 || (echo "go is required" && exit 1)
 
 dev:
-	go run ./cmd/rhumbase version
+	go run ./cmd/sshdock version
 
 devd:
-	go run ./cmd/rhumbased version
+	go run ./cmd/sshdockd version

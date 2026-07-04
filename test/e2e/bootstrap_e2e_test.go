@@ -18,27 +18,27 @@ func TestBootstrapInstallsBinariesDataDirsAndService(t *testing.T) {
 	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll source bin: %v", err)
 	}
-	rhumbasePath := filepath.Join(sourceBinDir, "rhumbase")
-	rhumbasedPath := filepath.Join(sourceBinDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(sourceBinDir, "sshdock")
+	sshdockdPath := filepath.Join(sourceBinDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	fakeBinDir := filepath.Join(tmp, "fake-bin")
 	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
 	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
-printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'docker %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
-printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'caddy %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
-printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'sudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
-printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'systemctl %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
@@ -46,71 +46,71 @@ if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
 	echo 0
 	exit 0
 fi
-printf 'id %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'id %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
-printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'useradd %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
-printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'usermod %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
-printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'visudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 
 	installRoot := filepath.Join(tmp, "root")
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0",
-		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+installRoot,
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0",
+		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
 	)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
 
-	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase"))
-	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbased"))
-	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-git-receive"))
-	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-dashboard"))
-	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase"))
-	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/apps"))
-	assertDir(t, filepath.Join(installRoot, "var/lib/rhumbase/dashboard"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdockd"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock-git-receive"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard"))
+	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock"))
+	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock/apps"))
+	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock/dashboard"))
 
-	wrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-git-receive"))
+	wrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/sshdock-git-receive"))
 	for _, want := range []string{
-		"export RHUMBASE_DATA_DIR=/var/lib/rhumbase",
-		"export RHUMBASE_APPS_DIR=/var/lib/rhumbase/apps",
-		"export RHUMBASE_COMPOSE_RUNNER=docker",
-		"exec /usr/local/bin/rhumbased git-receive",
+		"export SSHDOCK_DATA_DIR=/var/lib/sshdock",
+		"export SSHDOCK_APPS_DIR=/var/lib/sshdock/apps",
+		"export SSHDOCK_COMPOSE_RUNNER=docker",
+		"exec /usr/local/bin/sshdockd git-receive",
 	} {
 		if !strings.Contains(wrapper, want) {
 			t.Fatalf("git receive wrapper missing %q:\n%s", want, wrapper)
 		}
 	}
 
-	dashboardWrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/rhumbase-dashboard"))
+	dashboardWrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard"))
 	for _, want := range []string{
-		"export RHUMBASE_DATA_DIR=/var/lib/rhumbase",
-		"export RHUMBASE_COMPOSE_RUNNER=docker",
-		"exec /usr/local/bin/rhumbased dashboard",
+		"export SSHDOCK_DATA_DIR=/var/lib/sshdock",
+		"export SSHDOCK_COMPOSE_RUNNER=docker",
+		"exec /usr/local/bin/sshdockd dashboard",
 	} {
 		if !strings.Contains(dashboardWrapper, want) {
 			t.Fatalf("dashboard wrapper missing %q:\n%s", want, dashboardWrapper)
 		}
 	}
 
-	gitSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-git-receive")
+	gitSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-git-receive")
 	gitSudoers := readFile(t, gitSudoersPath)
 	for _, want := range []string{
 		`Defaults:git env_keep += "SSH_ORIGINAL_COMMAND"`,
-		"git ALL=(rhumbase) NOPASSWD: /usr/local/bin/rhumbase-git-receive",
+		"git ALL=(sshdock) NOPASSWD: /usr/local/bin/sshdock-git-receive",
 	} {
 		if !strings.Contains(gitSudoers, want) {
 			t.Fatalf("git sudoers missing %q:\n%s", want, gitSudoers)
@@ -118,10 +118,10 @@ exit 0
 	}
 	assertFileMode(t, gitSudoersPath, 0o440)
 
-	dashboardSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/rhumbase-dashboard")
+	dashboardSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")
 	dashboardSudoers := readFile(t, dashboardSudoersPath)
 	for _, want := range []string{
-		"dashboard ALL=(rhumbase) NOPASSWD: /usr/local/bin/rhumbase-dashboard",
+		"dashboard ALL=(sshdock) NOPASSWD: /usr/local/bin/sshdock-dashboard",
 	} {
 		if !strings.Contains(dashboardSudoers, want) {
 			t.Fatalf("dashboard sudoers missing %q:\n%s", want, dashboardSudoers)
@@ -129,26 +129,26 @@ exit 0
 	}
 	assertFileMode(t, dashboardSudoersPath, 0o440)
 
-	unitPath := filepath.Join(installRoot, "etc/systemd/system/rhumbased.service")
+	unitPath := filepath.Join(installRoot, "etc/systemd/system/sshdockd.service")
 	unit := readFile(t, unitPath)
 	for _, want := range []string{
 		"After=network-online.target docker.service",
 		"Requires=docker.service",
-		"User=rhumbase",
-		"Group=rhumbase",
-		"Environment=RHUMBASE_DATA_DIR=/var/lib/rhumbase",
-		"Environment=RHUMBASE_GIT_HOST=server",
-		"Environment=RHUMBASE_COMPOSE_RUNNER=docker",
-		"Environment=RHUMBASE_CADDY_CONFIG_PATH=/etc/caddy/rhumbase.caddyfile",
-		"ExecStart=/usr/local/bin/rhumbased daemon",
+		"User=sshdock",
+		"Group=sshdock",
+		"Environment=SSHDOCK_DATA_DIR=/var/lib/sshdock",
+		"Environment=SSHDOCK_GIT_HOST=server",
+		"Environment=SSHDOCK_COMPOSE_RUNNER=docker",
+		"Environment=SSHDOCK_CADDY_CONFIG_PATH=/etc/caddy/sshdock.caddyfile",
+		"ExecStart=/usr/local/bin/sshdockd daemon",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("service unit missing %q:\n%s", want, unit)
 		}
 	}
 	for _, notWant := range []string{
-		"Environment=RHUMBASE_SSH_LISTEN_ADDR=:2222",
-		"ExecStart=/usr/local/bin/rhumbased\n",
+		"Environment=SSHDOCK_SSH_LISTEN_ADDR=:2222",
+		"ExecStart=/usr/local/bin/sshdockd\n",
 	} {
 		if strings.Contains(unit, notWant) {
 			t.Fatalf("service unit should not contain %q:\n%s", notWant, unit)
@@ -162,15 +162,15 @@ exit 0
 		"caddy version",
 		"systemctl --version",
 		"sudo -V",
-		"useradd --system --home /var/lib/rhumbase --shell /usr/sbin/nologin rhumbase",
-		"useradd --system --home /var/lib/rhumbase/git --shell /bin/sh git",
-		"useradd --system --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
+		"useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock",
+		"useradd --system --home /var/lib/sshdock/git --shell /bin/sh git",
+		"useradd --system --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
 		"usermod --shell /bin/sh git",
-		"usermod --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
+		"usermod --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
 		"systemctl daemon-reload",
-		"systemctl enable rhumbased.service",
-		"systemctl restart rhumbased.service",
+		"systemctl enable sshdockd.service",
+		"systemctl restart sshdockd.service",
 	} {
 		if !strings.Contains(fakeLog, want) {
 			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
@@ -182,11 +182,11 @@ func TestBootstrapRequiresTag(t *testing.T) {
 	root := filepath.Join("..", "..")
 	tmp := t.TempDir()
 	env := append(os.Environ(),
-		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+tmp,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=0",
-		"RHUMBASE_BOOTSTRAP_SKIP_USER=1",
-		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
+		"SSHDOCK_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+tmp,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0",
+		"SSHDOCK_BOOTSTRAP_SKIP_USER=1",
+		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
 	)
 
 	cmd := exec.Command("bash", "scripts/bootstrap.sh")
@@ -194,9 +194,9 @@ func TestBootstrapRequiresTag(t *testing.T) {
 	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Fatalf("bootstrap succeeded without RHUMBASE_TAG:\n%s", output)
+		t.Fatalf("bootstrap succeeded without SSHDOCK_TAG:\n%s", output)
 	}
-	if !strings.Contains(string(output), "RHUMBASE_TAG is required") {
+	if !strings.Contains(string(output), "SSHDOCK_TAG is required") {
 		t.Fatalf("bootstrap missing tag output = %s", output)
 	}
 }
@@ -213,12 +213,12 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 	installRoot := filepath.Join(tmp, "root")
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
-		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+installRoot,
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
 	)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
@@ -230,24 +230,24 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
 		"chmod a+r " + filepath.Join(installRoot, "etc/apt/keyrings/docker.asc"),
 		"apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
-		"curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o " + filepath.Join(installRoot, "tmp/rhumbase-caddy-stable.gpg.key"),
-		"gpg --batch --yes --dearmor -o " + filepath.Join(installRoot, "usr/share/keyrings/caddy-stable-archive-keyring.gpg") + " " + filepath.Join(installRoot, "tmp/rhumbase-caddy-stable.gpg.key"),
+		"curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o " + filepath.Join(installRoot, "tmp/sshdock-caddy-stable.gpg.key"),
+		"gpg --batch --yes --dearmor -o " + filepath.Join(installRoot, "usr/share/keyrings/caddy-stable-archive-keyring.gpg") + " " + filepath.Join(installRoot, "tmp/sshdock-caddy-stable.gpg.key"),
 		"curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o " + filepath.Join(installRoot, "etc/apt/sources.list.d/caddy-stable.list"),
 		"apt-get install -y caddy",
 		"systemctl enable --now docker",
 		"systemctl enable --now ssh",
 		"systemctl enable --now caddy",
-		"usermod -aG docker rhumbase",
+		"usermod -aG docker sshdock",
 		"usermod --shell /bin/sh git",
-		"usermod --home /var/lib/rhumbase/dashboard --shell /bin/sh dashboard",
+		"usermod --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
-		"chown -R rhumbase:rhumbase " + filepath.Join(installRoot, "var/lib/rhumbase"),
-		"chown -R git:git " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
-		"chown dashboard:dashboard " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard") + " " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard/.ssh") + " " + filepath.Join(installRoot, "var/lib/rhumbase/dashboard/.ssh/authorized_keys"),
-		"chmod 0755 " + filepath.Join(installRoot, "var/lib/rhumbase/git"),
-		"chmod 0700 " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh"),
-		"touch " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh/authorized_keys"),
-		"chmod 0600 " + filepath.Join(installRoot, "var/lib/rhumbase/git/.ssh/authorized_keys"),
+		"chown -R sshdock:sshdock " + filepath.Join(installRoot, "var/lib/sshdock"),
+		"chown -R git:git " + filepath.Join(installRoot, "var/lib/sshdock/git"),
+		"chown dashboard:dashboard " + filepath.Join(installRoot, "var/lib/sshdock/dashboard") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh/authorized_keys"),
+		"chmod 0755 " + filepath.Join(installRoot, "var/lib/sshdock/git"),
+		"chmod 0700 " + filepath.Join(installRoot, "var/lib/sshdock/git/.ssh"),
+		"touch " + filepath.Join(installRoot, "var/lib/sshdock/git/.ssh/authorized_keys"),
+		"chmod 0600 " + filepath.Join(installRoot, "var/lib/sshdock/git/.ssh/authorized_keys"),
 	} {
 		if !strings.Contains(fakeLog, want) {
 			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
@@ -278,14 +278,14 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 
 	caddyfilePath := filepath.Join(installRoot, "etc/caddy/Caddyfile")
 	caddyfile := readFile(t, caddyfilePath)
-	if count := strings.Count(caddyfile, "import /etc/caddy/rhumbase.caddyfile"); count != 1 {
+	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock.caddyfile"); count != 1 {
 		t.Fatalf("Caddyfile import count = %d:\n%s", count, caddyfile)
 	}
-	assertFileMode(t, filepath.Join(installRoot, "etc/caddy/rhumbase.caddyfile"), 0o644)
+	assertFileMode(t, filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile"), 0o644)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
 	caddyfile = readFile(t, caddyfilePath)
-	if count := strings.Count(caddyfile, "import /etc/caddy/rhumbase.caddyfile"); count != 1 {
+	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock.caddyfile"); count != 1 {
 		t.Fatalf("rerun Caddyfile import count = %d:\n%s", count, caddyfile)
 	}
 }
@@ -301,12 +301,12 @@ func TestBootstrapSkipsDependencyInstallWhenRuntimeAlreadyWorks(t *testing.T) {
 
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
-		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=debian\nVERSION_CODENAME=bookworm\n",
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE=ID=debian\nVERSION_CODENAME=bookworm\n",
 	)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
@@ -339,7 +339,7 @@ func TestBootstrapRetriesAptLocks(t *testing.T) {
 	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
 	writeDependencyInstallFakeCommands(t, fakeBinDir)
 	writeFakeCommand(t, fakeBinDir, "apt-get", `#!/bin/sh
-printf 'apt-get %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'apt-get %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 lock_marker="$(dirname "$0")/apt-lock-seen"
 if [ ! -f "$lock_marker" ]; then
 	touch "$lock_marker"
@@ -360,13 +360,13 @@ exit 0
 
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
-		"RHUMBASE_BOOTSTRAP_APT_LOCK_WAIT_SECONDS=0",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
-		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=1",
+		"SSHDOCK_BOOTSTRAP_APT_LOCK_WAIT_SECONDS=0",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE=ID=ubuntu\nVERSION_CODENAME=noble\nUBUNTU_CODENAME=noble\n",
 	)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
@@ -388,12 +388,12 @@ func TestBootstrapRejectsUnsupportedInstallOS(t *testing.T) {
 
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
-		"RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE=ID=fedora\nVERSION_CODENAME=\n",
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+filepath.Join(tmp, "root"),
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE=ID=fedora\nVERSION_CODENAME=\n",
 	)
 
 	cmd := exec.Command("bash", "scripts/bootstrap.sh")
@@ -428,7 +428,7 @@ func TestReleaseWorkflowBuildsExpectedArtifacts(t *testing.T) {
 		"- amd64",
 		"- arm64",
 		"GOARCH: ${{ matrix.arch }}",
-		"rhumbase_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz",
+		"sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz",
 		"softprops/action-gh-release@v2",
 	} {
 		if !strings.Contains(workflow, want) {
@@ -453,15 +453,15 @@ func buildBootstrapSourceBinaries(t *testing.T, root string, tmp string) string 
 	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll source bin: %v", err)
 	}
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbase"), "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbased"), "./cmd/rhumbased")
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 	return sourceBinDir
 }
 
 func writeDependencyInstallFakeCommands(t *testing.T, fakeBinDir string) {
 	t.Helper()
 	writeFakeCommand(t, fakeBinDir, "apt-get", `#!/bin/sh
-printf 'apt-get %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'apt-get %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 case " $* " in
 	*" docker-ce "*)
 		touch "$(dirname "$0")/docker-installed"
@@ -473,7 +473,7 @@ esac
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "curl", `#!/bin/sh
-printf 'curl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'curl %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 	while [ "$#" -gt 0 ]; do
 		if [ "$1" = "-o" ]; then
 			mkdir -p "$(dirname "$2")"
@@ -492,7 +492,7 @@ done
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "dpkg", `#!/bin/sh
-printf 'dpkg %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'dpkg %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 if [ "$1" = "--print-architecture" ]; then
 	echo amd64
 	exit 0
@@ -503,7 +503,7 @@ fi
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "gpg", `#!/bin/sh
-printf 'gpg %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'gpg %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 while [ "$#" -gt 0 ]; do
 	if [ "$1" = "-o" ]; then
 		mkdir -p "$(dirname "$2")"
@@ -515,37 +515,37 @@ done
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
-printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'docker %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 if [ -f "$(dirname "$0")/docker-installed" ]; then
 	exit 0
 fi
 exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
-printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'caddy %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 if [ -f "$(dirname "$0")/caddy-installed" ]; then
 	exit 0
 fi
 exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "git", `#!/bin/sh
-printf 'git %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'git %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "ssh", `#!/bin/sh
-printf 'ssh %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'ssh %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "sshd", `#!/bin/sh
-printf 'sshd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'sshd %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
-printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'sudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
-printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'systemctl %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
@@ -553,31 +553,31 @@ if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
 	echo 0
 	exit 0
 fi
-printf 'id %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'id %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
-printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'useradd %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
-printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'usermod %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
-printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'visudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "chown", `#!/bin/sh
-printf 'chown %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'chown %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "chmod", `#!/bin/sh
-printf 'chmod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'chmod %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 /bin/chmod "$@"
 `)
 	writeFakeCommand(t, fakeBinDir, "touch", `#!/bin/sh
-printf 'touch %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'touch %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 /usr/bin/touch "$@"
 `)
 }
@@ -586,11 +586,11 @@ func writeWorkingRuntimeFakeCommands(t *testing.T, fakeBinDir string) {
 	t.Helper()
 	writeDependencyInstallFakeCommands(t, fakeBinDir)
 	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
-printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'docker %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
-printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'caddy %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 }

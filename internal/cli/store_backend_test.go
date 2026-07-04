@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/gitrecv"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/gitrecv"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 func TestStoreBackendCreatesReceiveRepoWhenAppIsCreated(t *testing.T) {
@@ -43,7 +43,7 @@ func TestStoreBackendCreatesReceiveRepoWhenAppIsCreated(t *testing.T) {
 	if len(setupper.apps) != 1 || setupper.apps[0] != "my-app" {
 		t.Fatalf("setupper apps = %#v, want [my-app]", setupper.apps)
 	}
-	if !strings.Contains(stdout.String(), "git remote add rhumbase git@git.example.com:my-app.git") {
+	if !strings.Contains(stdout.String(), "git remote add sshdock git@git.example.com:my-app.git") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 
@@ -129,8 +129,8 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	}
 	for _, want := range []string{
 		"created app my-app",
-		"git remote add rhumbase git@git.example.com:my-app.git",
-		"git push rhumbase main",
+		"git remote add sshdock git@git.example.com:my-app.git",
+		"git push sshdock main",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("apps create stdout missing %q:\n%s", want, stdout.String())
@@ -278,7 +278,7 @@ func TestStoreBackendUsesBaseDomainForAppRemotes(t *testing.T) {
 	}
 	for _, want := range []string{
 		"server base domain set to example.com",
-		"control host: rhumbase.example.com",
+		"control host: sshdock.example.com",
 		"app host pattern: <app>.example.com",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -290,7 +290,7 @@ func TestStoreBackendUsesBaseDomainForAppRemotes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetServerConfig: %v", err)
 	}
-	if config.BaseDomain != "example.com" || config.GitHost != "rhumbase.example.com" {
+	if config.BaseDomain != "example.com" || config.GitHost != "sshdock.example.com" {
 		t.Fatalf("server config = %#v, want base domain and derived control host", config)
 	}
 
@@ -300,7 +300,7 @@ func TestStoreBackendUsesBaseDomainForAppRemotes(t *testing.T) {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
 	for _, want := range []string{
-		"git remote add rhumbase git@rhumbase.example.com:my-app.git",
+		"git remote add sshdock git@sshdock.example.com:my-app.git",
 		"default URL after first deploy: https://my-app.example.com",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -313,7 +313,7 @@ func TestStoreBackendKeepsLegacyPersistedGitHostForAppRemotes(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
-		GitHost:   "rhumbase.example.com",
+		GitHost:   "sshdock.example.com",
 		UpdatedAt: time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
@@ -330,7 +330,7 @@ func TestStoreBackendKeepsLegacyPersistedGitHostForAppRemotes(t *testing.T) {
 	if code := runner.Run([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+	if !strings.Contains(stdout.String(), "git remote add sshdock git@sshdock.example.com:my-app.git") {
 		t.Fatalf("apps create stdout = %q", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "default URL after first deploy") {
@@ -348,9 +348,9 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		NodeID:                      "node-a",
 		AppsDir:                     filepath.Join(t.TempDir(), "apps"),
 		AuthorizedKeysPath:          authorizedKeysPath,
-		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
+		GitReceiveCommand:           "/usr/local/bin/sshdockd git-receive",
 		DashboardAuthorizedKeysPath: dashboardAuthorizedKeysPath,
-		DashboardCommand:            "/usr/local/bin/rhumbased dashboard",
+		DashboardCommand:            "/usr/local/bin/sshdockd dashboard",
 		Now:                         func() time.Time { return now },
 	})
 	runner := NewRunner(backend, "dev")
@@ -382,7 +382,7 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		t.Fatalf("ReadFile git authorized_keys: %v", err)
 	}
 	for _, want := range []string{
-		`command="exec /usr/local/bin/rhumbased git-receive"`,
+		`command="exec /usr/local/bin/sshdockd git-receive"`,
 		`no-pty`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
@@ -399,7 +399,7 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		t.Fatalf("ReadFile dashboard authorized_keys: %v", err)
 	}
 	for _, want := range []string{
-		`command="exec /usr/local/bin/rhumbased dashboard"`,
+		`command="exec /usr/local/bin/sshdockd dashboard"`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
 		`no-X11-forwarding`,
@@ -557,9 +557,9 @@ func TestStoreBackendSSHKeyRemoveRevokesKeyAndRendersAuthorizedKeys(t *testing.T
 		NodeID:                      "node-a",
 		AppsDir:                     filepath.Join(t.TempDir(), "apps"),
 		AuthorizedKeysPath:          authorizedKeysPath,
-		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
+		GitReceiveCommand:           "/usr/local/bin/sshdockd git-receive",
 		DashboardAuthorizedKeysPath: dashboardAuthorizedKeysPath,
-		DashboardCommand:            "/usr/local/bin/rhumbased dashboard",
+		DashboardCommand:            "/usr/local/bin/sshdockd dashboard",
 	})
 	cliRunner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -903,7 +903,7 @@ func seedRecoveryApp(t *testing.T, ctx context.Context, sqlite *store.SQLiteStor
 func newStoreBackendTestStore(t *testing.T, ctx context.Context) *store.SQLiteStore {
 	t.Helper()
 
-	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "rhumbase.db"))
+	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}

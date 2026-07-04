@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,7 +26,7 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
 
-	dbPath := filepath.Join(paths.dataDir, "rhumbase.db")
+	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, "rel_"+shortSHA(commitSHA), app.ReleaseStatusSucceeded)
 	status, err := deploymentStatus(dbPath, "dep_"+shortSHA(commitSHA))
@@ -51,15 +51,15 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	})
 	worktreePath := filepath.Join(paths.dataDir, "apps", appName, "worktree")
 	composePath := filepath.Join(worktreePath, "compose.yml")
-	overridePath := filepath.Join(worktreePath, ".rhumbase", "release-"+commitSHA+".compose.yml")
+	overridePath := filepath.Join(worktreePath, ".sshdock", "release-"+commitSHA+".compose.yml")
 	t.Cleanup(func() {
 		_ = runCommandNoFail(worktreePath, nil, "docker", "compose", "-f", composePath, "-f", overridePath, "-p", projectName, "down", "-v", "--remove-orphans")
-		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "rhumbase/"+appName+"/web:"+commitSHA)
-		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "rhumbase/"+appName+"/web:latest")
+		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "sshdock/"+appName+"/web:"+commitSHA)
+		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "sshdock/"+appName+"/web:latest")
 	})
 
 	override := readFile(t, overridePath)
-	wantImage := "rhumbase/" + appName + "/web:" + commitSHA
+	wantImage := "sshdock/" + appName + "/web:" + commitSHA
 	if !strings.Contains(override, wantImage) {
 		t.Fatalf("release override missing %q:\n%s", wantImage, override)
 	}
@@ -72,7 +72,7 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 		t.Fatalf("docker compose ps output missing running state:\n%s", output)
 	}
 
-	dbPath := filepath.Join(paths.dataDir, "rhumbase.db")
+	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, "rel_"+shortSHA(commitSHA), app.ReleaseStatusSucceeded)
 	status, err := deploymentStatus(dbPath, "dep_"+shortSHA(commitSHA))
@@ -115,8 +115,8 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll source bin: %v", err)
 	}
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbase"), "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "rhumbased"), "./cmd/rhumbased")
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 
 	fakeBinDir := filepath.Join(tmp, "fake-bin")
 	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
@@ -125,47 +125,47 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	installRoot := filepath.Join(tmp, "root")
 	bootstrapEnv := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_TAG=test-local",
-		"RHUMBASE_BOOTSTRAP_ROOT="+installRoot,
-		"RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"RHUMBASE_BOOTSTRAP_SKIP_CHOWN=1",
-		"RHUMBASE_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+installRoot,
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
 	)
 	runCommand(t, root, bootstrapEnv, "bash", "scripts/bootstrap.sh")
 
 	installBinDir := filepath.Join(installRoot, "usr", "local", "bin")
-	dataDir := filepath.Join(installRoot, "var", "lib", "rhumbase")
+	dataDir := filepath.Join(installRoot, "var", "lib", "sshdock")
 	authorizedKeysPath := filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
 	dashboardAuthorizedKeysPath := filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys")
 	clientKeyPath := filepath.Join(tmp, "client_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
 	publicKey := readFile(t, clientKeyPath+".pub")
 
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s RHUMBASE_DATA_DIR=%s RHUMBASE_COMPOSE_RUNNER=%s %s git-receive",
+	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s %s git-receive",
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
 		composeRunner,
-		filepath.Join(installBinDir, "rhumbased"),
+		filepath.Join(installBinDir, "sshdockd"),
 	)
-	dashboardCommand := fmt.Sprintf("env PATH=%s%c%s RHUMBASE_DATA_DIR=%s RHUMBASE_COMPOSE_RUNNER=fake RHUMBASE_FAKE_COMPOSE_SERVICES=web:running RHUMBASE_FAKE_COMPOSE_LOGS=first-dashboard-log %s dashboard",
+	dashboardCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=fake SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log %s dashboard",
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
-		filepath.Join(installBinDir, "rhumbased"),
+		filepath.Join(installBinDir, "sshdockd"),
 	)
 	cliEnv := append(os.Environ(),
 		"PATH="+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"RHUMBASE_GIT_RECEIVE_COMMAND="+receiveCommand,
-		"RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
-		"RHUMBASE_DASHBOARD_COMMAND="+dashboardCommand,
-		"RHUMBASE_COMPOSE_RUNNER="+composeRunner,
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
+		"SSHDOCK_GIT_RECEIVE_COMMAND="+receiveCommand,
+		"SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
+		"SSHDOCK_DASHBOARD_COMMAND="+dashboardCommand,
+		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
 	)
-	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "rhumbase"), "ssh-keys", "add", "admin")
+	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "sshdock"), "ssh-keys", "add", "admin")
 
 	hostKeyPath := filepath.Join(tmp, "host_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", hostKeyPath)
@@ -235,7 +235,7 @@ func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName strin
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	for name, content := range files {
 		path := filepath.Join(sourceDir, name)
@@ -249,35 +249,35 @@ func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName strin
 	runGit(t, sourceDir, nil, "add", ".")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial compose app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	runGit(t, sourceDir, nil, "remote", "add", "rhumbase", paths.sshUser+"@127.0.0.1:"+appName+".git")
+	runGit(t, sourceDir, nil, "remote", "add", "sshdock", paths.sshUser+"@127.0.0.1:"+appName+".git")
 
 	sshPath := requireCommandOrSkip(t, "ssh")
 	sshCommand := fmt.Sprintf("%s -p %d -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", sshPath, paths.sshPort, paths.clientKeyPath)
 	pushEnv := append(os.Environ(),
 		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GIT_SSH_COMMAND="+sshCommand,
-		"RHUMBASE_DATA_DIR="+paths.dataDir,
+		"SSHDOCK_DATA_DIR="+paths.dataDir,
 	)
-	runGit(t, sourceDir, pushEnv, "push", "rhumbase", "main")
+	runGit(t, sourceDir, pushEnv, "push", "sshdock", "main")
 	return commitSHA
 }
 
 func writeBootstrapFakeCommands(t *testing.T, fakeBinDir string) {
 	t.Helper()
 	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
-printf 'docker %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'docker %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
-printf 'caddy %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'caddy %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
-printf 'sudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'sudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
-printf 'systemctl %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'systemctl %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
@@ -285,19 +285,19 @@ if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
 	echo 0
 	exit 0
 fi
-printf 'id %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'id %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 1
 `)
 	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
-printf 'useradd %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'useradd %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
-printf 'usermod %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'usermod %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
-printf 'visudo %s\n' "$*" >> "$RHUMBASE_BOOTSTRAP_FAKE_LOG"
+printf 'visudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 0
 `)
 }

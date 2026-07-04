@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
@@ -99,12 +99,12 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 
 func TestPostReceiveHandlerAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
-		GitHost:    "rhumbase.example.com",
+		GitHost:    "sshdock.example.com",
 		UpdatedAt:  now,
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
@@ -169,12 +169,12 @@ services:
 
 func TestPostReceiveHandlerDoesNotAutoRouteFailedDeploy(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
-		GitHost:    "rhumbase.example.com",
+		GitHost:    "sshdock.example.com",
 		UpdatedAt:  now,
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
@@ -224,12 +224,12 @@ services:
 
 func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
-		GitHost:    "rhumbase.example.com",
+		GitHost:    "sshdock.example.com",
 		UpdatedAt:  now,
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
@@ -286,12 +286,12 @@ services:
 
 func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStoreForApp(t, ctx, dbPath, "bad_app")
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
-		GitHost:    "rhumbase.example.com",
+		GitHost:    "sshdock.example.com",
 		UpdatedAt:  now,
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
@@ -340,7 +340,7 @@ services:
 
 func TestPostReceiveHandlerPassesPriorSuccessfulReleaseSHAsForCleanup(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	baseTime := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
@@ -394,7 +394,7 @@ func TestPostReceiveHandlerPassesPriorSuccessfulReleaseSHAsForCleanup(t *testing
 
 func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	failure := errors.New("fake deploy failed")
@@ -449,7 +449,7 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 
 func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
@@ -478,7 +478,7 @@ func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *tes
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	if !strings.Contains(events[1].Message, "rhumbase/my-app/web:old-1") || !strings.Contains(events[1].Message, "image is in use") {
+	if !strings.Contains(events[1].Message, "sshdock/my-app/web:old-1") || !strings.Contains(events[1].Message, "image is in use") {
 		t.Fatalf("cleanup event = %#v", events[1])
 	}
 }
@@ -494,7 +494,7 @@ func (cleanupWarningRunner) Deploy(ctx context.Context, request compose.DeployRe
 		AppName:      request.AppName,
 		ServiceName:  "web",
 		CommitSHA:    "old-1",
-		Image:        "rhumbase/my-app/web:old-1",
+		Image:        "sshdock/my-app/web:old-1",
 		ErrorMessage: "image is in use",
 	})
 }

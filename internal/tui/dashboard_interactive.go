@@ -706,7 +706,7 @@ func (m InteractiveDashboardModel) titleBar() string {
 		metadata := detail.Detail.Metadata()
 		selected = fmt.Sprintf("%s %s on %s", metadata.Name, metadata.Status, metadata.NodeID)
 	}
-	line := fmt.Sprintf("Rhumbase Dashboard | %s | %s", selected, dashboardTabs[m.tab])
+	line := fmt.Sprintf("SSHDock Dashboard | %s | %s", selected, dashboardTabs[m.tab])
 	if m.followLogs {
 		line = fmt.Sprintf("%s | follow on", line)
 	}

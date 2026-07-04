@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 type Command struct {

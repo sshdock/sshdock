@@ -24,7 +24,7 @@ func NormalizeBaseDomain(value string) (string, error) {
 }
 
 func ControlHost(baseDomain string) string {
-	return "rhumbase." + strings.TrimSpace(baseDomain)
+	return "sshdock." + strings.TrimSpace(baseDomain)
 }
 
 func AppHost(appName string, baseDomain string) (string, error) {

@@ -18,7 +18,7 @@ func TestRunVersion(t *testing.T) {
 		t.Fatalf("run(version) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 
-	want := "rhumbase dev\n"
+	want := "sshdock dev\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -38,12 +38,12 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 		t.Fatalf("WriteFile fake caddy: %v", err)
 	}
 	t.Setenv("PATH", fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
-	t.Setenv("RHUMBASE_APPS_DIR", filepath.Join(dataDir, "apps"))
-	t.Setenv("RHUMBASE_NODE_ID", "node-a")
-	t.Setenv("RHUMBASE_GIT_HOST", "rhumbase.example.com")
-	t.Setenv("RHUMBASE_CADDY_CONFIG_PATH", filepath.Join(dataDir, "Caddyfile"))
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_APPS_DIR", filepath.Join(dataDir, "apps"))
+	t.Setenv("SSHDOCK_NODE_ID", "node-a")
+	t.Setenv("SSHDOCK_GIT_HOST", "sshdock.example.com")
+	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", filepath.Join(dataDir, "Caddyfile"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -51,7 +51,7 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	if code := runWithEnv([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+	if !strings.Contains(stdout.String(), "git remote add sshdock git@sshdock.example.com:my-app.git") {
 		t.Fatalf("apps create stdout = %q", stdout.String())
 	}
 
@@ -84,10 +84,10 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 
 func TestRunWithEnvUsesPersistedBaseDomainForCreatedAppRemote(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
-	t.Setenv("RHUMBASE_APPS_DIR", filepath.Join(dataDir, "apps"))
-	t.Setenv("RHUMBASE_GIT_HOST", "env.example.com")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_APPS_DIR", filepath.Join(dataDir, "apps"))
+	t.Setenv("SSHDOCK_GIT_HOST", "env.example.com")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -102,7 +102,7 @@ func TestRunWithEnvUsesPersistedBaseDomainForCreatedAppRemote(t *testing.T) {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
 	for _, want := range []string{
-		"git remote add rhumbase git@rhumbase.example.com:my-app.git",
+		"git remote add sshdock git@sshdock.example.com:my-app.git",
 		"default URL after first deploy: https://my-app.example.com",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -116,8 +116,8 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	if err := os.WriteFile(blockingFile, []byte("x"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	t.Setenv("RHUMBASE_DATA_DIR", filepath.Join(blockingFile, "data"))
-	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(blockingFile, "data", "rhumbase.db"))
+	t.Setenv("SSHDOCK_DATA_DIR", filepath.Join(blockingFile, "data"))
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(blockingFile, "data", "sshdock.db"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -126,7 +126,7 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: rhumbase") {
+	if !strings.Contains(stderr.String(), "usage: sshdock") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -136,8 +136,8 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 
 func TestRunWithEnvDiagnosticsReportsConfigFailure(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_GIT_HOST", " ")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_GIT_HOST", " ")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -149,7 +149,7 @@ func TestRunWithEnvDiagnosticsReportsConfigFailure(t *testing.T) {
 	if !strings.Contains(stdout.String(), "fail config") {
 		t.Fatalf("diagnostics stdout = %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "RHUMBASE_GIT_HOST is required") {
+	if !strings.Contains(stdout.String(), "SSHDOCK_GIT_HOST is required") {
 		t.Fatalf("diagnostics stdout missing config error:\n%s", stdout.String())
 	}
 }

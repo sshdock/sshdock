@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 type DashboardStore interface {
@@ -106,7 +106,7 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 }
 
 func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error {
-	if _, err := fmt.Fprintln(writer, "Rhumbase Dashboard"); err != nil {
+	if _, err := fmt.Fprintln(writer, "SSHDock Dashboard"); err != nil {
 		return err
 	}
 	if err := renderAppList(writer, snapshot.Apps); err != nil {

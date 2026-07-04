@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/iketiunn/rumbase/internal/tui/capture"
+	"github.com/iketiunn/sshdock/internal/tui/capture"
 )
 
 type dashboardCaptureOptions struct {
@@ -41,7 +41,7 @@ func captureDashboardSSHSession(t *testing.T, options dashboardCaptureOptions) c
 		Cols:        options.Cols,
 		Timeout:     options.Timeout,
 		FrameSpecs: []dashboardFrameSpec{
-			{Name: "summary", Wants: []string{"Rhumbase", options.AppName, "[Summary]"}},
+			{Name: "summary", Wants: []string{"SSHDock", options.AppName, "[Summary]"}},
 			{Name: "services", Key: "\t", Wants: []string{"[Services]", "Service", "State", "web", "running"}},
 			{Name: "routes", Key: "\t", Wants: []string{"[Routes]", "- none"}},
 			{Name: "releases", Key: "\t", Wants: []string{"[Releases]", "Release", "succeeded"}},
@@ -141,7 +141,7 @@ func captureDashboardSSHCommandSession(t *testing.T, options dashboardCommandCap
 
 func captureDashboardTabFrames(t *testing.T, ptmx *os.File, terminal *capture.Terminal, mu *sync.Mutex, timeout time.Duration, maxTabs int) []capture.Frame {
 	t.Helper()
-	initial := waitForDashboardScreen(t, terminal, mu, timeout, "initial", []string{"Rhumbase"})
+	initial := waitForDashboardScreen(t, terminal, mu, timeout, "initial", []string{"SSHDock"})
 	initialTab := activeDashboardTab(initial.Text())
 	initialName := dashboardFrameName(initialTab, "initial")
 	frames := []capture.Frame{{Name: initialName, Screen: initial}}
@@ -176,7 +176,7 @@ func waitForDashboardTabChange(t *testing.T, terminal *capture.Terminal, mu *syn
 		screen := terminal.Screen()
 		text := screen.Text()
 		mu.Unlock()
-		if strings.Contains(text, "Rhumbase") {
+		if strings.Contains(text, "SSHDock") {
 			tab := activeDashboardTab(text)
 			if (previousTab != "" && tab != previousTab) || (previousTab == "" && text != previousText) {
 				return screen
@@ -193,7 +193,7 @@ var activeDashboardTabPattern = regexp.MustCompile(`\[([A-Za-z][A-Za-z0-9 -]{0,3
 
 func activeDashboardTab(text string) string {
 	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "Rhumbase Dashboard") {
+		if strings.Contains(line, "SSHDock Dashboard") {
 			parts := strings.Split(line, "|")
 			if len(parts) > 1 {
 				tab := strings.TrimSpace(parts[len(parts)-1])

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/sshdock/internal/app"
 )
 
 var ErrNotFound = errors.New("not found")

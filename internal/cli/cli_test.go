@@ -16,7 +16,7 @@ func TestVersionCommand(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if stdout.String() != "rhumbase dev\n" {
+	if stdout.String() != "sshdock dev\n" {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
@@ -34,8 +34,8 @@ func TestAppsCreatePrintsRemoteNextSteps(t *testing.T) {
 	output := stdout.String()
 	for _, want := range []string{
 		"created app my-app",
-		"git remote add rhumbase git@example.com:my-app.git",
-		"git push rhumbase main",
+		"git remote add sshdock git@example.com:my-app.git",
+		"git push sshdock main",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, output)
@@ -241,7 +241,7 @@ func TestUnknownCommandPrintsUsage(t *testing.T) {
 	if code == 0 {
 		t.Fatal("exit code = 0, want non-zero")
 	}
-	if !strings.Contains(stderr.String(), "usage: rhumbase") {
+	if !strings.Contains(stderr.String(), "usage: sshdock") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }

@@ -46,7 +46,7 @@ func TestRealDashboardSSHScreenCapture(t *testing.T) {
 		textPath := filepath.Join(artifactDir, frame.TextPath)
 		pngPath := filepath.Join(artifactDir, frame.PNGPath)
 		text := readFile(t, textPath)
-		for _, want := range []string{"Rhumbase", appName} {
+		for _, want := range []string{"SSHDock", appName} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s missing %q:\n%s", textPath, want, text)
 			}
@@ -67,7 +67,7 @@ func TestRealDashboardSSHScreenCapture(t *testing.T) {
 
 func dashboardCaptureArtifactDir(t *testing.T) string {
 	t.Helper()
-	if dir := os.Getenv("RHUMBASE_TUI_SCREENSHOT_DIR"); dir != "" {
+	if dir := os.Getenv("SSHDOCK_TUI_SCREENSHOT_DIR"); dir != "" {
 		return dir
 	}
 	return filepath.Join("..", "..", "_artifacts", "tui-screenshots-real")

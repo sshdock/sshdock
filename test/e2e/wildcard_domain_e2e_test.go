@@ -20,27 +20,27 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 	writeFakeCaddy(t, filepath.Join(binDir, "caddy"))
 
 	dataDir := filepath.Join(tmp, "data")
 	caddyConfigPath := filepath.Join(tmp, "Caddyfile")
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
-		"RHUMBASE_FAKE_COMPOSE_SERVICES=web:running,api:running,admin:running",
-		"RHUMBASE_FAKE_COMPOSE_LOGS=wildcard log\n",
-		"RHUMBASE_CADDY_CONFIG_PATH="+caddyConfigPath,
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
+		"SSHDOCK_FAKE_COMPOSE_SERVICES=web:running,api:running,admin:running",
+		"SSHDOCK_FAKE_COMPOSE_LOGS=wildcard log\n",
+		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 	)
 
-	domainOutput := runCommand(t, root, env, rhumbasePath, "server", "domain", "set", "example.com")
+	domainOutput := runCommand(t, root, env, sshdockPath, "server", "domain", "set", "example.com")
 	for _, want := range []string{
 		"server base domain set to example.com",
-		"control host: rhumbase.example.com",
+		"control host: sshdock.example.com",
 		"app host pattern: <app>.example.com",
 	} {
 		if !strings.Contains(domainOutput, want) {
@@ -49,9 +49,9 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 	}
 
 	appName := "wildcard-app"
-	createOutput := runCommand(t, root, env, rhumbasePath, "apps", "create", appName)
+	createOutput := runCommand(t, root, env, sshdockPath, "apps", "create", appName)
 	for _, want := range []string{
-		"git remote add rhumbase git@rhumbase.example.com:wildcard-app.git",
+		"git remote add sshdock git@sshdock.example.com:wildcard-app.git",
 		"default URL after first deploy: https://wildcard-app.example.com",
 	} {
 		if !strings.Contains(createOutput, want) {
@@ -66,8 +66,8 @@ services:
       - "127.0.0.1:%d:80"
 `, 3100))
 
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"domains", "list", appName}, []string{"wildcard-app.example.com", "web", "3100"})
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"events", "list", appName}, []string{"deploy.succeeded", "route.auto_attached", "router.reloaded"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "list", appName}, []string{"wildcard-app.example.com", "web", "3100"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", appName}, []string{"deploy.succeeded", "route.auto_attached", "router.reloaded"})
 
 	caddyConfig := readFile(t, caddyConfigPath)
 	for _, want := range []string{
@@ -82,13 +82,13 @@ services:
 		t.Fatalf("Caddyfile should not contain a wildcard route:\n%s", caddyConfig)
 	}
 
-	dashboardOutput := runCommand(t, root, env, rhumbasedPath, "dashboard")
+	dashboardOutput := runCommand(t, root, env, sshdockdPath, "dashboard")
 	if !strings.Contains(dashboardOutput, "wildcard-app.example.com") {
 		t.Fatalf("dashboard output missing auto route:\n%s", dashboardOutput)
 	}
 
 	ambiguousApp := "ambiguous-app"
-	runCommand(t, root, env, rhumbasePath, "apps", "create", ambiguousApp)
+	runCommand(t, root, env, sshdockPath, "apps", "create", ambiguousApp)
 	pushLocalComposeApp(t, tmp, env, filepath.Join(dataDir, "apps", ambiguousApp, "repo.git"), "ambiguous wildcard app", `
 services:
   api:
@@ -101,11 +101,11 @@ services:
       - "4200:80"
 `)
 
-	domainsOutput := runCommand(t, root, env, rhumbasePath, "domains", "list", ambiguousApp)
+	domainsOutput := runCommand(t, root, env, sshdockPath, "domains", "list", ambiguousApp)
 	if !strings.Contains(domainsOutput, "no domains") {
 		t.Fatalf("ambiguous domains output = %q, want no domains", domainsOutput)
 	}
-	assertCLIOutputContains(t, root, env, rhumbasePath, []string{"events", "list", ambiguousApp}, []string{"deploy.succeeded", "route.auto_skipped", "ambiguous", "domains attach"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", ambiguousApp}, []string{"deploy.succeeded", "route.auto_skipped", "ambiguous", "domains attach"})
 
 	caddyConfig = readFile(t, caddyConfigPath)
 	if strings.Contains(caddyConfig, "ambiguous-app.example.com") {
@@ -125,7 +125,7 @@ func pushLocalComposeApp(t *testing.T, tmp string, env []string, repoPath string
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte(strings.TrimSpace(composeContent)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)

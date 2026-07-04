@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/store"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/store"
 )
 
 func TestParseReceivePackCommand(t *testing.T) {
@@ -48,7 +48,7 @@ func TestReceivePackServiceCreatesMissingAppAndRunsReceivePack(t *testing.T) {
 		Store:             sqlite,
 		AppsDir:           appsDir,
 		NodeID:            "node-a",
-		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir, GitHost: "rhumbase.example.com", Executor: executor}),
+		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir, GitHost: "sshdock.example.com", Executor: executor}),
 		ReceivePackRunner: receivePack,
 		Now:               func() time.Time { return now },
 	})
@@ -118,7 +118,7 @@ func TestReceivePackServiceReusesExistingAppRepo(t *testing.T) {
 		Store:             sqlite,
 		AppsDir:           appsDir,
 		NodeID:            "node-a",
-		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir, GitHost: "rhumbase.example.com", Executor: executor}),
+		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir, GitHost: "sshdock.example.com", Executor: executor}),
 		ReceivePackRunner: receivePack,
 	})
 
@@ -172,7 +172,7 @@ func (r *recordingReceivePackRunner) RunReceivePack(_ context.Context, repoPath 
 func newReceiveTestStore(t *testing.T, ctx context.Context) *store.SQLiteStore {
 	t.Helper()
 
-	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "rhumbase.db"))
+	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}

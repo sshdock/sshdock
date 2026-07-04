@@ -8,8 +8,8 @@ import (
 )
 
 func TestBareRepoPath(t *testing.T) {
-	got := BareRepoPath("/var/lib/rhumbase/apps", "my-app")
-	want := filepath.Join("/var/lib/rhumbase/apps", "my-app", "repo.git")
+	got := BareRepoPath("/var/lib/sshdock/apps", "my-app")
+	want := filepath.Join("/var/lib/sshdock/apps", "my-app", "repo.git")
 
 	if got != want {
 		t.Fatalf("BareRepoPath = %q, want %q", got, want)

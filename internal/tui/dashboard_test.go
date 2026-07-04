@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testing.T) {
@@ -59,7 +59,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 
 	rendered := output.String()
 	for _, want := range []string{
-		"Rhumbase Dashboard",
+		"SSHDock Dashboard",
 		"Apps",
 		"my-app",
 		"healthy",

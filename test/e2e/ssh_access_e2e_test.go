@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/sshdock/internal/app"
 )
 
 func TestCLIServerDomainAndSSHKeysEndToEnd(t *testing.T) {
@@ -26,32 +26,32 @@ func TestCLIServerDomainAndSSHKeysEndToEnd(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 
 	dataDir := filepath.Join(tmp, "data")
 	authorizedKeysPath := filepath.Join(tmp, "git", ".ssh", "authorized_keys")
 	env := append(os.Environ(),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_GIT_HOST=env.example.com",
-		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"RHUMBASE_GIT_RECEIVE_COMMAND=/usr/local/bin/rhumbased git-receive",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_GIT_HOST=env.example.com",
+		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
+		"SSHDOCK_GIT_RECEIVE_COMMAND=/usr/local/bin/sshdockd git-receive",
 	)
 
-	runCommand(t, root, env, rhumbasePath, "server", "domain", "set", "example.com")
-	output := runCommand(t, root, env, rhumbasePath, "apps", "create", "my-app")
-	if !strings.Contains(output, "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
+	runCommand(t, root, env, sshdockPath, "server", "domain", "set", "example.com")
+	output := runCommand(t, root, env, sshdockPath, "apps", "create", "my-app")
+	if !strings.Contains(output, "git remote add sshdock git@sshdock.example.com:my-app.git") {
 		t.Fatalf("apps create output missing persisted host:\n%s", output)
 	}
 
 	publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com\n"
-	output = runCommandInput(t, root, env, publicKey, rhumbasePath, "ssh-keys", "add", "admin")
+	output = runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 	if !strings.Contains(output, "added SSH key admin") {
 		t.Fatalf("ssh-keys output = %s", output)
 	}
 	authorizedKeys := readFile(t, authorizedKeysPath)
 	for _, want := range []string{
-		`command="exec /usr/local/bin/rhumbased git-receive"`,
+		`command="exec /usr/local/bin/sshdockd git-receive"`,
 		`no-pty`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
@@ -84,10 +84,10 @@ func TestOpenSSHGitReceivePushToCreateEndToEnd(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	clientKeyPath := filepath.Join(tmp, "client_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
@@ -98,21 +98,21 @@ func TestOpenSSHGitReceivePushToCreateEndToEnd(t *testing.T) {
 
 	dataDir := filepath.Join(tmp, "data")
 	authorizedKeysPath := filepath.Join(tmp, "authorized_keys")
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s RHUMBASE_DATA_DIR=%s RHUMBASE_COMPOSE_RUNNER=fake %s git-receive",
+	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=fake %s git-receive",
 		binDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
-		rhumbasedPath,
+		sshdockdPath,
 	)
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"RHUMBASE_GIT_RECEIVE_COMMAND="+receiveCommand,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
+		"SSHDOCK_GIT_RECEIVE_COMMAND="+receiveCommand,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
-	runCommandInput(t, root, env, publicKey, rhumbasePath, "ssh-keys", "add", "admin")
+	runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 
 	port := freeLocalPort(t)
 	sshdConfigPath := filepath.Join(tmp, "sshd_config")
@@ -163,7 +163,7 @@ LogLevel ERROR
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
@@ -171,13 +171,13 @@ LogLevel ERROR
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial openssh compose app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	runGit(t, sourceDir, nil, "remote", "add", "rhumbase", currentUser.Username+"@127.0.0.1:ssh-app.git")
+	runGit(t, sourceDir, nil, "remote", "add", "sshdock", currentUser.Username+"@127.0.0.1:ssh-app.git")
 
 	sshCommand := fmt.Sprintf("%s -p %d -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", sshPath, port, clientKeyPath)
 	pushEnv := append(env, "GIT_SSH_COMMAND="+sshCommand)
-	runGit(t, sourceDir, pushEnv, "push", "rhumbase", "main")
+	runGit(t, sourceDir, pushEnv, "push", "sshdock", "main")
 
-	status, err := deploymentStatus(filepath.Join(dataDir, "rhumbase.db"), "dep_"+shortSHA(commitSHA))
+	status, err := deploymentStatus(filepath.Join(dataDir, "sshdock.db"), "dep_"+shortSHA(commitSHA))
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v\nsshd log:\n%s", err, readFile(t, sshdLogPath))
 	}

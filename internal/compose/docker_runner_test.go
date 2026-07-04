@@ -36,12 +36,12 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 		t.Fatalf("Deploy: %v", err)
 	}
 
-	overridePath := filepath.Join(projectDir, ".rhumbase", "release-abc123.compose.yml")
+	overridePath := filepath.Join(projectDir, ".sshdock", "release-abc123.compose.yml")
 	override, err := os.ReadFile(overridePath)
 	if err != nil {
 		t.Fatalf("read override: %v", err)
 	}
-	if !strings.Contains(string(override), "rhumbase/my-app/web:abc123") {
+	if !strings.Contains(string(override), "sshdock/my-app/web:abc123") {
 		t.Fatalf("override does not contain release image tag:\n%s", override)
 	}
 	if strings.Contains(string(override), "latest") {
@@ -49,13 +49,13 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 	}
 
 	want := []Command{
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "config"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "pull", "--ignore-buildable"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "build", "web"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "rhumbase_my-app", "up", "-d"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "tag", "rhumbase/my-app/web:abc123", "rhumbase/my-app/web:latest"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:prev-5"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:old-1"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "pull", "--ignore-buildable"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "build", "web"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "up", "-d"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "tag", "sshdock/my-app/web:abc123", "sshdock/my-app/web:latest"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:prev-5"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:old-1"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
@@ -66,8 +66,8 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 		if strings.Contains(joined, "system prune") {
 			t.Fatalf("unexpected broad cleanup command: %#v", command)
 		}
-		if strings.Contains(joined, "rhumbase/my-app/api") {
-			t.Fatalf("image-only service should not receive Rhumbase build tags: %#v", command)
+		if strings.Contains(joined, "sshdock/my-app/api") {
+			t.Fatalf("image-only service should not receive SSHDock build tags: %#v", command)
 		}
 	}
 }
@@ -127,7 +127,7 @@ func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
 		t.Fatalf("cleanup failures = %#v", recorder.Failures)
 	}
 	failure := recorder.Failures[0]
-	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "prev-5" || failure.Image != "rhumbase/my-app/web:prev-5" || failure.ErrorMessage != "image is in use" {
+	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "prev-5" || failure.Image != "sshdock/my-app/web:prev-5" || failure.ErrorMessage != "image is in use" {
 		t.Fatalf("cleanup failure = %#v", failure)
 	}
 }
@@ -181,9 +181,9 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 
 	want := []Command{
 		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "config"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "restart", "web"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "ps", "--format", "json"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "logs", "--follow", "--tail", "50", "web"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "restart", "web"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--format", "json"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
@@ -201,7 +201,7 @@ func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t 
 	executor := &recordingExecutor{
 		Outputs: []string{
 			"",
-			"rhumbase/my-app/web:abc123\nrhumbase/my-app/web:latest\n",
+			"sshdock/my-app/web:abc123\nsshdock/my-app/web:latest\n",
 		},
 	}
 	runner := NewDockerRunner(executor)
@@ -211,10 +211,10 @@ func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t 
 	}
 
 	want := []Command{
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "down", "--remove-orphans"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=rhumbase/my-app/*"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:abc123"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:latest"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "down", "--remove-orphans"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=sshdock/my-app/*"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:abc123"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:latest"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
@@ -246,7 +246,7 @@ func TestDockerRunnerStreamLogsUsesStreamingExecutor(t *testing.T) {
 	if stdout.String() != "streamed log\n" {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
-	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "logs", "--follow", "--tail", "100", "web"}}}
+	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "100", "web"}}}
 	if !reflect.DeepEqual(executor.Streamed, want) {
 		t.Fatalf("streamed commands = %#v, want %#v", executor.Streamed, want)
 	}

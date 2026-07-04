@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/rumbase/internal/app"
-	"github.com/iketiunn/rumbase/internal/config"
+	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/iketiunn/sshdock/internal/config"
 )
 
 func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
@@ -23,23 +23,23 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}
 
-	rhumbasePath := filepath.Join(binDir, "rhumbase")
-	rhumbasedPath := filepath.Join(binDir, "rhumbased")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasePath, "./cmd/rhumbase")
-	runCommand(t, root, nil, "go", "build", "-o", rhumbasedPath, "./cmd/rhumbased")
+	sshdockPath := filepath.Join(binDir, "sshdock")
+	sshdockdPath := filepath.Join(binDir, "sshdockd")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
+	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	appName := "recovery-app"
 	dataDir := filepath.Join(tmp, "data")
-	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
-	t.Setenv("RHUMBASE_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 
 	baseEnv := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+dataDir,
-		"RHUMBASE_COMPOSE_RUNNER=fake",
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
-	runCommand(t, root, baseEnv, rhumbasePath, "apps", "create", appName)
+	runCommand(t, root, baseEnv, sshdockPath, "apps", "create", appName)
 
 	sourceDir := filepath.Join(tmp, "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -47,7 +47,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	}
 	runGit(t, sourceDir, nil, "init")
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "Rhumbase Test")
+	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
 	writeRecoveryCompose(t, sourceDir, "example/web:good")
 	runGit(t, sourceDir, nil, "add", "compose.yml")
@@ -72,7 +72,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "commit", "-m", "bad compose app")
 	badCommit := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	badReleaseID := "rel_" + shortSHA(badCommit)
-	failingEnv := append(baseEnv, "RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR=compose failed")
+	failingEnv := append(baseEnv, "SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR=compose failed")
 	runGitAllowError(t, sourceDir, failingEnv, "push", "prod", "main")
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusFailed)
@@ -83,7 +83,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 		t.Fatalf("bad deployment status = %q", status)
 	}
 
-	runCommand(t, root, baseEnv, rhumbasePath, "apps", "rollback", appName, goodReleaseID)
+	runCommand(t, root, baseEnv, sshdockPath, "apps", "rollback", appName, goodReleaseID)
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusRolledBack)

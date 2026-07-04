@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/sshdock/internal/compose"
 )
 
 func TestRouteThroughCaddyEndToEnd(t *testing.T) {
@@ -67,11 +67,11 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	routeDomain := fmt.Sprintf("http://127.0.0.1:%d", caddyPort)
 	cliEnv := append(os.Environ(),
 		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"RHUMBASE_DATA_DIR="+paths.dataDir,
-		"RHUMBASE_CADDY_CONFIG_PATH="+caddyConfigPath,
-		"RHUMBASE_CADDY_ADMIN_ADDRESS="+caddyAdminAddress,
+		"SSHDOCK_DATA_DIR="+paths.dataDir,
+		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
+		"SSHDOCK_CADDY_ADMIN_ADDRESS="+caddyAdminAddress,
 	)
-	runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "rhumbase"), "domains", "attach", appName, "web", routeDomain, "--port", fmt.Sprintf("%d", servicePort))
+	runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "attach", appName, "web", routeDomain, "--port", fmt.Sprintf("%d", servicePort))
 
 	config := readFile(t, caddyConfigPath)
 	for _, want := range []string{
@@ -85,8 +85,8 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	}
 
 	waitForCurl(t, curlPath, fmt.Sprintf("http://127.0.0.1:%d", caddyPort), "Welcome to nginx", caddyLogPath)
-	assertEventTypes(t, filepath.Join(paths.dataDir, "rhumbase.db"), appName, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
-	assertDomainRow(t, filepath.Join(paths.dataDir, "rhumbase.db"), appName, routeDomain, servicePort)
+	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
+	assertDomainRow(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, routeDomain, servicePort)
 	_ = commitSHA
 }
 

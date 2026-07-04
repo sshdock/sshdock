@@ -20,14 +20,14 @@ func TestExternalDashboardCaptureConfigSkipsWithoutTarget(t *testing.T) {
 
 func TestExternalDashboardCaptureConfigBuildsSSHCommand(t *testing.T) {
 	env := map[string]string{
-		"RHUMBASE_TUI_SCREENSHOT_SSH_TARGET":   "dashboard@rhumbase.example.com",
-		"RHUMBASE_TUI_SCREENSHOT_SSH_PORT":     "2222",
-		"RHUMBASE_TUI_SCREENSHOT_SSH_IDENTITY": "/tmp/dashboard_ed25519",
-		"RHUMBASE_TUI_SCREENSHOT_DIR":          "/tmp/rhumbase-vps-shots",
-		"RHUMBASE_TUI_SCREENSHOT_ROWS":         "40",
-		"RHUMBASE_TUI_SCREENSHOT_COLS":         "132",
-		"RHUMBASE_TUI_SCREENSHOT_TIMEOUT":      "45s",
-		"RHUMBASE_TUI_SCREENSHOT_TABS":         "7",
+		"SSHDOCK_TUI_SCREENSHOT_SSH_TARGET":   "dashboard@sshdock.example.com",
+		"SSHDOCK_TUI_SCREENSHOT_SSH_PORT":     "2222",
+		"SSHDOCK_TUI_SCREENSHOT_SSH_IDENTITY": "/tmp/dashboard_ed25519",
+		"SSHDOCK_TUI_SCREENSHOT_DIR":          "/tmp/sshdock-vps-shots",
+		"SSHDOCK_TUI_SCREENSHOT_ROWS":         "40",
+		"SSHDOCK_TUI_SCREENSHOT_COLS":         "132",
+		"SSHDOCK_TUI_SCREENSHOT_TIMEOUT":      "45s",
+		"SSHDOCK_TUI_SCREENSHOT_TABS":         "7",
 	}
 	config, ok, err := externalDashboardCaptureConfigFromEnv(func(key string) string {
 		return env[key]
@@ -46,12 +46,12 @@ func TestExternalDashboardCaptureConfigBuildsSSHCommand(t *testing.T) {
 		"-o", "IdentitiesOnly=yes",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
-		"dashboard@rhumbase.example.com",
+		"dashboard@sshdock.example.com",
 	}
 	if !reflect.DeepEqual(config.Args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", config.Args, wantArgs)
 	}
-	if config.ArtifactDir != "/tmp/rhumbase-vps-shots" {
+	if config.ArtifactDir != "/tmp/sshdock-vps-shots" {
 		t.Fatalf("artifact dir = %q", config.ArtifactDir)
 	}
 	if config.Rows != 40 || config.Cols != 132 {
@@ -66,7 +66,7 @@ func TestExternalDashboardCaptureConfigBuildsSSHCommand(t *testing.T) {
 }
 
 func TestDashboardFrameNameUsesActiveTab(t *testing.T) {
-	text := "Rhumbase Dashboard | app healthy on local | Overview\n[Overview] Domains Releases Deployments Logs\n"
+	text := "SSHDock Dashboard | app healthy on local | Overview\n[Overview] Domains Releases Deployments Logs\n"
 
 	if got := activeDashboardTab(text); got != "Overview" {
 		t.Fatalf("active tab = %q, want Overview", got)
@@ -77,7 +77,7 @@ func TestDashboardFrameNameUsesActiveTab(t *testing.T) {
 }
 
 func TestDashboardFrameNamePrefersTitleTabOverContentBrackets(t *testing.T) {
-	text := "Rhumbase Dashboard | app healthy on local | Logs\nweb-1 | 2026/07/03 [notice] nginx\n"
+	text := "SSHDock Dashboard | app healthy on local | Logs\nweb-1 | 2026/07/03 [notice] nginx\n"
 
 	if got := activeDashboardTab(text); got != "Logs" {
 		t.Fatalf("active tab = %q, want Logs", got)
@@ -85,7 +85,7 @@ func TestDashboardFrameNamePrefersTitleTabOverContentBrackets(t *testing.T) {
 }
 
 func TestDashboardFrameNameFallsBackToSequence(t *testing.T) {
-	if got := dashboardFrameName(activeDashboardTab("Rhumbase Dashboard\nno active tab\n"), "tab-1"); got != "tab-1" {
+	if got := dashboardFrameName(activeDashboardTab("SSHDock Dashboard\nno active tab\n"), "tab-1"); got != "tab-1" {
 		t.Fatalf("frame name = %q, want tab-1", got)
 	}
 }

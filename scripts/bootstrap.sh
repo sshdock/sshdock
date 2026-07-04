@@ -68,7 +68,7 @@ command_works() {
 need_runtime_command() {
 	local name="$1"
 	shift
-	command_works "$name" "$@" || die "$name $* failed; install dependencies or rerun with RHUMBASE_BOOTSTRAP_INSTALL_DEPS=1"
+	command_works "$name" "$@" || die "$name $* failed; install dependencies or rerun with SSHDOCK_BOOTSTRAP_INSTALL_DEPS=1"
 }
 
 check_runtime_dependencies() {
@@ -99,16 +99,16 @@ detect_deb_arch() {
 			printf '%s\n' "$arch"
 			;;
 		*)
-			die "unsupported architecture $arch; Rhumbase bootstrap supports amd64 and arm64"
+			die "unsupported architecture $arch; SSHDock bootstrap supports amd64 and arm64"
 			;;
 	esac
 }
 
 detect_os_release() {
 	local os_release tmp
-	if [ -n "${RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE:-}" ]; then
+	if [ -n "${SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE:-}" ]; then
 		tmp="$(mktemp)"
-		printf '%s\n' "$RHUMBASE_BOOTSTRAP_TEST_OS_RELEASE" > "$tmp"
+		printf '%s\n' "$SSHDOCK_BOOTSTRAP_TEST_OS_RELEASE" > "$tmp"
 		os_release="$tmp"
 	else
 		os_release="/etc/os-release"
@@ -130,7 +130,7 @@ detect_os_release() {
 		ubuntu|debian)
 			;;
 		*)
-			die "unsupported OS $DETECTED_OS_ID; Rhumbase bootstrap supports Ubuntu LTS and Debian stable"
+			die "unsupported OS $DETECTED_OS_ID; SSHDock bootstrap supports Ubuntu LTS and Debian stable"
 			;;
 	esac
 
@@ -169,7 +169,7 @@ SOURCE
 
 write_caddy_apt_source() {
 	local tmp keyring source_path
-	tmp="$(prefix_path /tmp/rhumbase-caddy-stable.gpg.key)"
+	tmp="$(prefix_path /tmp/sshdock-caddy-stable.gpg.key)"
 	keyring="$(deb_source_path /usr/share/keyrings/caddy-stable-archive-keyring.gpg)"
 	source_path="$(deb_source_path /etc/apt/sources.list.d/caddy-stable.list)"
 
@@ -234,7 +234,7 @@ ensure_root_for_real_install() {
 		return
 	fi
 	if [ "$(id -u)" -ne 0 ]; then
-		die "run with sudo or set RHUMBASE_BOOTSTRAP_ROOT for a harness install"
+		die "run with sudo or set SSHDOCK_BOOTSTRAP_ROOT for a harness install"
 	fi
 }
 
@@ -369,17 +369,17 @@ download_release() {
 	need_command tar
 	local arch base_url url tmp archive
 	arch="$(detect_arch)"
-	base_url="${RHUMBASE_RELEASE_BASE_URL:-https://github.com/iketiunn/rhumbase/releases/download}"
-	url="${base_url%/}/${RHUMBASE_TAG}/rhumbase_${RHUMBASE_TAG}_linux_${arch}.tar.gz"
+	base_url="${SSHDOCK_RELEASE_BASE_URL:-https://github.com/iketiunn/sshdock/releases/download}"
+	url="${base_url%/}/${SSHDOCK_TAG}/sshdock_${SSHDOCK_TAG}_linux_${arch}.tar.gz"
 	tmp="$(mktemp -d)"
-	archive="$tmp/rhumbase.tar.gz"
+	archive="$tmp/sshdock.tar.gz"
 
 	if command -v curl >/dev/null 2>&1; then
 		run curl -fsSL "$url" -o "$archive"
 	elif command -v wget >/dev/null 2>&1; then
 		run wget -qO "$archive" "$url"
 	else
-		die "curl or wget is required to download Rhumbase binaries"
+		die "curl or wget is required to download SSHDock binaries"
 	fi
 
 	run tar -xzf "$archive" -C "$tmp"
@@ -394,7 +394,7 @@ install_binaries() {
 	fi
 	source="${SOURCE_BIN_DIR%/}"
 
-	for bin in rhumbase rhumbased; do
+	for bin in sshdock sshdockd; do
 		if [ ! -x "$source/$bin" ]; then
 			die "$source/$bin is required and must be executable"
 		fi
@@ -415,16 +415,16 @@ write_git_receive_wrapper() {
 #!/bin/sh
 set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export RHUMBASE_DATA_DIR=$DATA_DIR
-export RHUMBASE_SQLITE_DB_PATH=$DATA_DIR/rhumbase.db
-export RHUMBASE_APPS_DIR=$APPS_DIR
-export RHUMBASE_GIT_HOST=$GIT_HOST
-export RHUMBASE_GIT_USER=$GIT_USER
-export RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
-export RHUMBASE_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
-export RHUMBASE_COMPOSE_RUNNER=docker
-export RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
-exec $INSTALL_BIN_DIR/rhumbased git-receive
+export SSHDOCK_DATA_DIR=$DATA_DIR
+export SSHDOCK_SQLITE_DB_PATH=$DATA_DIR/sshdock.db
+export SSHDOCK_APPS_DIR=$APPS_DIR
+export SSHDOCK_GIT_HOST=$GIT_HOST
+export SSHDOCK_GIT_USER=$GIT_USER
+export SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
+export SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
+export SSHDOCK_COMPOSE_RUNNER=docker
+export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+exec $INSTALL_BIN_DIR/sshdockd git-receive
 WRAPPER
 	run chmod 0755 "$wrapper_actual"
 }
@@ -438,13 +438,13 @@ write_dashboard_wrapper() {
 #!/bin/sh
 set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export RHUMBASE_DATA_DIR=$DATA_DIR
-export RHUMBASE_SQLITE_DB_PATH=$DATA_DIR/rhumbase.db
-export RHUMBASE_APPS_DIR=$APPS_DIR
-export RHUMBASE_GIT_HOST=$GIT_HOST
-export RHUMBASE_COMPOSE_RUNNER=docker
-export RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
-exec $INSTALL_BIN_DIR/rhumbased dashboard
+export SSHDOCK_DATA_DIR=$DATA_DIR
+export SSHDOCK_SQLITE_DB_PATH=$DATA_DIR/sshdock.db
+export SSHDOCK_APPS_DIR=$APPS_DIR
+export SSHDOCK_GIT_HOST=$GIT_HOST
+export SSHDOCK_COMPOSE_RUNNER=docker
+export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+exec $INSTALL_BIN_DIR/sshdockd dashboard
 WRAPPER
 	run chmod 0755 "$wrapper_actual"
 }
@@ -454,8 +454,8 @@ configure_git_sudoers() {
 		return
 	fi
 	local sudoers_actual sudoers_tmp
-	sudoers_actual="$(prefix_path "$SUDOERS_DIR/rhumbase-git-receive")"
-	sudoers_tmp="$(dirname "$sudoers_actual")/.rhumbase-git-receive.tmp.$$"
+	sudoers_actual="$(prefix_path "$SUDOERS_DIR/sshdock-git-receive")"
+	sudoers_tmp="$(dirname "$sudoers_actual")/.sshdock-git-receive.tmp.$$"
 
 	run mkdir -p "$(dirname "$sudoers_actual")"
 	cat > "$sudoers_tmp" <<SUDOERS
@@ -475,8 +475,8 @@ configure_dashboard_sudoers() {
 		return
 	fi
 	local sudoers_actual sudoers_tmp
-	sudoers_actual="$(prefix_path "$SUDOERS_DIR/rhumbase-dashboard")"
-	sudoers_tmp="$(dirname "$sudoers_actual")/.rhumbase-dashboard.tmp.$$"
+	sudoers_actual="$(prefix_path "$SUDOERS_DIR/sshdock-dashboard")"
+	sudoers_tmp="$(dirname "$sudoers_actual")/.sshdock-dashboard.tmp.$$"
 
 	run mkdir -p "$(dirname "$sudoers_actual")"
 	cat > "$sudoers_tmp" <<SUDOERS
@@ -492,10 +492,10 @@ SUDOERS
 
 write_systemd_unit() {
 	local unit_path
-	unit_path="$(prefix_path "$SYSTEMD_DIR/rhumbased.service")"
+	unit_path="$(prefix_path "$SYSTEMD_DIR/sshdockd.service")"
 	cat > "$unit_path" <<UNIT
 [Unit]
-Description=Rhumbase daemon
+Description=SSHDock daemon
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
@@ -504,14 +504,14 @@ Requires=docker.service
 Type=simple
 User=$DAEMON_USER
 Group=$DAEMON_USER
-Environment=RHUMBASE_DATA_DIR=$DATA_DIR
-Environment=RHUMBASE_GIT_HOST=$GIT_HOST
-Environment=RHUMBASE_GIT_USER=$GIT_USER
-Environment=RHUMBASE_GIT_HOME_DIR=$GIT_HOME_DIR
-Environment=RHUMBASE_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
-Environment=RHUMBASE_COMPOSE_RUNNER=docker
-Environment=RHUMBASE_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
-ExecStart=$INSTALL_BIN_DIR/rhumbased daemon
+Environment=SSHDOCK_DATA_DIR=$DATA_DIR
+Environment=SSHDOCK_GIT_HOST=$GIT_HOST
+Environment=SSHDOCK_GIT_USER=$GIT_USER
+Environment=SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
+Environment=SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
+Environment=SSHDOCK_COMPOSE_RUNNER=docker
+Environment=SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+ExecStart=$INSTALL_BIN_DIR/sshdockd daemon
 Restart=on-failure
 RestartSec=5s
 
@@ -524,8 +524,8 @@ UNIT
 verify_installed_binaries() {
 	local bin_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
-	run "$bin_dir_actual/rhumbase" version >/dev/null
-	run "$bin_dir_actual/rhumbased" version >/dev/null
+	run "$bin_dir_actual/sshdock" version >/dev/null
+	run "$bin_dir_actual/sshdockd" version >/dev/null
 }
 
 reload_systemd() {
@@ -533,8 +533,8 @@ reload_systemd() {
 		return
 	fi
 	run systemctl daemon-reload
-	run systemctl enable rhumbased.service
-	run systemctl restart rhumbased.service
+	run systemctl enable sshdockd.service
+	run systemctl restart sshdockd.service
 }
 
 configure_caddy_import() {
@@ -545,15 +545,15 @@ configure_caddy_import() {
 
 	run mkdir -p "$(dirname "$generated_actual")" "$(dirname "$caddy_main_actual")"
 	if [ ! -f "$generated_actual" ]; then
-		printf '# Rhumbase generated routes\n' > "$generated_actual"
+		printf '# SSHDock generated routes\n' > "$generated_actual"
 	fi
 	run chmod 0644 "$generated_actual"
 
 	if [ ! -f "$caddy_main_actual" ]; then
 		printf '# Caddy config managed by the system administrator.\n%s\n' "$import_line" > "$caddy_main_actual"
 	elif ! grep -Fqx "$import_line" "$caddy_main_actual"; then
-		if [ ! -f "$caddy_main_actual.rhumbase.bak" ]; then
-			run cp "$caddy_main_actual" "$caddy_main_actual.rhumbase.bak"
+		if [ ! -f "$caddy_main_actual.sshdock.bak" ]; then
+			run cp "$caddy_main_actual" "$caddy_main_actual.sshdock.bak"
 		fi
 		printf '\n%s\n' "$import_line" >> "$caddy_main_actual"
 	fi
@@ -570,37 +570,37 @@ reload_caddy() {
 	run systemctl reload caddy || run systemctl restart caddy
 }
 
-need_env RHUMBASE_TAG
+need_env SSHDOCK_TAG
 
-BOOTSTRAP_ROOT="${RHUMBASE_BOOTSTRAP_ROOT:-/}"
-SOURCE_BIN_DIR="${RHUMBASE_BOOTSTRAP_SOURCE_BIN_DIR:-}"
-INSTALL_BIN_DIR="${RHUMBASE_INSTALL_BIN_DIR:-/usr/local/bin}"
-DATA_DIR="${RHUMBASE_DATA_DIR:-/var/lib/rhumbase}"
-APPS_DIR="${RHUMBASE_APPS_DIR:-$DATA_DIR/apps}"
-SYSTEMD_DIR="${RHUMBASE_SYSTEMD_DIR:-/etc/systemd/system}"
-CADDY_CONFIG_PATH="${RHUMBASE_CADDY_CONFIG_PATH:-/etc/caddy/rhumbase.caddyfile}"
-CADDY_MAIN_CONFIG_PATH="${RHUMBASE_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
-SSH_LISTEN_ADDR="${RHUMBASE_SSH_LISTEN_ADDR:-:2222}"
-DASHBOARD_USER="${RHUMBASE_DASHBOARD_USER:-dashboard}"
-DASHBOARD_HOME_DIR="${RHUMBASE_DASHBOARD_HOME_DIR:-$DATA_DIR/dashboard}"
-DASHBOARD_SHELL="${RHUMBASE_DASHBOARD_SHELL:-/bin/sh}"
-DASHBOARD_HOST_KEY_PATH="${RHUMBASE_DASHBOARD_HOST_KEY_PATH:-$DATA_DIR/dashboard/ssh_host_rsa_key}"
-DASHBOARD_AUTHORIZED_KEYS_PATH="${RHUMBASE_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DASHBOARD_HOME_DIR/.ssh/authorized_keys}"
-DASHBOARD_WRAPPER_PATH="${RHUMBASE_DASHBOARD_WRAPPER_PATH:-$INSTALL_BIN_DIR/rhumbase-dashboard}"
-GIT_HOST="${RHUMBASE_GIT_HOST:-server}"
-GIT_USER="${RHUMBASE_GIT_USER:-git}"
-GIT_HOME_DIR="${RHUMBASE_GIT_HOME_DIR:-$DATA_DIR/git}"
-GIT_AUTHORIZED_KEYS_PATH="${RHUMBASE_GIT_AUTHORIZED_KEYS_PATH:-$GIT_HOME_DIR/.ssh/authorized_keys}"
-GIT_SHELL="${RHUMBASE_GIT_SHELL:-/bin/sh}"
-GIT_RECEIVE_WRAPPER_PATH="${RHUMBASE_GIT_RECEIVE_WRAPPER_PATH:-$INSTALL_BIN_DIR/rhumbase-git-receive}"
-DAEMON_USER="${RHUMBASE_DAEMON_USER:-rhumbase}"
-SUDOERS_DIR="${RHUMBASE_SUDOERS_DIR:-/etc/sudoers.d}"
-SKIP_USER="${RHUMBASE_BOOTSTRAP_SKIP_USER:-0}"
-SKIP_CHOWN="${RHUMBASE_BOOTSTRAP_SKIP_CHOWN:-0}"
-SKIP_SYSTEMD_RELOAD="${RHUMBASE_BOOTSTRAP_SKIP_SYSTEMD_RELOAD:-0}"
-APT_LOCK_RETRIES="${RHUMBASE_BOOTSTRAP_APT_LOCK_RETRIES:-12}"
-APT_LOCK_WAIT_SECONDS="${RHUMBASE_BOOTSTRAP_APT_LOCK_WAIT_SECONDS:-5}"
-INSTALL_DEPS="${RHUMBASE_BOOTSTRAP_INSTALL_DEPS:-}"
+BOOTSTRAP_ROOT="${SSHDOCK_BOOTSTRAP_ROOT:-/}"
+SOURCE_BIN_DIR="${SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR:-}"
+INSTALL_BIN_DIR="${SSHDOCK_INSTALL_BIN_DIR:-/usr/local/bin}"
+DATA_DIR="${SSHDOCK_DATA_DIR:-/var/lib/sshdock}"
+APPS_DIR="${SSHDOCK_APPS_DIR:-$DATA_DIR/apps}"
+SYSTEMD_DIR="${SSHDOCK_SYSTEMD_DIR:-/etc/systemd/system}"
+CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock.caddyfile}"
+CADDY_MAIN_CONFIG_PATH="${SSHDOCK_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
+SSH_LISTEN_ADDR="${SSHDOCK_SSH_LISTEN_ADDR:-:2222}"
+DASHBOARD_USER="${SSHDOCK_DASHBOARD_USER:-dashboard}"
+DASHBOARD_HOME_DIR="${SSHDOCK_DASHBOARD_HOME_DIR:-$DATA_DIR/dashboard}"
+DASHBOARD_SHELL="${SSHDOCK_DASHBOARD_SHELL:-/bin/sh}"
+DASHBOARD_HOST_KEY_PATH="${SSHDOCK_DASHBOARD_HOST_KEY_PATH:-$DATA_DIR/dashboard/ssh_host_rsa_key}"
+DASHBOARD_AUTHORIZED_KEYS_PATH="${SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DASHBOARD_HOME_DIR/.ssh/authorized_keys}"
+DASHBOARD_WRAPPER_PATH="${SSHDOCK_DASHBOARD_WRAPPER_PATH:-$INSTALL_BIN_DIR/sshdock-dashboard}"
+GIT_HOST="${SSHDOCK_GIT_HOST:-server}"
+GIT_USER="${SSHDOCK_GIT_USER:-git}"
+GIT_HOME_DIR="${SSHDOCK_GIT_HOME_DIR:-$DATA_DIR/git}"
+GIT_AUTHORIZED_KEYS_PATH="${SSHDOCK_GIT_AUTHORIZED_KEYS_PATH:-$GIT_HOME_DIR/.ssh/authorized_keys}"
+GIT_SHELL="${SSHDOCK_GIT_SHELL:-/bin/sh}"
+GIT_RECEIVE_WRAPPER_PATH="${SSHDOCK_GIT_RECEIVE_WRAPPER_PATH:-$INSTALL_BIN_DIR/sshdock-git-receive}"
+DAEMON_USER="${SSHDOCK_DAEMON_USER:-sshdock}"
+SUDOERS_DIR="${SSHDOCK_SUDOERS_DIR:-/etc/sudoers.d}"
+SKIP_USER="${SSHDOCK_BOOTSTRAP_SKIP_USER:-0}"
+SKIP_CHOWN="${SSHDOCK_BOOTSTRAP_SKIP_CHOWN:-0}"
+SKIP_SYSTEMD_RELOAD="${SSHDOCK_BOOTSTRAP_SKIP_SYSTEMD_RELOAD:-0}"
+APT_LOCK_RETRIES="${SSHDOCK_BOOTSTRAP_APT_LOCK_RETRIES:-12}"
+APT_LOCK_WAIT_SECONDS="${SSHDOCK_BOOTSTRAP_APT_LOCK_WAIT_SECONDS:-5}"
+INSTALL_DEPS="${SSHDOCK_BOOTSTRAP_INSTALL_DEPS:-}"
 if [ -z "$INSTALL_DEPS" ]; then
 	if [ "$BOOTSTRAP_ROOT" = "/" ]; then
 		INSTALL_DEPS=1
@@ -612,7 +612,7 @@ case "$INSTALL_DEPS" in
 	0|1)
 		;;
 	*)
-		die "RHUMBASE_BOOTSTRAP_INSTALL_DEPS must be 0 or 1"
+		die "SSHDOCK_BOOTSTRAP_INSTALL_DEPS must be 0 or 1"
 		;;
 esac
 
@@ -638,4 +638,4 @@ verify_installed_binaries
 reload_caddy
 reload_systemd
 
-printf 'Rhumbase %s installed\n' "$RHUMBASE_TAG"
+printf 'SSHDock %s installed\n' "$SSHDOCK_TAG"

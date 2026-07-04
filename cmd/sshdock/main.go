@@ -11,14 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/iketiunn/rumbase/internal/cli"
-	"github.com/iketiunn/rumbase/internal/compose"
-	"github.com/iketiunn/rumbase/internal/config"
-	"github.com/iketiunn/rumbase/internal/diagnostics"
-	"github.com/iketiunn/rumbase/internal/gitrecv"
-	"github.com/iketiunn/rumbase/internal/router"
-	"github.com/iketiunn/rumbase/internal/store"
-	"github.com/iketiunn/rumbase/internal/version"
+	"github.com/iketiunn/sshdock/internal/cli"
+	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/iketiunn/sshdock/internal/diagnostics"
+	"github.com/iketiunn/sshdock/internal/gitrecv"
+	"github.com/iketiunn/sshdock/internal/router"
+	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/iketiunn/sshdock/internal/version"
 )
 
 func main() {
@@ -165,20 +165,20 @@ func commandNeedsRecoveryRunner(args []string) bool {
 }
 
 func cliRunnerFromEnv() (compose.Runner, error) {
-	runner := os.Getenv("RHUMBASE_COMPOSE_RUNNER")
+	runner := os.Getenv("SSHDOCK_COMPOSE_RUNNER")
 	if runner == "" || runner == "fake" {
 		return &compose.FakeRunner{
-			DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
-			RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
-			RemoveErr:  envError("RHUMBASE_FAKE_COMPOSE_REMOVE_ERROR"),
-			LogOutput:  os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS"),
+			DeployErr:  envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"),
+			RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
+			RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
+			LogOutput:  os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS"),
 		}, nil
 	}
 	if runner == "docker" {
 		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
 	}
 
-	return nil, fmt.Errorf("unsupported RHUMBASE_COMPOSE_RUNNER %q", runner)
+	return nil, fmt.Errorf("unsupported SSHDOCK_COMPOSE_RUNNER %q", runner)
 }
 
 func envError(name string) error {

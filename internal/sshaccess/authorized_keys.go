@@ -17,7 +17,7 @@ type Key struct {
 
 func RenderAuthorizedKeys(keys []Key, receiveCommand string) string {
 	if receiveCommand == "" {
-		receiveCommand = "rhumbased git-receive"
+		receiveCommand = "sshdockd git-receive"
 	}
 	return renderAuthorizedKeys(keys, receiveCommand, []string{
 		"no-pty",
@@ -30,7 +30,7 @@ func RenderAuthorizedKeys(keys []Key, receiveCommand string) string {
 
 func RenderDashboardAuthorizedKeys(keys []Key, dashboardCommand string) string {
 	if dashboardCommand == "" {
-		dashboardCommand = "rhumbased dashboard"
+		dashboardCommand = "sshdockd dashboard"
 	}
 	return renderAuthorizedKeys(keys, dashboardCommand, []string{
 		"no-port-forwarding",
@@ -54,7 +54,7 @@ func renderAuthorizedKeys(keys []Key, command string, options []string) string {
 		}
 		fmt.Fprintf(
 			&builder,
-			`command="exec %s",%s %s rhumbase-key:%s`+"\n",
+			`command="exec %s",%s %s sshdock-key:%s`+"\n",
 			escapeAuthorizedKeysCommand(command),
 			strings.Join(options, ","),
 			publicKey,

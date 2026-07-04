@@ -89,7 +89,7 @@ Open the interactive SSH dashboard:
 ssh dashboard@server
 ```
 
-Useful dashboard keys are shown in the bottom command bar. `j`/`k` or arrows select apps, `/` filters the app table, `g`/`G` jumps to the first or last app, `tab` switches detail tabs, `u`/`d` scrolls logs, `r` refreshes, `q` quits, and `?` expands help.
+Useful dashboard keys are shown in the bottom command bar. `j`/`k` or arrows select apps, `/` filters the app table, `g`/`G` jumps to the first or last app, `tab` switches detail tabs, `a` opens app lifecycle actions, `u`/`d` scrolls logs, `f` follows logs by periodic refresh on the Logs tab, `r` refreshes, `q` quits, and `?` expands help.
 
 See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full `rhumbase` and `rhumbased` command reference.
 
@@ -121,7 +121,9 @@ Current MVP state:
 - `rhumbase ssh-keys add <name>`, `rhumbase ssh-keys list`, and `rhumbase ssh-keys remove <name>` manage deploy/dashboard SSH keys and rewrite both Git receive and dashboard `authorized_keys` files with forced commands.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - `rhumbase domains attach <app> <service> <domain> --port <host-port>`, `rhumbase domains list <app>`, and `rhumbase domains detach <app> <domain>` persist domain state, rebuild the generated Caddyfile from SQLite, validate it, reload Caddy, and record domain/router events.
-- `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive column tables, K9s-style command tips, app filtering, detail tabs, log scrolling, refresh, and jump keys when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
+- `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive column tables, K9s-style command tips, app filtering, detail tabs including Events, log scrolling/follow, refresh, jump keys, and app lifecycle actions when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
+- TUI app actions cover restart app, restart service, redeploy latest release, rollback, attach domain, detach domain, and volume-preserving app removal through the same backend as the CLI.
+- Server setup, diagnostics, app creation, SSH key management, and binary/version commands stay CLI-only in v0.
 - `rhumbase logs <app> [service] [-f]`, `rhumbase releases list <app>`, and `rhumbase events list <app>` expose Compose logs and persisted release/event state without opening the TUI.
 - `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, `rhumbase apps rollback <app> <release-id>`, and `rhumbase apps remove <app>` run through the configured Compose runner and record or clean up lifecycle state in SQLite.
 - `rhumbase apps remove <app>` maps deployed apps to `docker compose down --remove-orphans`, preserves Docker volumes in v0, deletes app repos/worktrees and SQLite app state, rebuilds Caddy routes, and removes only Rhumbase-managed app images.

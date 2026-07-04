@@ -300,6 +300,24 @@ With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain te
 ssh -T dashboard@server
 ```
 
+Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`.
+
+Useful keys:
+
+- `j`/`k` or arrows select apps.
+- `/` filters the app table.
+- `g`/`G` jumps to the first or last app.
+- `tab` and `shift+tab` switch detail tabs.
+- `a` opens app lifecycle actions for the selected app.
+- `u`/`d` scrolls logs.
+- `f` toggles Logs-tab follow, implemented as periodic dashboard snapshot refresh.
+- `r` refreshes the dashboard snapshot.
+- `q` quits.
+
+TUI app actions cover restart app, restart service, redeploy latest release, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `rhumbase apps restart`, `rhumbase apps redeploy`, `rhumbase apps rollback`, `rhumbase domains attach`, `rhumbase domains detach`, and `rhumbase apps remove`.
+
+The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
+
 ### `rhumbased git-receive`
 
 Receive pushes from OpenSSH forced-command wiring.

@@ -250,13 +250,19 @@ Interactive dashboard controls:
 [/] filter     filter apps
 [j/k] select   select apps
 [g/G] jump     first or last app
-[tab] tabs     Summary, Services, Routes, Releases, Deploys, Logs
+[tab] tabs     Summary, Services, Routes, Releases, Deploys, Events, Logs
+[a] actions    restart, redeploy, rollback, domains, remove
 [u/d] logs     scroll logs
+[f] follow     periodic refresh on Logs tab
 [r] refresh    refresh snapshot
 [q] quit       close the session
 ```
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
+
+The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy the latest release, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `rhumbase apps remove`.
+
+Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 
 Default dashboard SSH settings:
 
@@ -288,7 +294,7 @@ Each rendered dashboard key is restricted with:
 command="exec sudo -n -u rhumbase /usr/local/bin/rhumbase-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
-The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state and queries Docker Compose for service status/logs. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
+The dashboard forced command runs `rhumbased dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `rhumbased serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 

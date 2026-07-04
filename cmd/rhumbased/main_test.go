@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/iketiunn/rumbase/internal/cli"
 	"github.com/iketiunn/rumbase/internal/compose"
 )
 
@@ -111,6 +113,46 @@ func TestDashboardHasInteractiveTerminalRejectsNonTTYWriters(t *testing.T) {
 	}
 }
 
+func TestDashboardActionBackendMapsToCLIBackend(t *testing.T) {
+	backend := &fakeDashboardCLIBackend{}
+	adapter := dashboardActionBackend{backend: backend}
+
+	if err := adapter.RestartApp("app"); err != nil {
+		t.Fatalf("RestartApp: %v", err)
+	}
+	if err := adapter.RestartService("app", "web"); err != nil {
+		t.Fatalf("RestartService: %v", err)
+	}
+	if err := adapter.RedeployApp("app"); err != nil {
+		t.Fatalf("RedeployApp: %v", err)
+	}
+	if err := adapter.RollbackApp("app", "rel_1"); err != nil {
+		t.Fatalf("RollbackApp: %v", err)
+	}
+	if err := adapter.AttachDomain("app", "web", "example.com", 3000); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	if err := adapter.DetachDomain("app", "example.com"); err != nil {
+		t.Fatalf("DetachDomain: %v", err)
+	}
+	if err := adapter.RemoveApp("app"); err != nil {
+		t.Fatalf("RemoveApp: %v", err)
+	}
+
+	want := strings.Join([]string{
+		"restart-app app",
+		"restart-service app web",
+		"redeploy app",
+		"rollback app rel_1",
+		"attach app web example.com 3000",
+		"detach app example.com",
+		"remove app",
+	}, "\n")
+	if got := strings.Join(backend.calls, "\n"); got != want {
+		t.Fatalf("calls = %q, want %q", got, want)
+	}
+}
+
 func TestRunDaemonValidatesConfig(t *testing.T) {
 	t.Setenv("RHUMBASE_GIT_HOST", " ")
 	var stdout bytes.Buffer
@@ -126,6 +168,45 @@ func TestRunDaemonValidatesConfig(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
+}
+
+type fakeDashboardCLIBackend struct {
+	calls []string
+}
+
+func (f *fakeDashboardCLIBackend) RestartApp(appName string) error {
+	f.calls = append(f.calls, fmt.Sprintf("restart-app %s", appName))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) RestartService(appName string, serviceName string) error {
+	f.calls = append(f.calls, fmt.Sprintf("restart-service %s %s", appName, serviceName))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) RedeployApp(appName string) error {
+	f.calls = append(f.calls, fmt.Sprintf("redeploy %s", appName))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) RollbackApp(appName string, releaseID string) error {
+	f.calls = append(f.calls, fmt.Sprintf("rollback %s %s", appName, releaseID))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) AttachDomain(domain cli.Domain) error {
+	f.calls = append(f.calls, fmt.Sprintf("attach %s %s %s %d", domain.AppName, domain.ServiceName, domain.DomainName, domain.Port))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) DetachDomain(appName string, domainName string) error {
+	f.calls = append(f.calls, fmt.Sprintf("detach %s %s", appName, domainName))
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) RemoveApp(appName string) error {
+	f.calls = append(f.calls, fmt.Sprintf("remove %s", appName))
+	return nil
 }
 
 func TestRunGitReceiveRequiresSSHOriginalCommand(t *testing.T) {

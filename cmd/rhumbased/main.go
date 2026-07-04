@@ -15,9 +15,11 @@ import (
 	"github.com/mattn/go-isatty"
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
+	"github.com/iketiunn/rumbase/internal/cli"
 	"github.com/iketiunn/rumbase/internal/compose"
 	"github.com/iketiunn/rumbase/internal/config"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
+	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
 	"github.com/iketiunn/rumbase/internal/tui"
 	"github.com/iketiunn/rumbase/internal/version"
@@ -180,7 +182,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		stdin = os.Stdin
 	}
 	if dashboardHasInteractiveTerminal(stdin, stdout) {
-		if err := tui.RunInteractiveDashboard(ctx, snapshot, handler.Snapshot, stdin, stdout); err != nil {
+		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, runner), stdin, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -201,6 +203,74 @@ func dashboardHasInteractiveTerminal(stdin io.Reader, stdout io.Writer) bool {
 		return false
 	}
 	return isatty.IsTerminal(input.Fd()) && isatty.IsTerminal(output.Fd())
+}
+
+type dashboardCLIBackend interface {
+	RestartApp(appName string) error
+	RestartService(appName string, serviceName string) error
+	RedeployApp(appName string) error
+	RollbackApp(appName string, releaseID string) error
+	AttachDomain(domain cli.Domain) error
+	DetachDomain(appName string, domainName string) error
+	RemoveApp(appName string) error
+}
+
+type dashboardActionBackend struct {
+	backend dashboardCLIBackend
+}
+
+func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner) tui.DashboardActions {
+	backend := cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
+		NodeID:                      cfg.NodeID,
+		AppsDir:                     cfg.AppsDir,
+		GitHost:                     cfg.GitHost,
+		AuthorizedKeysPath:          cfg.GitAuthorizedKeysPath,
+		GitReceiveCommand:           cfg.GitReceiveCommand,
+		DashboardAuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
+		DashboardCommand:            cfg.DashboardCommand,
+		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
+			ConfigPath:   cfg.CaddyConfigPath,
+			Executor:     router.LocalCommandExecutor{},
+			AdminAddress: cfg.CaddyAdminAddress,
+			UpstreamHost: "127.0.0.1",
+		}),
+		RecoveryRunner:   runner,
+		RecoveryCheckout: gitrecv.LocalWorktreeCheckout{},
+	})
+	return dashboardActionBackend{backend: backend}
+}
+
+func (b dashboardActionBackend) RestartApp(appName string) error {
+	return b.backend.RestartApp(appName)
+}
+
+func (b dashboardActionBackend) RestartService(appName string, serviceName string) error {
+	return b.backend.RestartService(appName, serviceName)
+}
+
+func (b dashboardActionBackend) RedeployApp(appName string) error {
+	return b.backend.RedeployApp(appName)
+}
+
+func (b dashboardActionBackend) RollbackApp(appName string, releaseID string) error {
+	return b.backend.RollbackApp(appName, releaseID)
+}
+
+func (b dashboardActionBackend) AttachDomain(appName string, serviceName string, domainName string, port int) error {
+	return b.backend.AttachDomain(cli.Domain{
+		AppName:     appName,
+		ServiceName: serviceName,
+		DomainName:  domainName,
+		Port:        port,
+	})
+}
+
+func (b dashboardActionBackend) DetachDomain(appName string, domainName string) error {
+	return b.backend.DetachDomain(appName, domainName)
+}
+
+func (b dashboardActionBackend) RemoveApp(appName string) error {
+	return b.backend.RemoveApp(appName)
 }
 
 func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
@@ -342,6 +412,7 @@ func fakeRunnerFromEnv() *compose.FakeRunner {
 	return &compose.FakeRunner{
 		DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
 		RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
+		RemoveErr:  envError("RHUMBASE_FAKE_COMPOSE_REMOVE_ERROR"),
 	}
 }
 

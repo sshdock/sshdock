@@ -366,6 +366,295 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 	}
 }
 
+func TestStoreBackendLifecycleInspectionCommands(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
+	runner := &compose.FakeRunner{LogOutput: "web log\n"}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	if err := sqlite.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: "my-app", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+	if err := sqlite.UpsertSSHKey(ctx, store.SSHKey{Name: "admin", PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com", CreatedAt: now.Add(2 * time.Minute)}); err != nil {
+		t.Fatalf("UpsertSSHKey: %v", err)
+	}
+
+	if code := cliRunner.Run([]string{"logs", "my-app", "web", "-f"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("logs exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "web log\n" {
+		t.Fatalf("logs stdout = %q", stdout.String())
+	}
+	if len(runner.LogsRequests) != 1 {
+		t.Fatalf("LogsRequests = %#v", runner.LogsRequests)
+	}
+	logsRequest := runner.LogsRequests[0]
+	if logsRequest.AppName != "my-app" || logsRequest.ServiceName != "web" || logsRequest.ProjectDir != filepath.Join(appsDir, "my-app", "worktree") || logsRequest.ComposePath != filepath.Join(appsDir, "my-app", "worktree", "compose.yml") || logsRequest.Lines != 100 || !logsRequest.Follow {
+		t.Fatalf("logs request = %#v", logsRequest)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{name: "releases list", args: []string{"releases", "list", "my-app"}, want: []string{"rel_old\tsucceeded\told\t", "rel_new\tsucceeded\tnew\t"}},
+		{name: "events list", args: []string{"events", "list", "my-app"}, want: []string{"deploy.succeeded\tDeploy succeeded"}},
+		{name: "domains list", args: []string{"domains", "list", "my-app"}, want: []string{"example.com\tweb\t3000\ttrue"}},
+		{name: "ssh-keys list", args: []string{"ssh-keys", "list"}, want: []string{"admin\t", "\t2026-07-04T10:02:00Z"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stdout.Reset()
+			stderr.Reset()
+			if code := cliRunner.Run(test.args, &stdout, &stderr); code != 0 {
+				t.Fatalf("%s exit code = %d, stderr = %q", test.name, code, stderr.String())
+			}
+			for _, want := range test.want {
+				if !strings.Contains(stdout.String(), want) {
+					t.Fatalf("%s stdout missing %q:\n%s", test.name, want, stdout.String())
+				}
+			}
+		})
+	}
+}
+
+func TestStoreBackendDomainDetachDeletesDomainRebuildsRoutesAndRecordsEvents(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	routePublisher := &fakeRoutePublisher{}
+	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: filepath.Join(t.TempDir(), "apps"),
+		Router:  routePublisher,
+		Now:     func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	for _, model := range []app.App{
+		{ID: "my-app", Name: "my-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now},
+		{ID: "api-app", Name: "api-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now},
+	} {
+		model.RepoPath = filepath.Join(t.TempDir(), model.ID, "repo.git")
+		model.WorktreePath = filepath.Join(t.TempDir(), model.ID, "worktree")
+		if err := sqlite.CreateApp(ctx, model); err != nil {
+			t.Fatalf("CreateApp %s: %v", model.ID, err)
+		}
+	}
+	for _, domain := range []app.Domain{
+		{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now},
+		{ID: "dom_api_app_api_example_com", AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := sqlite.AttachDomain(ctx, domain); err != nil {
+			t.Fatalf("AttachDomain %s: %v", domain.DomainName, err)
+		}
+	}
+
+	if code := cliRunner.Run([]string{"domains", "detach", "my-app", "example.com"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains detach exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "detached example.com from my-app") {
+		t.Fatalf("domains detach stdout = %q", stdout.String())
+	}
+	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("my-app domains after detach = %#v", domains)
+	}
+	if len(routePublisher.Syncs) != 1 {
+		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
+	}
+	wantRoutes := []router.Route{{AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true}}
+	if len(routePublisher.Syncs[0]) != len(wantRoutes) || routePublisher.Syncs[0][0] != wantRoutes[0] {
+		t.Fatalf("router sync = %#v, want %#v", routePublisher.Syncs[0], wantRoutes)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	gotTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		gotTypes = append(gotTypes, event.Type)
+	}
+	if strings.Join(gotTypes, ",") != "domain.detached,router.reloaded" {
+		t.Fatalf("event types = %#v, want domain.detached and router.reloaded", gotTypes)
+	}
+}
+
+func TestStoreBackendSSHKeyRemoveRevokesKeyAndRendersAuthorizedKeys(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	authorizedKeysPath := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
+	dashboardAuthorizedKeysPath := filepath.Join(t.TempDir(), "dashboard", ".ssh", "authorized_keys")
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:                      "node-a",
+		AppsDir:                     filepath.Join(t.TempDir(), "apps"),
+		AuthorizedKeysPath:          authorizedKeysPath,
+		GitReceiveCommand:           "/usr/local/bin/rhumbased git-receive",
+		DashboardAuthorizedKeysPath: dashboardAuthorizedKeysPath,
+		DashboardCommand:            "/usr/local/bin/rhumbased dashboard",
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	adminKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAdminKey admin@example.com\n"
+	opsKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOpsKey ops@example.com\n"
+
+	for name, key := range map[string]string{"admin": adminKey, "ops": opsKey} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := cliRunner.RunWithInput([]string{"ssh-keys", "add", name}, strings.NewReader(key), &stdout, &stderr); code != 0 {
+			t.Fatalf("ssh-keys add %s exit code = %d, stderr = %q", name, code, stderr.String())
+		}
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := cliRunner.Run([]string{"ssh-keys", "remove", "admin"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("ssh-keys remove exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "removed SSH key admin") {
+		t.Fatalf("ssh-keys remove stdout = %q", stdout.String())
+	}
+	keys, err := sqlite.ListSSHKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListSSHKeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].Name != "ops" {
+		t.Fatalf("keys after remove = %#v, want only ops", keys)
+	}
+	renderedGit := readTextFile(t, authorizedKeysPath)
+	if strings.Contains(renderedGit, strings.TrimSpace(adminKey)) {
+		t.Fatalf("git authorized_keys still contains removed key:\n%s", renderedGit)
+	}
+	if !strings.Contains(renderedGit, strings.TrimSpace(opsKey)) {
+		t.Fatalf("git authorized_keys missing remaining key:\n%s", renderedGit)
+	}
+	renderedDashboard := readTextFile(t, dashboardAuthorizedKeysPath)
+	if strings.Contains(renderedDashboard, strings.TrimSpace(adminKey)) {
+		t.Fatalf("dashboard authorized_keys still contains removed key:\n%s", renderedDashboard)
+	}
+	if !strings.Contains(renderedDashboard, strings.TrimSpace(opsKey)) {
+		t.Fatalf("dashboard authorized_keys missing remaining key:\n%s", renderedDashboard)
+	}
+}
+
+func TestStoreBackendAppRemoveCleansRuntimeStateAndPreservesOtherRoutes(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
+	runner := &compose.FakeRunner{}
+	routePublisher := &fakeRoutePublisher{}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Router:         routePublisher,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	appRoot := filepath.Join(appsDir, "my-app")
+	repoPath := filepath.Join(appRoot, "repo.git")
+	worktreePath := filepath.Join(appRoot, "worktree")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll repo: %v", err)
+	}
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree: %v", err)
+	}
+	composePath := filepath.Join(worktreePath, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile compose: %v", err)
+	}
+	model := app.App{ID: "my-app", Name: "my-app", NodeID: "node-a", RepoPath: repoPath, WorktreePath: worktreePath, Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp my-app: %v", err)
+	}
+	if err := sqlite.CreateRelease(ctx, app.Release{ID: "rel_1", AppID: "my-app", CommitSHA: "abc123", ComposePath: composePath, Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain my-app: %v", err)
+	}
+	if err := sqlite.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: "my-app", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+	other := app.App{ID: "api-app", Name: "api-app", NodeID: "node-a", RepoPath: filepath.Join(appsDir, "api-app", "repo.git"), WorktreePath: filepath.Join(appsDir, "api-app", "worktree"), Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.CreateApp(ctx, other); err != nil {
+		t.Fatalf("CreateApp api-app: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_api_app_api_example_com", AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain api-app: %v", err)
+	}
+
+	if code := cliRunner.Run([]string{"apps", "remove", "my-app", "--force"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps remove exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "removed app my-app") {
+		t.Fatalf("apps remove stdout = %q", stdout.String())
+	}
+	if len(runner.RemoveRequests) != 1 {
+		t.Fatalf("RemoveRequests = %#v", runner.RemoveRequests)
+	}
+	removeRequest := runner.RemoveRequests[0]
+	if removeRequest.AppName != "my-app" || removeRequest.ProjectDir != worktreePath || removeRequest.ComposePath != composePath {
+		t.Fatalf("remove request = %#v", removeRequest)
+	}
+	if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
+		t.Fatalf("repo path stat err = %v, want not exist", err)
+	}
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Fatalf("worktree path stat err = %v, want not exist", err)
+	}
+	if _, err := sqlite.GetApp(ctx, "my-app"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetApp after remove error = %v, want ErrNotFound", err)
+	}
+	if releases, err := sqlite.ListReleasesByApp(ctx, "my-app"); err != nil || len(releases) != 0 {
+		t.Fatalf("releases after remove = %#v, err = %v", releases, err)
+	}
+	if deployments, err := sqlite.ListDeploymentsByApp(ctx, "my-app"); err != nil || len(deployments) != 0 {
+		t.Fatalf("deployments after remove = %#v, err = %v", deployments, err)
+	}
+	if domains, err := sqlite.ListDomainsByApp(ctx, "my-app"); err != nil || len(domains) != 0 {
+		t.Fatalf("domains after remove = %#v, err = %v", domains, err)
+	}
+	if events, err := sqlite.ListEventsByApp(ctx, "my-app"); err != nil || len(events) != 0 {
+		t.Fatalf("events after remove = %#v, err = %v", events, err)
+	}
+	if len(routePublisher.Syncs) != 1 {
+		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
+	}
+	wantRoutes := []router.Route{{AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true}}
+	if len(routePublisher.Syncs[0]) != len(wantRoutes) || routePublisher.Syncs[0][0] != wantRoutes[0] {
+		t.Fatalf("router sync = %#v, want %#v", routePublisher.Syncs[0], wantRoutes)
+	}
+}
+
 func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
@@ -577,4 +866,14 @@ func newStoreBackendTestStore(t *testing.T, ctx context.Context) *store.SQLiteSt
 	})
 
 	return sqlite
+}
+
+func readTextFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile %s: %v", path, err)
+	}
+	return string(data)
 }

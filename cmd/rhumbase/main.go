@@ -110,17 +110,38 @@ func commandNeedsStore(args []string) bool {
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info") {
 		return true
 	}
+	if len(args) >= 3 && len(args) <= 4 && args[0] == "apps" && args[1] == "remove" {
+		return true
+	}
 	if commandNeedsRecoveryRunner(args) {
+		return true
+	}
+	if len(args) == 3 && args[0] == "releases" && args[1] == "list" {
+		return true
+	}
+	if len(args) == 3 && args[0] == "events" && args[1] == "list" {
 		return true
 	}
 	if len(args) == 7 && args[0] == "domains" && args[1] == "attach" && args[5] == "--port" {
 		_, err := strconv.Atoi(args[6])
 		return err == nil
 	}
+	if len(args) == 3 && args[0] == "domains" && args[1] == "list" {
+		return true
+	}
+	if len(args) == 4 && args[0] == "domains" && args[1] == "detach" {
+		return true
+	}
 	if len(args) == 4 && args[0] == "server" && args[1] == "domain" && args[2] == "set" {
 		return true
 	}
+	if len(args) == 2 && args[0] == "ssh-keys" && args[1] == "list" {
+		return true
+	}
 	if len(args) == 3 && args[0] == "ssh-keys" && args[1] == "add" {
+		return true
+	}
+	if len(args) == 3 && args[0] == "ssh-keys" && args[1] == "remove" {
 		return true
 	}
 
@@ -128,10 +149,16 @@ func commandNeedsStore(args []string) bool {
 }
 
 func commandNeedsRecoveryRunner(args []string) bool {
+	if len(args) >= 2 && args[0] == "logs" {
+		return true
+	}
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "restart" || args[1] == "redeploy") {
 		return true
 	}
 	if len(args) == 4 && args[0] == "apps" && (args[1] == "restart" || args[1] == "rollback") {
+		return true
+	}
+	if len(args) >= 3 && len(args) <= 4 && args[0] == "apps" && args[1] == "remove" {
 		return true
 	}
 	return false
@@ -143,6 +170,8 @@ func cliRunnerFromEnv() (compose.Runner, error) {
 		return &compose.FakeRunner{
 			DeployErr:  envError("RHUMBASE_FAKE_COMPOSE_DEPLOY_ERROR"),
 			RestartErr: envError("RHUMBASE_FAKE_COMPOSE_RESTART_ERROR"),
+			RemoveErr:  envError("RHUMBASE_FAKE_COMPOSE_REMOVE_ERROR"),
+			LogOutput:  os.Getenv("RHUMBASE_FAKE_COMPOSE_LOGS"),
 		}, nil
 	}
 	if runner == "docker" {

@@ -240,6 +240,24 @@ func TestSQLiteStoreDomains(t *testing.T) {
 			t.Fatalf("ListDomains[%d] = %#v, want %#v", i, allDomains[i], wantDomains[i])
 		}
 	}
+
+	deleted, err := store.DeleteDomainByAppAndName(ctx, domain.AppID, domain.DomainName)
+	if err != nil {
+		t.Fatalf("DeleteDomainByAppAndName: %v", err)
+	}
+	if deleted != domain {
+		t.Fatalf("deleted domain = %#v, want %#v", deleted, domain)
+	}
+	domains, err = store.ListDomainsByApp(ctx, domain.AppID)
+	if err != nil {
+		t.Fatalf("ListDomainsByApp after delete: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("domains after delete = %#v, want none", domains)
+	}
+	if _, err := store.DeleteDomainByAppAndName(ctx, domain.AppID, domain.DomainName); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeleteDomainByAppAndName missing error = %v, want ErrNotFound", err)
+	}
 }
 
 func TestSQLiteStoreEvents(t *testing.T) {
@@ -324,6 +342,74 @@ func TestSQLiteStoreSSHKeys(t *testing.T) {
 	}
 	if len(keys) != 1 || keys[0] != replacement {
 		t.Fatalf("keys after replacement = %#v, want [%#v]", keys, replacement)
+	}
+
+	if err := store.DeleteSSHKey(ctx, "admin"); err != nil {
+		t.Fatalf("DeleteSSHKey: %v", err)
+	}
+	keys, err = store.ListSSHKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListSSHKeys after delete: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("keys after delete = %#v, want none", keys)
+	}
+	if err := store.DeleteSSHKey(ctx, "admin"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeleteSSHKey missing error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	model := app.App{
+		ID:           "app_1",
+		Name:         "my-app",
+		NodeID:       "local",
+		RepoPath:     "/data/apps/my-app/repo.git",
+		WorktreePath: "/data/apps/my-app/worktree",
+		Status:       app.AppStatusHealthy,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := store.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	if err := store.CreateRelease(ctx, app.Release{ID: "rel_1", AppID: model.ID, CommitSHA: "abc123", ComposePath: "compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if err := store.CreateDeployment(ctx, app.Deployment{ID: "dep_1", AppID: model.ID, ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	if err := store.AttachDomain(ctx, app.Domain{ID: "dom_1", AppID: model.ID, ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	if err := store.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: model.ID, Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	if err := store.DeleteApp(ctx, model.ID); err != nil {
+		t.Fatalf("DeleteApp: %v", err)
+	}
+
+	if _, err := store.GetApp(ctx, model.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetApp after DeleteApp error = %v, want ErrNotFound", err)
+	}
+	if releases, err := store.ListReleasesByApp(ctx, model.ID); err != nil || len(releases) != 0 {
+		t.Fatalf("releases after DeleteApp = %#v, err = %v", releases, err)
+	}
+	if deployments, err := store.ListDeploymentsByApp(ctx, model.ID); err != nil || len(deployments) != 0 {
+		t.Fatalf("deployments after DeleteApp = %#v, err = %v", deployments, err)
+	}
+	if domains, err := store.ListDomainsByApp(ctx, model.ID); err != nil || len(domains) != 0 {
+		t.Fatalf("domains after DeleteApp = %#v, err = %v", domains, err)
+	}
+	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 0 {
+		t.Fatalf("events after DeleteApp = %#v, err = %v", events, err)
+	}
+	if err := store.DeleteApp(ctx, model.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeleteApp missing error = %v, want ErrNotFound", err)
 	}
 }
 

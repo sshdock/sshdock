@@ -21,6 +21,10 @@ type DockerRunner struct {
 	executor CommandExecutor
 }
 
+type streamingCommandExecutor interface {
+	Stream(ctx context.Context, command Command, stdout io.Writer, stderr io.Writer) error
+}
+
 func NewDockerRunner(executor CommandExecutor) *DockerRunner {
 	return &DockerRunner{executor: executor}
 }
@@ -121,6 +125,33 @@ func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) erro
 	return err
 }
 
+func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error {
+	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "down", "--remove-orphans")
+	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args}); err != nil {
+		return err
+	}
+
+	output, err := r.executor.Run(ctx, Command{
+		Name: "docker",
+		Dir:  request.ProjectDir,
+		Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=rhumbase/" + request.AppName + "/*"},
+	})
+	if err != nil {
+		return err
+	}
+	for _, image := range strings.Split(output, "\n") {
+		image = strings.TrimSpace(image)
+		if image == "" {
+			continue
+		}
+		if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: []string{"image", "rm", image}}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error) {
 	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "ps", "--format", "json")
 	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args})
@@ -132,15 +163,19 @@ func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]Ser
 }
 
 func (r *DockerRunner) Logs(ctx context.Context, request LogsRequest) (string, error) {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "logs")
-	if request.Lines > 0 {
-		args = append(args, "--tail", strconv.Itoa(request.Lines))
-	}
-	if request.ServiceName != "" {
-		args = append(args, request.ServiceName)
-	}
+	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request)})
+}
 
-	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args})
+func (r *DockerRunner) StreamLogs(ctx context.Context, request LogsRequest, stdout io.Writer, stderr io.Writer) error {
+	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
+		return streamer.Stream(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request)}, stdout, stderr)
+	}
+	output, err := r.Logs(ctx, request)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(stdout, output)
+	return err
 }
 
 func composeArgs(composeFiles []string, projectName string) []string {
@@ -159,6 +194,20 @@ func commandArgs(base []string, tail ...string) []string {
 	return append(args, tail...)
 }
 
+func logsArgs(request LogsRequest) []string {
+	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "logs")
+	if request.Follow {
+		args = append(args, "--follow")
+	}
+	if request.Lines > 0 {
+		args = append(args, "--tail", strconv.Itoa(request.Lines))
+	}
+	if request.ServiceName != "" {
+		args = append(args, request.ServiceName)
+	}
+	return args
+}
+
 func (r DeployRequest) projectName() string {
 	if r.ProjectName != "" {
 		return r.ProjectName
@@ -174,6 +223,10 @@ func (r DeployRequest) keepReleases() int {
 }
 
 func (r RestartRequest) projectName() string {
+	return ProjectName(r.AppName)
+}
+
+func (r RemoveRequest) projectName() string {
 	return ProjectName(r.AppName)
 }
 

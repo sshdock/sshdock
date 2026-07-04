@@ -3,6 +3,8 @@ package compose
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -169,7 +171,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 		t.Fatalf("Status = %#v", statuses)
 	}
 
-	logs, err := runner.Logs(ctx, LogsRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web", Lines: 50})
+	logs, err := runner.Logs(ctx, LogsRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web", Lines: 50, Follow: true})
 	if err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
@@ -181,10 +183,72 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "config"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "restart", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "ps", "--format", "json"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "logs", "--tail", "50", "web"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "logs", "--follow", "--tail", "50", "web"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
+	}
+}
+
+func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t *testing.T) {
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, `services:
+  web:
+    image: example/web:latest
+`)
+	executor := &recordingExecutor{
+		Outputs: []string{
+			"",
+			"rhumbase/my-app/web:abc123\nrhumbase/my-app/web:latest\n",
+		},
+	}
+	runner := NewDockerRunner(executor)
+
+	if err := runner.Remove(ctx, RemoveRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	want := []Command{
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "down", "--remove-orphans"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=rhumbase/my-app/*"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:abc123"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "rhumbase/my-app/web:latest"}},
+	}
+	if !reflect.DeepEqual(executor.Commands, want) {
+		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
+	}
+	for _, command := range executor.Commands {
+		joined := strings.Join(command.Args, " ")
+		if strings.Contains(joined, "--volumes") || strings.Contains(joined, " -v") {
+			t.Fatalf("remove should preserve volumes, got command %#v", command)
+		}
+		if strings.Contains(joined, "system prune") {
+			t.Fatalf("remove should not run broad prune, got command %#v", command)
+		}
+	}
+}
+
+func TestDockerRunnerStreamLogsUsesStreamingExecutor(t *testing.T) {
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	executor := &streamingRecordingExecutor{Output: "streamed log\n"}
+	runner := NewDockerRunner(executor)
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	err := runner.StreamLogs(ctx, LogsRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web", Lines: 100, Follow: true}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("StreamLogs: %v", err)
+	}
+	if stdout.String() != "streamed log\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "rhumbase_my-app", "logs", "--follow", "--tail", "100", "web"}}}
+	if !reflect.DeepEqual(executor.Streamed, want) {
+		t.Fatalf("streamed commands = %#v, want %#v", executor.Streamed, want)
 	}
 }
 
@@ -235,6 +299,12 @@ type recordingCleanupRecorder struct {
 	Failures []CleanupFailure
 }
 
+type streamingRecordingExecutor struct {
+	Streamed []Command
+	Output   string
+	Err      error
+}
+
 func (r *recordingCleanupRecorder) RecordCleanupFailure(_ context.Context, failure CleanupFailure) error {
 	r.Failures = append(r.Failures, failure)
 	return nil
@@ -250,6 +320,19 @@ func (r *recordingExecutor) Run(_ context.Context, command Command) (string, err
 		return r.Outputs[index], nil
 	}
 	return "", nil
+}
+
+func (r *streamingRecordingExecutor) Run(_ context.Context, command Command) (string, error) {
+	return "", nil
+}
+
+func (r *streamingRecordingExecutor) Stream(_ context.Context, command Command, stdout io.Writer, _ io.Writer) error {
+	r.Streamed = append(r.Streamed, command)
+	if r.Err != nil {
+		return r.Err
+	}
+	_, err := fmt.Fprint(stdout, r.Output)
+	return err
 }
 
 func writeFile(t *testing.T, path string, content string) {

@@ -118,11 +118,13 @@ Current MVP state:
 - `RHUMBASE_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `rhumbased git-hook`.
 - `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `rhumbased.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
 - `rhumbase server domain set <domain>` persists the Git host used in app remote output.
-- `rhumbase ssh-keys add <name>` reads an SSH public key from stdin, stores it in SQLite, and rewrites both Git receive and dashboard `authorized_keys` files with forced commands.
+- `rhumbase ssh-keys add <name>`, `rhumbase ssh-keys list`, and `rhumbase ssh-keys remove <name>` manage deploy/dashboard SSH keys and rewrite both Git receive and dashboard `authorized_keys` files with forced commands.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
-- `rhumbase domains attach <app> <service> <domain> --port <host-port>` persists the domain, rebuilds the generated Caddyfile from SQLite, validates it, reloads Caddy, and records domain/router events.
+- `rhumbase domains attach <app> <service> <domain> --port <host-port>`, `rhumbase domains list <app>`, and `rhumbase domains detach <app> <domain>` persist domain state, rebuild the generated Caddyfile from SQLite, validate it, reload Caddy, and record domain/router events.
 - `ssh dashboard@server` uses host OpenSSH on port 22 with a forced `rhumbased dashboard` command, opens an interactive TUI with responsive column tables, K9s-style command tips, app filtering, detail tabs, log scrolling, refresh, and jump keys when a PTY is allocated, and keeps `ssh -T dashboard@server` as a plain text fallback.
-- `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, and `rhumbase apps rollback <app> <release-id>` run through the configured Compose runner and record recovery deployments/events in SQLite.
+- `rhumbase logs <app> [service] [-f]`, `rhumbase releases list <app>`, and `rhumbase events list <app>` expose Compose logs and persisted release/event state without opening the TUI.
+- `rhumbase apps restart <app> [service]`, `rhumbase apps redeploy <app>`, `rhumbase apps rollback <app> <release-id>`, and `rhumbase apps remove <app>` run through the configured Compose runner and record or clean up lifecycle state in SQLite.
+- `rhumbase apps remove <app>` maps deployed apps to `docker compose down --remove-orphans`, preserves Docker volumes in v0, deletes app repos/worktrees and SQLite app state, rebuilds Caddy routes, and removes only Rhumbase-managed app images.
 - `rhumbased daemon` runs SQLite migrations on startup and redeploys each deployed app's latest good release so Compose stacks recover after a reboot.
 - `rhumbase diagnostics` checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations with actionable pass/fail output.
 - Re-running `scripts/bootstrap.sh` replaces binaries while preserving `/var/lib/rhumbase`; dependency setup and Caddy imports are idempotent, and cleanup remains scoped to Rhumbase-managed image tags.
@@ -132,6 +134,9 @@ Current MVP state:
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps create my-app
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps list
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains attach my-app web example.com --port 3000
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase domains list my-app
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase releases list my-app
+RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase events list my-app
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase apps rollback my-app rel_<short-sha>
 RHUMBASE_DATA_DIR=.tmp/rhumbase go run ./cmd/rhumbase diagnostics
 ```

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,6 +40,10 @@ type StoreBackendConfig struct {
 
 type routeSyncer interface {
 	SyncRoutes(ctx context.Context, routes []router.Route) error
+}
+
+type logStreamer interface {
+	StreamLogs(ctx context.Context, request compose.LogsRequest, stdout io.Writer, stderr io.Writer) error
 }
 
 type StoreBackend struct {
@@ -195,6 +201,167 @@ func (b *StoreBackend) RollbackApp(name string, releaseID string) error {
 	return nil
 }
 
+func (b *StoreBackend) RemoveApp(name string) error {
+	ctx := context.Background()
+	model, err := b.store.GetApp(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("app %q not found", name)
+	}
+	if err != nil {
+		return fmt.Errorf("get app %q: %w", name, err)
+	}
+
+	if b.recoveryRunner != nil {
+		if release, ok, err := b.latestRuntimeRelease(ctx, name); err != nil {
+			return fmt.Errorf("list releases for app removal: %w", err)
+		} else if ok && release.ComposePath != "" {
+			if err := b.recoveryRunner.Remove(ctx, compose.RemoveRequest{
+				AppName:     name,
+				ProjectDir:  projectDirFromModel(model, release),
+				ComposePath: release.ComposePath,
+			}); err != nil {
+				return fmt.Errorf("remove Compose project for app %q: %w", name, err)
+			}
+		}
+	}
+
+	if err := b.removeManagedPath(model.RepoPath, "repo"); err != nil {
+		return err
+	}
+	if err := b.removeManagedPath(model.WorktreePath, "worktree"); err != nil {
+		return err
+	}
+	if b.appsDir != "" {
+		if err := b.removeManagedPath(filepath.Join(b.appsDir, name), "app directory"); err != nil {
+			return err
+		}
+	}
+
+	if err := b.store.DeleteApp(ctx, name); err != nil {
+		return fmt.Errorf("delete app %q state: %w", name, err)
+	}
+	if err := b.syncRoutesFromStore(ctx); err != nil {
+		return fmt.Errorf("reload Caddy routes after app removal: %w", err)
+	}
+
+	return nil
+}
+
+func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error {
+	ctx := context.Background()
+	if b.recoveryRunner == nil {
+		return fmt.Errorf("compose runner is not configured")
+	}
+	model, err := b.store.GetApp(ctx, request.AppName)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("app %q not found", request.AppName)
+	}
+	if err != nil {
+		return fmt.Errorf("get app %q: %w", request.AppName, err)
+	}
+	release, ok, err := b.latestRuntimeRelease(ctx, request.AppName)
+	if err != nil {
+		return fmt.Errorf("list releases for logs: %w", err)
+	}
+	if !ok || release.ComposePath == "" {
+		return fmt.Errorf("no deployed release for app %q", request.AppName)
+	}
+	logsRequest := compose.LogsRequest{
+		AppName:     request.AppName,
+		ProjectDir:  projectDirFromModel(model, release),
+		ComposePath: release.ComposePath,
+		ServiceName: request.ServiceName,
+		Lines:       100,
+		Follow:      request.Follow,
+	}
+	if request.Follow {
+		if streamer, ok := b.recoveryRunner.(logStreamer); ok {
+			if err := streamer.StreamLogs(ctx, logsRequest, stdout, stderr); err != nil {
+				return fmt.Errorf("stream logs for app %q: %w", request.AppName, err)
+			}
+			return nil
+		}
+	}
+
+	output, err := b.recoveryRunner.Logs(ctx, logsRequest)
+	if err != nil {
+		return fmt.Errorf("load logs for app %q: %w", request.AppName, err)
+	}
+	_, err = fmt.Fprint(stdout, output)
+	return err
+
+}
+
+func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	}
+	models, err := b.store.ListReleasesByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list releases for app %q: %w", appName, err)
+	}
+
+	releases := make([]Release, 0, len(models))
+	for _, model := range models {
+		releases = append(releases, Release{
+			ID:          model.ID,
+			AppName:     model.AppID,
+			CommitSHA:   model.CommitSHA,
+			ComposePath: model.ComposePath,
+			Status:      string(model.Status),
+			CreatedAt:   model.CreatedAt,
+			UpdatedAt:   model.UpdatedAt,
+		})
+	}
+	return releases, nil
+}
+
+func (b *StoreBackend) ListEvents(appName string) ([]Event, error) {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	}
+	models, err := b.store.ListEventsByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list events for app %q: %w", appName, err)
+	}
+
+	events := make([]Event, 0, len(models))
+	for _, model := range models {
+		events = append(events, Event{
+			AppName:   model.AppID,
+			Type:      model.Type,
+			Message:   model.Message,
+			CreatedAt: model.CreatedAt,
+		})
+	}
+	return events, nil
+}
+
+func (b *StoreBackend) ListDomains(appName string) ([]Domain, error) {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	}
+	models, err := b.store.ListDomainsByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list domains for app %q: %w", appName, err)
+	}
+
+	domains := make([]Domain, 0, len(models))
+	for _, model := range models {
+		domains = append(domains, cliDomain(model))
+	}
+	return domains, nil
+}
+
 func (b *StoreBackend) AttachDomain(domain Domain) error {
 	ctx := context.Background()
 	if _, err := b.store.GetApp(ctx, domain.AppName); errors.Is(err, store.ErrNotFound) {
@@ -227,11 +394,7 @@ func (b *StoreBackend) AttachDomain(domain Domain) error {
 		return fmt.Errorf("record domain attach event: %w", err)
 	}
 	if b.router != nil {
-		domains, err := b.store.ListDomains(ctx)
-		if err != nil {
-			return fmt.Errorf("list domains for route rebuild: %w", err)
-		}
-		if err := b.router.SyncRoutes(ctx, routesFromDomains(domains)); err != nil {
+		if err := b.syncRoutesFromStore(ctx); err != nil {
 			_ = b.store.CreateEvent(ctx, appmodel.Event{
 				ID:        eventID(model.ID, "router_reload_failed"),
 				AppID:     model.AppID,
@@ -246,6 +409,54 @@ func (b *StoreBackend) AttachDomain(domain Domain) error {
 			AppID:     model.AppID,
 			Type:      "router.reloaded",
 			Message:   "Reloaded Caddy routes for " + model.DomainName,
+			CreatedAt: b.now(),
+		}); err != nil {
+			return fmt.Errorf("record Caddy reload event: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (b *StoreBackend) DetachDomain(appName string, domainName string) error {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return fmt.Errorf("get app %q: %w", appName, err)
+	}
+	model, err := b.store.DeleteDomainByAppAndName(ctx, appName, domainName)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("domain %q not found for app %q", domainName, appName)
+	}
+	if err != nil {
+		return fmt.Errorf("detach domain %q: %w", domainName, err)
+	}
+	if err := b.store.CreateEvent(ctx, appmodel.Event{
+		ID:        eventID(model.ID, "detached"),
+		AppID:     model.AppID,
+		Type:      "domain.detached",
+		Message:   "Detached " + model.DomainName + " from " + model.AppID,
+		CreatedAt: b.now(),
+	}); err != nil {
+		return fmt.Errorf("record domain detach event: %w", err)
+	}
+	if b.router != nil {
+		if err := b.syncRoutesFromStore(ctx); err != nil {
+			_ = b.store.CreateEvent(ctx, appmodel.Event{
+				ID:        eventID(model.ID, "router_reload_failed_detach"),
+				AppID:     model.AppID,
+				Type:      "router.reload_failed",
+				Message:   "Caddy reload failed after detaching " + model.DomainName + ": " + err.Error(),
+				CreatedAt: b.now(),
+			})
+			return fmt.Errorf("reload Caddy routes: %w", err)
+		}
+		if err := b.store.CreateEvent(ctx, appmodel.Event{
+			ID:        eventID(model.ID, "router_reloaded_detach"),
+			AppID:     model.AppID,
+			Type:      "router.reloaded",
+			Message:   "Reloaded Caddy routes after detaching " + model.DomainName,
 			CreatedAt: b.now(),
 		}); err != nil {
 			return fmt.Errorf("record Caddy reload event: %w", err)
@@ -289,17 +500,40 @@ func (b *StoreBackend) AddSSHKey(name string, publicKey string) error {
 	if err != nil {
 		return fmt.Errorf("list SSH keys: %w", err)
 	}
-	if b.authorizedKeysPath != "" {
-		if err := sshaccess.WriteAuthorizedKeys(b.authorizedKeysPath, sshAccessKeys(keys), b.gitReceiveCommand); err != nil {
-			return fmt.Errorf("write authorized_keys: %w", err)
-		}
-	}
-	if b.dashboardAuthorizedKeysPath != "" {
-		if err := sshaccess.WriteDashboardAuthorizedKeys(b.dashboardAuthorizedKeysPath, sshAccessKeys(keys), b.dashboardCommand); err != nil {
-			return fmt.Errorf("write dashboard authorized_keys: %w", err)
-		}
+
+	if err := b.writeAuthorizedKeys(keys); err != nil {
+		return err
 	}
 
+	return nil
+}
+
+func (b *StoreBackend) ListSSHKeys() ([]SSHKey, error) {
+	keys, err := b.store.ListSSHKeys(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("list SSH keys: %w", err)
+	}
+	result := make([]SSHKey, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, SSHKey{Name: key.Name, PublicKey: key.PublicKey, CreatedAt: key.CreatedAt})
+	}
+	return result, nil
+}
+
+func (b *StoreBackend) RemoveSSHKey(name string) error {
+	ctx := context.Background()
+	if err := b.store.DeleteSSHKey(ctx, name); errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("SSH key %q not found", name)
+	} else if err != nil {
+		return fmt.Errorf("remove SSH key %q: %w", name, err)
+	}
+	keys, err := b.store.ListSSHKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("list SSH keys: %w", err)
+	}
+	if err := b.writeAuthorizedKeys(keys); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -308,6 +542,16 @@ func cliApp(model appmodel.App) App {
 		Name:   model.Name,
 		Status: string(model.Status),
 		NodeID: model.NodeID,
+	}
+}
+
+func cliDomain(model appmodel.Domain) Domain {
+	return Domain{
+		AppName:     model.AppID,
+		ServiceName: model.ServiceName,
+		DomainName:  model.DomainName,
+		Port:        model.Port,
+		HTTPS:       model.HTTPS,
 	}
 }
 
@@ -320,6 +564,83 @@ func (b *StoreBackend) recoveryService() *appmodel.Service {
 		options = append(options, appmodel.WithWorktreeCheckout(b.recoveryCheckout))
 	}
 	return appmodel.NewService(b.store, options...)
+}
+
+func (b *StoreBackend) latestRuntimeRelease(ctx context.Context, appName string) (appmodel.Release, bool, error) {
+	releases, err := b.store.ListReleasesByApp(ctx, appName)
+	if err != nil {
+		return appmodel.Release{}, false, err
+	}
+	sort.Slice(releases, func(i, j int) bool {
+		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
+			return releases[i].ID < releases[j].ID
+		}
+		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
+	})
+	for i := len(releases) - 1; i >= 0; i-- {
+		if releases[i].Status == appmodel.ReleaseStatusSucceeded || releases[i].Status == appmodel.ReleaseStatusRolledBack {
+			return releases[i], true, nil
+		}
+	}
+	if len(releases) > 0 {
+		return releases[len(releases)-1], true, nil
+	}
+	return appmodel.Release{}, false, nil
+}
+
+func projectDirFromModel(model appmodel.App, release appmodel.Release) string {
+	if model.WorktreePath != "" {
+		return model.WorktreePath
+	}
+	return filepath.Dir(release.ComposePath)
+}
+
+func (b *StoreBackend) syncRoutesFromStore(ctx context.Context) error {
+	if b.router == nil {
+		return nil
+	}
+	domains, err := b.store.ListDomains(ctx)
+	if err != nil {
+		return fmt.Errorf("list domains for route rebuild: %w", err)
+	}
+	return b.router.SyncRoutes(ctx, routesFromDomains(domains))
+}
+
+func (b *StoreBackend) writeAuthorizedKeys(keys []store.SSHKey) error {
+	if b.authorizedKeysPath != "" {
+		if err := sshaccess.WriteAuthorizedKeys(b.authorizedKeysPath, sshAccessKeys(keys), b.gitReceiveCommand); err != nil {
+			return fmt.Errorf("write authorized_keys: %w", err)
+		}
+	}
+	if b.dashboardAuthorizedKeysPath != "" {
+		if err := sshaccess.WriteDashboardAuthorizedKeys(b.dashboardAuthorizedKeysPath, sshAccessKeys(keys), b.dashboardCommand); err != nil {
+			return fmt.Errorf("write dashboard authorized_keys: %w", err)
+		}
+	}
+	return nil
+}
+
+func (b *StoreBackend) removeManagedPath(path string, label string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	if b.appsDir == "" {
+		return fmt.Errorf("remove %s %q: apps dir is not configured", label, path)
+	}
+	root := filepath.Clean(b.appsDir)
+	cleanPath := filepath.Clean(path)
+	rel, err := filepath.Rel(root, cleanPath)
+	if err != nil {
+		return fmt.Errorf("remove %s %q: %w", label, path, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("remove %s %q: path is outside apps dir %q", label, path, b.appsDir)
+	}
+	if err := os.RemoveAll(cleanPath); err != nil {
+		return fmt.Errorf("remove %s %q: %w", label, path, err)
+	}
+	return nil
 }
 
 func (b *StoreBackend) currentGitHost(ctx context.Context) string {

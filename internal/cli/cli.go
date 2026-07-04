@@ -10,12 +10,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	domaincfg "github.com/iketiunn/rumbase/internal/domain"
 )
 
 type App struct {
-	Name   string
-	Status string
-	NodeID string
+	Name       string
+	Status     string
+	NodeID     string
+	DefaultURL string
 }
 
 type Domain struct {
@@ -78,6 +81,7 @@ type Backend interface {
 
 type MemoryBackend struct {
 	gitHost     string
+	baseDomain  string
 	apps        map[string]App
 	releases    []Release
 	events      []Event
@@ -105,6 +109,11 @@ func (b *MemoryBackend) CreateApp(name string) (App, string, error) {
 	}
 
 	model := App{Name: name, Status: "created", NodeID: "local"}
+	if b.baseDomain != "" {
+		if appHost, err := domaincfg.AppHost(name, b.baseDomain); err == nil {
+			model.DefaultURL = "https://" + appHost
+		}
+	}
 	b.apps[name] = model
 
 	return model, fmt.Sprintf("git@%s:%s.git", b.gitHost, name), nil
@@ -266,11 +275,12 @@ func (b *MemoryBackend) ListDomains(appName string) ([]Domain, error) {
 }
 
 func (b *MemoryBackend) SetServerGitHost(host string) error {
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return fmt.Errorf("server Git host is required")
+	baseDomain, err := domaincfg.NormalizeBaseDomain(host)
+	if err != nil {
+		return err
 	}
-	b.gitHost = host
+	b.baseDomain = baseDomain
+	b.gitHost = domaincfg.ControlHost(baseDomain)
 	return nil
 }
 
@@ -363,6 +373,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		fmt.Fprintf(stdout, "created app %s\n", app.Name)
 		fmt.Fprintf(stdout, "git remote add rhumbase %s\n", remoteURL)
 		fmt.Fprintln(stdout, "git push rhumbase main")
+		if app.DefaultURL != "" {
+			fmt.Fprintf(stdout, "default URL after first deploy: %s\n", app.DefaultURL)
+		}
 		return 0
 	}
 
@@ -575,11 +588,18 @@ func (r *Runner) runReleases(args []string, stdout io.Writer, stderr io.Writer) 
 
 func (r *Runner) runServer(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 3 && args[0] == "domain" && args[1] == "set" {
-		if err := r.backend.SetServerGitHost(args[2]); err != nil {
+		baseDomain, err := domaincfg.NormalizeBaseDomain(args[2])
+		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "server Git host set to %s\n", strings.TrimSpace(args[2]))
+		if err := r.backend.SetServerGitHost(baseDomain); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "server base domain set to %s\n", baseDomain)
+		fmt.Fprintf(stdout, "control host: %s\n", domaincfg.ControlHost(baseDomain))
+		fmt.Fprintf(stdout, "app host pattern: <app>.%s\n", baseDomain)
 		return 0
 	}
 

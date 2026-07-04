@@ -82,7 +82,7 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	}
 }
 
-func TestRunWithEnvUsesPersistedServerDomainForCreatedAppRemote(t *testing.T) {
+func TestRunWithEnvUsesPersistedBaseDomainForCreatedAppRemote(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("RHUMBASE_DATA_DIR", dataDir)
 	t.Setenv("RHUMBASE_SQLITE_DB_PATH", filepath.Join(dataDir, "rhumbase.db"))
@@ -92,7 +92,7 @@ func TestRunWithEnvUsesPersistedServerDomainForCreatedAppRemote(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if code := runWithEnv([]string{"server", "domain", "set", "rhumbase.example.com"}, &stdout, &stderr); code != 0 {
+	if code := runWithEnv([]string{"server", "domain", "set", "example.com"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("server domain set exit code = %d, stderr = %q", code, stderr.String())
 	}
 
@@ -101,8 +101,13 @@ func TestRunWithEnvUsesPersistedServerDomainForCreatedAppRemote(t *testing.T) {
 	if code := runWithEnv([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
-		t.Fatalf("apps create stdout = %q", stdout.String())
+	for _, want := range []string{
+		"git remote add rhumbase git@rhumbase.example.com:my-app.git",
+		"default URL after first deploy: https://my-app.example.com",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("apps create stdout missing %q:\n%s", want, stdout.String())
+		}
 	}
 }
 

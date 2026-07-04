@@ -314,8 +314,14 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 
 	handler := gitrecv.NewPostReceiveHandler(gitrecv.PostReceiveHandlerConfig{
-		Store:    sqlite,
-		Runner:   runner,
+		Store:  sqlite,
+		Runner: runner,
+		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
+			ConfigPath:   cfg.CaddyConfigPath,
+			Executor:     router.LocalCommandExecutor{},
+			AdminAddress: cfg.CaddyAdminAddress,
+			UpstreamHost: "127.0.0.1",
+		}),
 		Checkout: gitrecv.LocalWorktreeCheckout{},
 	})
 	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, stdin); err != nil {

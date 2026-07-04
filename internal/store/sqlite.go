@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/iketiunn/rumbase/internal/app"
@@ -256,7 +257,14 @@ func (s *SQLiteStore) UpdateDeploymentStatus(ctx context.Context, id string, sta
 func (s *SQLiteStore) AttachDomain(ctx context.Context, model app.Domain) error {
 	_, err := s.db.ExecContext(ctx, `
 		insert into domains (id, app_id, service_name, domain_name, port, https, created_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		values (?, ?, ?, ?, ?, ?, ?, ?)
+		on conflict(id) do update set
+			app_id = excluded.app_id,
+			service_name = excluded.service_name,
+			domain_name = excluded.domain_name,
+			port = excluded.port,
+			https = excluded.https,
+			updated_at = excluded.updated_at`,
 		model.ID,
 		model.AppID,
 		model.ServiceName,
@@ -381,6 +389,23 @@ func (s *SQLiteStore) ListEventsByApp(ctx context.Context, appID string) ([]app.
 }
 
 func (s *SQLiteStore) SetServerConfig(ctx context.Context, config ServerConfig) error {
+	if config.BaseDomain == "" && config.GitHost == "" {
+		return fmt.Errorf("server config requires base domain or Git host")
+	}
+	if config.BaseDomain != "" {
+		if _, err := s.db.ExecContext(ctx, `
+			insert into server_config (key, value, updated_at)
+			values ('base_domain', ?, ?)
+			on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at`,
+			config.BaseDomain,
+			formatTime(config.UpdatedAt),
+		); err != nil {
+			return err
+		}
+	}
+	if config.GitHost == "" {
+		return nil
+	}
 	_, err := s.db.ExecContext(ctx, `
 		insert into server_config (key, value, updated_at)
 		values ('git_host', ?, ?)
@@ -392,25 +417,45 @@ func (s *SQLiteStore) SetServerConfig(ctx context.Context, config ServerConfig) 
 }
 
 func (s *SQLiteStore) GetServerConfig(ctx context.Context) (ServerConfig, error) {
-	row := s.db.QueryRowContext(ctx, `
-		select value, updated_at
+	rows, err := s.db.QueryContext(ctx, `
+		select key, value, updated_at
 		from server_config
-		where key = 'git_host'`)
-
-	var config ServerConfig
-	var updatedAt string
-	if err := row.Scan(&config.GitHost, &updatedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ServerConfig{}, notFound("server config", "git_host")
-		}
-		return ServerConfig{}, err
-	}
-
-	parsed, err := parseTime(updatedAt)
+		where key in ('base_domain', 'git_host')`)
 	if err != nil {
 		return ServerConfig{}, err
 	}
-	config.UpdatedAt = parsed
+	defer rows.Close()
+
+	var config ServerConfig
+	var found bool
+	for rows.Next() {
+		var key string
+		var value string
+		var updatedAt string
+		if err := rows.Scan(&key, &value, &updatedAt); err != nil {
+			return ServerConfig{}, err
+		}
+		parsed, err := parseTime(updatedAt)
+		if err != nil {
+			return ServerConfig{}, err
+		}
+		switch key {
+		case "base_domain":
+			config.BaseDomain = value
+		case "git_host":
+			config.GitHost = value
+		}
+		if !found || parsed.After(config.UpdatedAt) {
+			config.UpdatedAt = parsed
+		}
+		found = true
+	}
+	if err := rows.Err(); err != nil {
+		return ServerConfig{}, err
+	}
+	if !found {
+		return ServerConfig{}, notFound("server config", "server_config")
+	}
 	return config, nil
 }
 

@@ -261,7 +261,7 @@ func TestStoreBackendDomainAttachRebuildsRouterFromPersistedDomainsAndRecordsEve
 	}
 }
 
-func TestStoreBackendUsesPersistedServerGitHostForAppRemotes(t *testing.T) {
+func TestStoreBackendUsesBaseDomainForAppRemotes(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
@@ -273,11 +273,25 @@ func TestStoreBackendUsesPersistedServerGitHostForAppRemotes(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if code := runner.Run([]string{"server", "domain", "set", "rhumbase.example.com"}, &stdout, &stderr); code != 0 {
+	if code := runner.Run([]string{"server", "domain", "set", "example.com"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("server domain set exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "server Git host set to rhumbase.example.com") {
-		t.Fatalf("server domain set stdout = %q", stdout.String())
+	for _, want := range []string{
+		"server base domain set to example.com",
+		"control host: rhumbase.example.com",
+		"app host pattern: <app>.example.com",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("server domain set stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+
+	config, err := sqlite.GetServerConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetServerConfig: %v", err)
+	}
+	if config.BaseDomain != "example.com" || config.GitHost != "rhumbase.example.com" {
+		t.Fatalf("server config = %#v, want base domain and derived control host", config)
 	}
 
 	stdout.Reset()
@@ -285,8 +299,42 @@ func TestStoreBackendUsesPersistedServerGitHostForAppRemotes(t *testing.T) {
 	if code := runner.Run([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
 	}
+	for _, want := range []string{
+		"git remote add rhumbase git@rhumbase.example.com:my-app.git",
+		"default URL after first deploy: https://my-app.example.com",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("apps create stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestStoreBackendKeepsLegacyPersistedGitHostForAppRemotes(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		GitHost:   "rhumbase.example.com",
+		UpdatedAt: time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: filepath.Join(t.TempDir(), "apps"),
+		GitHost: "env.example.com",
+	})
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := runner.Run([]string{"apps", "create", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps create exit code = %d, stderr = %q", code, stderr.String())
+	}
 	if !strings.Contains(stdout.String(), "git remote add rhumbase git@rhumbase.example.com:my-app.git") {
 		t.Fatalf("apps create stdout = %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "default URL after first deploy") {
+		t.Fatalf("legacy git host should not imply app URL:\n%s", stdout.String())
 	}
 }
 

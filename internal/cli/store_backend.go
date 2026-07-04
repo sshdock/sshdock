@@ -13,6 +13,7 @@ import (
 
 	appmodel "github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/compose"
+	domaincfg "github.com/iketiunn/rumbase/internal/domain"
 	"github.com/iketiunn/rumbase/internal/gitrecv"
 	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/sshaccess"
@@ -135,7 +136,13 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 		return App{}, "", fmt.Errorf("create app %q: %w", name, err)
 	}
 
-	return cliApp(model), repo.RemoteURL, nil
+	result := cliApp(model)
+	if baseDomain, ok := b.currentBaseDomain(ctx); ok {
+		if appHost, err := domaincfg.AppHost(name, baseDomain); err == nil {
+			result.DefaultURL = "https://" + appHost
+		}
+	}
+	return result, repo.RemoteURL, nil
 }
 
 func (b *StoreBackend) ListApps() ([]App, error) {
@@ -467,16 +474,17 @@ func (b *StoreBackend) DetachDomain(appName string, domainName string) error {
 }
 
 func (b *StoreBackend) SetServerGitHost(host string) error {
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return fmt.Errorf("server Git host is required")
+	baseDomain, err := domaincfg.NormalizeBaseDomain(host)
+	if err != nil {
+		return err
 	}
 
 	if err := b.store.SetServerConfig(context.Background(), store.ServerConfig{
-		GitHost:   host,
-		UpdatedAt: b.now(),
+		BaseDomain: baseDomain,
+		GitHost:    domaincfg.ControlHost(baseDomain),
+		UpdatedAt:  b.now(),
 	}); err != nil {
-		return fmt.Errorf("set server Git host: %w", err)
+		return fmt.Errorf("set server base domain: %w", err)
 	}
 
 	return nil
@@ -652,8 +660,22 @@ func (b *StoreBackend) currentGitHost(ctx context.Context) string {
 
 func (b *StoreBackend) persistedGitHost(ctx context.Context) (string, bool) {
 	config, err := b.store.GetServerConfig(ctx)
-	if err == nil && config.GitHost != "" {
+	if err != nil {
+		return "", false
+	}
+	if config.BaseDomain != "" {
+		return domaincfg.ControlHost(config.BaseDomain), true
+	}
+	if config.GitHost != "" {
 		return config.GitHost, true
+	}
+	return "", false
+}
+
+func (b *StoreBackend) currentBaseDomain(ctx context.Context) (string, bool) {
+	config, err := b.store.GetServerConfig(ctx)
+	if err == nil && config.BaseDomain != "" {
+		return config.BaseDomain, true
 	}
 	return "", false
 }

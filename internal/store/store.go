@@ -12,8 +12,9 @@ import (
 var ErrNotFound = errors.New("not found")
 
 type ServerConfig struct {
-	GitHost   string
-	UpdatedAt time.Time
+	BaseDomain string
+	GitHost    string
+	UpdatedAt  time.Time
 }
 
 type SSHKey struct {

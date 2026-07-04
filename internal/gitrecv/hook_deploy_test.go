@@ -13,6 +13,7 @@ import (
 
 	"github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/compose"
+	"github.com/iketiunn/rumbase/internal/router"
 	"github.com/iketiunn/rumbase/internal/store"
 )
 
@@ -93,6 +94,247 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	wantTypes := []string{"deploy.started", "deploy.succeeded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
+func TestPostReceiveHandlerAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		BaseDomain: "example.com",
+		GitHost:    "rhumbase.example.com",
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	routeSyncer := &fakeHookRouteSyncer{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Router: routeSyncer,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  web:
+    image: example/web:latest
+    ports:
+      - "127.0.0.1:3100:80"
+`)
+			return nil
+		}),
+		Now: func() time.Time { return now },
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	wantDomain := app.Domain{
+		ID:          "dom_my_app_my_app_example_com",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3100,
+		HTTPS:       true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if len(domains) != 1 || domains[0] != wantDomain {
+		t.Fatalf("domains = %#v, want [%#v]", domains, wantDomain)
+	}
+	if len(routeSyncer.Syncs) != 1 {
+		t.Fatalf("router syncs = %#v, want one sync", routeSyncer.Syncs)
+	}
+	wantRoutes := []router.Route{{AppID: "my-app", ServiceName: "web", DomainName: "my-app.example.com", Port: 3100, HTTPS: true}}
+	if !reflect.DeepEqual(routeSyncer.Syncs[0], wantRoutes) {
+		t.Fatalf("router sync = %#v, want %#v", routeSyncer.Syncs[0], wantRoutes)
+	}
+
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_attached", "router.reloaded"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
+func TestPostReceiveHandlerDoesNotAutoRouteFailedDeploy(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		BaseDomain: "example.com",
+		GitHost:    "rhumbase.example.com",
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	routeSyncer := &fakeHookRouteSyncer{}
+	clock := newHookClock(now)
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{DeployErr: errors.New("compose failed")},
+		Router: routeSyncer,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  web:
+    image: example/web:latest
+    ports:
+      - "3100:80"
+`)
+			return nil
+		}),
+		Now: clock.Now,
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err == nil {
+		t.Fatal("Handle error = nil, want deploy failure")
+	}
+	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("domains = %#v, want none", domains)
+	}
+	if len(routeSyncer.Syncs) != 0 {
+		t.Fatalf("router syncs = %#v, want none", routeSyncer.Syncs)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.failed"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
+func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		BaseDomain: "example.com",
+		GitHost:    "rhumbase.example.com",
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	routeSyncer := &fakeHookRouteSyncer{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Router: routeSyncer,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  api:
+    image: example/api:latest
+    ports:
+      - "4100:80"
+  admin:
+    image: example/admin:latest
+    ports:
+      - "4200:80"
+`)
+			return nil
+		}),
+		Now: func() time.Time { return now },
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("domains = %#v, want none", domains)
+	}
+	if len(routeSyncer.Syncs) != 0 {
+		t.Fatalf("router syncs = %#v, want none", routeSyncer.Syncs)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+	if !strings.Contains(events[2].Message, "ambiguous") || !strings.Contains(events[2].Message, "domains attach") {
+		t.Fatalf("skip event = %#v, want actionable ambiguous-route message", events[2])
+	}
+}
+
+func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "rhumbase.db")
+	sqlite := newHookTestStoreForApp(t, ctx, dbPath, "bad_app")
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		BaseDomain: "example.com",
+		GitHost:    "rhumbase.example.com",
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Router: &fakeHookRouteSyncer{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  web:
+    image: example/web:latest
+    ports:
+      - "3100:80"
+`)
+			return nil
+		}),
+		Now: func() time.Time { return now },
+	})
+
+	if err := handler.Handle(ctx, "bad_app", "/apps/bad_app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	domains, err := sqlite.ListDomainsByApp(ctx, "bad_app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("domains = %#v, want none", domains)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "bad_app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+	if !strings.Contains(events[2].Message, "DNS label") {
+		t.Fatalf("skip event = %#v, want DNS label guidance", events[2])
 	}
 }
 
@@ -274,6 +516,10 @@ func (cleanupWarningRunner) Logs(context.Context, compose.LogsRequest) (string, 
 }
 
 func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.SQLiteStore {
+	return newHookTestStoreForApp(t, ctx, dbPath, "my-app")
+}
+
+func newHookTestStoreForApp(t *testing.T, ctx context.Context, dbPath string, appName string) *store.SQLiteStore {
 	t.Helper()
 
 	sqlite, err := store.OpenSQLite(ctx, dbPath)
@@ -281,11 +527,11 @@ func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.S
 		t.Fatalf("OpenSQLite: %v", err)
 	}
 	if err := sqlite.CreateApp(ctx, app.App{
-		ID:           "my-app",
-		Name:         "my-app",
+		ID:           appName,
+		Name:         appName,
 		NodeID:       "local",
-		RepoPath:     "/apps/my-app/repo.git",
-		WorktreePath: "/apps/my-app/worktree",
+		RepoPath:     "/apps/" + appName + "/repo.git",
+		WorktreePath: "/apps/" + appName + "/worktree",
 		Status:       app.AppStatusCreated,
 		CreatedAt:    time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC),
 		UpdatedAt:    time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC),
@@ -304,12 +550,47 @@ func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.S
 func writeHookComposeFixture(t *testing.T, worktreePath string) {
 	t.Helper()
 
+	writeHookCompose(t, worktreePath, `
+services:
+  web:
+    image: example/web:latest
+`)
+}
+
+func writeHookCompose(t *testing.T, worktreePath string, content string) {
+	t.Helper()
+
 	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+}
+
+type fakeHookRouteSyncer struct {
+	Syncs [][]router.Route
+	Err   error
+}
+
+func (f *fakeHookRouteSyncer) SyncRoutes(_ context.Context, routes []router.Route) error {
+	copied := append([]router.Route(nil), routes...)
+	f.Syncs = append(f.Syncs, copied)
+	return f.Err
+}
+
+type hookClock struct {
+	next time.Time
+}
+
+func newHookClock(start time.Time) *hookClock {
+	return &hookClock{next: start}
+}
+
+func (c *hookClock) Now() time.Time {
+	value := c.next
+	c.next = c.next.Add(time.Second)
+	return value
 }
 
 func queryDeploymentStatus(t *testing.T, dbPath string, deploymentID string) string {

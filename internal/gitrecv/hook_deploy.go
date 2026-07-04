@@ -3,22 +3,34 @@ package gitrecv
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/iketiunn/rumbase/internal/app"
 	"github.com/iketiunn/rumbase/internal/compose"
+	domaincfg "github.com/iketiunn/rumbase/internal/domain"
+	"github.com/iketiunn/rumbase/internal/router"
+	"github.com/iketiunn/rumbase/internal/store"
 )
 
 type postReceiveStore interface {
 	CreateRelease(ctx context.Context, model app.Release) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
+	AttachDomain(ctx context.Context, model app.Domain) error
+	ListDomains(ctx context.Context) ([]app.Domain, error)
+	GetServerConfig(ctx context.Context) (store.ServerConfig, error)
 	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	CreateEvent(ctx context.Context, model app.Event) error
+}
+
+type routeSyncer interface {
+	SyncRoutes(ctx context.Context, routes []router.Route) error
 }
 
 type WorktreeCheckout interface {
@@ -34,6 +46,7 @@ func (f WorktreeCheckoutFunc) Checkout(ctx context.Context, repoPath string, wor
 type PostReceiveHandlerConfig struct {
 	Store    postReceiveStore
 	Runner   compose.Runner
+	Router   routeSyncer
 	Checkout WorktreeCheckout
 	Now      func() time.Time
 }
@@ -41,6 +54,7 @@ type PostReceiveHandlerConfig struct {
 type PostReceiveHandler struct {
 	store    postReceiveStore
 	runner   compose.Runner
+	router   routeSyncer
 	checkout WorktreeCheckout
 	now      func() time.Time
 }
@@ -56,6 +70,7 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 	return &PostReceiveHandler{
 		store:    config.Store,
 		runner:   config.Runner,
+		router:   config.Router,
 		checkout: config.Checkout,
 		now:      now,
 	}
@@ -188,13 +203,108 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err := h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusHealthy, finishedAt); err != nil {
 		return err
 	}
-	return h.store.CreateEvent(ctx, app.Event{
+	if err := h.store.CreateEvent(ctx, app.Event{
 		ID:        EventID(deploymentID, "succeeded"),
 		AppID:     event.AppName,
 		Type:      "deploy.succeeded",
 		Message:   "Deploy succeeded for release " + releaseID,
 		CreatedAt: finishedAt,
+	}); err != nil {
+		return err
+	}
+	return h.autoRoute(ctx, event.AppName, composePath, deploymentID, finishedAt)
+}
+
+func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, composePath string, deploymentID string, createdAt time.Time) error {
+	config, err := h.store.GetServerConfig(ctx)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load server domain config for auto-route: %w", err)
+	}
+	if config.BaseDomain == "" {
+		return nil
+	}
+
+	appHost, err := domaincfg.AppHost(appName, config.BaseDomain)
+	if err != nil {
+		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, err.Error(), createdAt)
+	}
+
+	target, ok, reason, err := compose.InferDefaultRoute(composePath)
+	if err != nil {
+		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, "could not inspect Compose ports: "+err.Error(), createdAt)
+	}
+	if !ok {
+		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, reason, createdAt)
+	}
+
+	model := app.Domain{
+		ID:          domainID(appName, appHost),
+		AppID:       appName,
+		ServiceName: target.ServiceName,
+		DomainName:  appHost,
+		Port:        target.Port,
+		HTTPS:       true,
+		CreatedAt:   createdAt,
+		UpdatedAt:   createdAt,
+	}
+	if err := h.store.AttachDomain(ctx, model); err != nil {
+		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, "could not persist auto route "+appHost+": "+err.Error(), createdAt)
+	}
+	if err := h.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(deploymentID, "route_auto_attached"),
+		AppID:     appName,
+		Type:      "route.auto_attached",
+		Message:   "Auto-attached " + appHost + " to " + appName + "/" + target.ServiceName + " on host port " + fmt.Sprint(target.Port),
+		CreatedAt: createdAt.Add(time.Second),
+	}); err != nil {
+		return err
+	}
+
+	if h.router == nil {
+		return nil
+	}
+	if err := h.syncRoutesFromStore(ctx); err != nil {
+		_ = h.store.CreateEvent(ctx, app.Event{
+			ID:        EventID(deploymentID, "router_reload_failed"),
+			AppID:     appName,
+			Type:      "router.reload_failed",
+			Message:   "Caddy reload failed for auto route " + appHost + ": " + err.Error(),
+			CreatedAt: createdAt.Add(2 * time.Second),
+		})
+		return nil
+	}
+	return h.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(deploymentID, "router_reloaded"),
+		AppID:     appName,
+		Type:      "router.reloaded",
+		Message:   "Reloaded Caddy routes for " + appHost,
+		CreatedAt: createdAt.Add(2 * time.Second),
 	})
+}
+
+func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName string, deploymentID string, reason string, createdAt time.Time) error {
+	message := "Skipped automatic route: " + reason
+	if !strings.Contains(message, "domains attach") {
+		message += "; attach manually with rhumbase domains attach"
+	}
+	return h.store.CreateEvent(ctx, app.Event{
+		ID:        EventID(deploymentID, "route_auto_skipped"),
+		AppID:     appName,
+		Type:      "route.auto_skipped",
+		Message:   message,
+		CreatedAt: createdAt.Add(time.Second),
+	})
+}
+
+func (h *PostReceiveHandler) syncRoutesFromStore(ctx context.Context) error {
+	domains, err := h.store.ListDomains(ctx)
+	if err != nil {
+		return fmt.Errorf("list domains for route rebuild: %w", err)
+	}
+	return h.router.SyncRoutes(ctx, routesFromDomains(domains))
 }
 
 func (h *PostReceiveHandler) priorSuccessfulReleaseSHAs(ctx context.Context, appName string) ([]string, error) {
@@ -224,6 +334,24 @@ func EventID(deploymentID string, suffix string) string {
 	return "evt_" + deploymentID + "_" + suffix
 }
 
+func domainID(appName string, domainName string) string {
+	return "dom_" + sanitizeIDPart(appName) + "_" + sanitizeIDPart(domainName)
+}
+
+func routesFromDomains(domains []app.Domain) []router.Route {
+	routes := make([]router.Route, 0, len(domains))
+	for _, domain := range domains {
+		routes = append(routes, router.Route{
+			AppID:       domain.AppID,
+			ServiceName: domain.ServiceName,
+			DomainName:  domain.DomainName,
+			Port:        domain.Port,
+			HTTPS:       domain.HTTPS,
+		})
+	}
+	return routes
+}
+
 type cleanupEventRecorder struct {
 	store        postReceiveStore
 	appID        string
@@ -246,4 +374,20 @@ func shortCommitSHA(commitSHA string) string {
 		return commitSHA
 	}
 	return commitSHA[:12]
+}
+
+func sanitizeIDPart(value string) string {
+	var builder strings.Builder
+	for _, r := range strings.ToLower(value) {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('_')
+		}
+	}
+
+	return strings.Trim(builder.String(), "_")
 }

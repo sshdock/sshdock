@@ -260,6 +260,52 @@ func TestSQLiteStoreDomains(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAttachDomainUpsertsByDomainID(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	createdAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Hour)
+	domain := app.Domain{
+		ID:          "dom_my_app_my_app_example_com",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3000,
+		HTTPS:       true,
+		CreatedAt:   createdAt,
+		UpdatedAt:   createdAt,
+	}
+	if err := store.AttachDomain(ctx, domain); err != nil {
+		t.Fatalf("AttachDomain initial: %v", err)
+	}
+
+	domain.ServiceName = "api"
+	domain.Port = 4000
+	domain.CreatedAt = updatedAt
+	domain.UpdatedAt = updatedAt
+	if err := store.AttachDomain(ctx, domain); err != nil {
+		t.Fatalf("AttachDomain update: %v", err)
+	}
+
+	domains, err := store.ListDomainsByApp(ctx, domain.AppID)
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("domains len = %d, want 1: %#v", len(domains), domains)
+	}
+	got := domains[0]
+	if got.ServiceName != "api" || got.Port != 4000 {
+		t.Fatalf("updated domain = %#v, want api:4000", got)
+	}
+	if !got.CreatedAt.Equal(createdAt) {
+		t.Fatalf("CreatedAt = %s, want original %s", got.CreatedAt, createdAt)
+	}
+	if !got.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("UpdatedAt = %s, want %s", got.UpdatedAt, updatedAt)
+	}
+}
+
 func TestSQLiteStoreEvents(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
@@ -293,6 +339,25 @@ func TestSQLiteStoreServerConfig(t *testing.T) {
 	if _, err := store.GetServerConfig(ctx); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetServerConfig error = %v, want ErrNotFound", err)
 	}
+	if err := store.SetServerConfig(ctx, ServerConfig{BaseDomain: "example.com", GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+
+	got, err := store.GetServerConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetServerConfig: %v", err)
+	}
+	want := ServerConfig{BaseDomain: "example.com", GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}
+	if got != want {
+		t.Fatalf("server config = %#v, want %#v", got, want)
+	}
+}
+
+func TestSQLiteStoreServerConfigKeepsLegacyGitHost(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	updatedAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+
 	if err := store.SetServerConfig(ctx, ServerConfig{GitHost: "rhumbase.example.com", UpdatedAt: updatedAt}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}

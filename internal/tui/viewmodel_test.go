@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/app"
-	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 func TestNewAppListView(t *testing.T) {

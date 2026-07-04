@@ -369,7 +369,7 @@ download_release() {
 	need_command tar
 	local arch base_url url tmp archive
 	arch="$(detect_arch)"
-	base_url="${SSHDOCK_RELEASE_BASE_URL:-https://github.com/iketiunn/sshdock/releases/download}"
+	base_url="${SSHDOCK_RELEASE_BASE_URL:-https://github.com/sshdock/sshdock/releases/download}"
 	url="${base_url%/}/${SSHDOCK_TAG}/sshdock_${SSHDOCK_TAG}_linux_${arch}.tar.gz"
 	tmp="$(mktemp -d)"
 	archive="$tmp/sshdock.tar.gz"

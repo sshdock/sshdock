@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/app"
-	"github.com/iketiunn/sshdock/internal/compose"
-	"github.com/iketiunn/sshdock/internal/gitrecv"
-	"github.com/iketiunn/sshdock/internal/router"
-	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/gitrecv"
+	"github.com/sshdock/sshdock/internal/router"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestStoreBackendCreatesReceiveRepoWhenAppIsCreated(t *testing.T) {

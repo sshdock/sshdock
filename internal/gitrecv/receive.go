@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/app"
-	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 type receivePackStore interface {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 func TestServiceLogsRequestsRunnerLogs(t *testing.T) {

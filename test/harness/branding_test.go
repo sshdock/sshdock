@@ -20,7 +20,7 @@ func TestProjectBrandingIsSSHDock(t *testing.T) {
 		}
 	}
 
-	assertFileContains(t, filepath.Join(root, "go.mod"), "module github.com/iketiunn/sshdock")
+	assertFileContains(t, filepath.Join(root, "go.mod"), "module github.com/sshdock/sshdock")
 	assertFileContains(t, filepath.Join(root, "Makefile"), "APP_NAME := sshdock")
 	assertFileContains(t, filepath.Join(root, "Makefile"), "DAEMON_NAME := sshdockd")
 

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/iketiunn/sshdock/internal/tui/capture"
+	"github.com/sshdock/sshdock/internal/tui/capture"
 )
 
 type dashboardCaptureOptions struct {

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/app"
 )
 
 func TestCLIServerDomainAndSSHKeysEndToEnd(t *testing.T) {

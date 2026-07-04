@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iketiunn/sshdock/internal/config"
-	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/sshdock/sshdock/internal/config"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 type Command struct {

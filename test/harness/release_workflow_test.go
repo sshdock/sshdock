@@ -15,7 +15,7 @@ func TestReleaseWorkflowInjectsTagVersion(t *testing.T) {
 	text := string(workflow)
 	for _, want := range []string{
 		"-ldflags",
-		"github.com/iketiunn/sshdock/internal/version.value=${{ github.ref_name }}",
+		"github.com/sshdock/sshdock/internal/version.value=${{ github.ref_name }}",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("release workflow missing %q:\n%s", want, text)

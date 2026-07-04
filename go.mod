@@ -1,4 +1,4 @@
-module github.com/iketiunn/sshdock
+module github.com/sshdock/sshdock
 
 go 1.26
 

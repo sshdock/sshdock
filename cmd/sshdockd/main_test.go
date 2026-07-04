@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/sshdock/internal/cli"
-	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/cli"
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 func TestRunVersion(t *testing.T) {

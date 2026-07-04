@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	domaincfg "github.com/iketiunn/sshdock/internal/domain"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 )
 
 type App struct {

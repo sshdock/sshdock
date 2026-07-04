@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/sshdock/internal/app"
-	"github.com/iketiunn/sshdock/internal/compose"
-	"github.com/iketiunn/sshdock/internal/config"
-	"github.com/iketiunn/sshdock/internal/store"
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/config"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestGitHookEndToEnd(t *testing.T) {

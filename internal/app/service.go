@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 var ErrNoSuccessfulRelease = errors.New("no successful release")

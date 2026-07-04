@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iketiunn/sshdock/internal/app"
-	"github.com/iketiunn/sshdock/internal/config"
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/config"
 )
 
 func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {

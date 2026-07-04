@@ -59,8 +59,8 @@ SSHDock is not:
 Install SSHDock on the server:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/iketiunn/sshdock/v0.1.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.1.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.1.0-rc.1/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.0-rc.1 bash bootstrap.sh
 sudo sshdock diagnostics
 ```
 

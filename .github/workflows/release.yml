@@ -35,8 +35,8 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}
-          go build -ldflags "-X github.com/iketiunn/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdock ./cmd/sshdock
-          go build -ldflags "-X github.com/iketiunn/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdockd ./cmd/sshdockd
+          go build -ldflags "-X github.com/sshdock/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdock ./cmd/sshdock
+          go build -ldflags "-X github.com/sshdock/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdockd ./cmd/sshdockd
           tar -C dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }} -czf dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz sshdock sshdockd
 
       - name: Upload release assets

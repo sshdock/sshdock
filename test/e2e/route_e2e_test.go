@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 func TestRouteThroughCaddyEndToEnd(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iketiunn/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/app"
 	_ "modernc.org/sqlite"
 )
 

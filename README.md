@@ -91,6 +91,8 @@ ssh dashboard@server
 
 Useful dashboard keys are shown in the bottom command bar. `j`/`k` or arrows select apps, `/` filters the app table, `g`/`G` jumps to the first or last app, `tab` switches detail tabs, `u`/`d` scrolls logs, `r` refreshes, `q` quits, and `?` expands help.
 
+See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full `rhumbase` and `rhumbased` command reference.
+
 Attach a domain:
 
 ```bash

@@ -261,6 +261,10 @@ func (cleanupWarningRunner) Restart(context.Context, compose.RestartRequest) err
 	return nil
 }
 
+func (cleanupWarningRunner) Remove(context.Context, compose.RemoveRequest) error {
+	return nil
+}
+
 func (cleanupWarningRunner) Status(context.Context, compose.StatusRequest) ([]compose.ServiceStatus, error) {
 	return nil, nil
 }

@@ -314,6 +314,36 @@ func (s *SQLiteStore) ListDomainsByApp(ctx context.Context, appID string) ([]app
 	return models, rows.Err()
 }
 
+func (s *SQLiteStore) DeleteDomainByAppAndName(ctx context.Context, appID string, domainName string) (app.Domain, error) {
+	row := s.db.QueryRowContext(ctx, `
+		select id, app_id, service_name, domain_name, port, https, created_at, updated_at
+		from domains
+		where app_id = ? and domain_name = ?`, appID, domainName)
+	model, err := scanDomain(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return app.Domain{}, notFound("domain", domainName)
+	}
+	if err != nil {
+		return app.Domain{}, err
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+		delete from domains
+		where app_id = ? and domain_name = ?`, appID, domainName)
+	if err != nil {
+		return app.Domain{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return app.Domain{}, err
+	}
+	if affected == 0 {
+		return app.Domain{}, notFound("domain", domainName)
+	}
+
+	return model, nil
+}
+
 func (s *SQLiteStore) CreateEvent(ctx context.Context, model app.Event) error {
 	_, err := s.db.ExecContext(ctx, `
 		insert into events (id, app_id, type, message, created_at)
@@ -422,6 +452,53 @@ func (s *SQLiteStore) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 	}
 
 	return keys, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteSSHKey(ctx context.Context, name string) error {
+	result, err := s.db.ExecContext(ctx, `
+		delete from ssh_keys
+		where name = ?`, name)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("SSH key", name)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var id string
+	if err := tx.QueryRowContext(ctx, `select id from apps where id = ?`, appID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return notFound("app", appID)
+		}
+		return err
+	}
+
+	for _, statement := range []string{
+		`delete from events where app_id = ?`,
+		`delete from deployments where app_id = ?`,
+		`delete from releases where app_id = ?`,
+		`delete from domains where app_id = ?`,
+		`delete from apps where id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, appID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 type scanner interface {

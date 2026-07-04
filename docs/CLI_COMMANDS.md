@@ -59,6 +59,28 @@ cat ~/.ssh/id_ed25519.pub | sudo rhumbase ssh-keys add admin
 
 The same key can deploy through `git@<server-domain>:<app>.git` and open the SSH dashboard through `ssh dashboard@server`.
 
+### `rhumbase ssh-keys list`
+
+List configured SSH keys.
+
+```bash
+sudo rhumbase ssh-keys list
+```
+
+Output format:
+
+```text
+<name>	<fingerprint>	<created-at>
+```
+
+### `rhumbase ssh-keys remove <name>`
+
+Remove one SSH key and rewrite Git receive and dashboard `authorized_keys` files.
+
+```bash
+sudo rhumbase ssh-keys remove admin
+```
+
 ### `rhumbase apps create <name>`
 
 Create app metadata, create the bare Git receive repository, install the `post-receive` hook, and print Git remote instructions.
@@ -100,6 +122,18 @@ sudo rhumbase apps info my-app
 
 Output includes name, status, and assigned node.
 
+### `rhumbase logs <app> [service] [-f]`
+
+Show recent app or service logs through the configured Compose runner.
+
+```bash
+sudo rhumbase logs my-app
+sudo rhumbase logs my-app web
+sudo rhumbase logs my-app web -f
+```
+
+The Docker runner maps this to `docker compose logs --tail 100` for the app's latest deployed Compose project. `-f` adds Compose `--follow`.
+
 ### `rhumbase apps restart <name> [service]`
 
 Restart a whole app or one Compose service through the configured Compose runner.
@@ -131,6 +165,53 @@ sudo rhumbase apps rollback my-app rel_<short-sha>
 
 Rollback uses the stored release commit and Compose path, then records app, release, deployment, and event state.
 
+### `rhumbase apps remove <name> [--force]`
+
+Remove an app and its Rhumbase-managed server-side runtime resources.
+
+```bash
+sudo rhumbase apps remove my-app
+sudo rhumbase apps remove my-app --force
+```
+
+Without `--force`, the command asks you to type the app name before removal.
+
+When a deployed release exists, the Docker runner first runs the equivalent of:
+
+```bash
+docker compose down --remove-orphans
+```
+
+It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It then removes only image refs matching `rhumbase/<app>/*`, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
+
+### `rhumbase releases list <app>`
+
+List releases for an app so rollback ids are discoverable.
+
+```bash
+sudo rhumbase releases list my-app
+```
+
+Output format:
+
+```text
+<release-id>	<status>	<commit-sha>	<created-at>	<compose-path>
+```
+
+### `rhumbase events list <app>`
+
+List persisted deploy, router, recovery, and cleanup events for an app.
+
+```bash
+sudo rhumbase events list my-app
+```
+
+Output format:
+
+```text
+<created-at>	<event-type>	<message>
+```
+
 ### `rhumbase domains attach <app> <service> <domain> --port <port>`
 
 Attach a public domain to an app service and rebuild Caddy routes.
@@ -150,6 +231,30 @@ services:
 ```
 
 The command persists the domain, rebuilds the generated Caddyfile from SQLite state, validates it, reloads Caddy, and records domain/router events.
+
+### `rhumbase domains list <app>`
+
+List routed domains for an app.
+
+```bash
+sudo rhumbase domains list my-app
+```
+
+Output format:
+
+```text
+<domain>	<service>	<port>	<https>
+```
+
+### `rhumbase domains detach <app> <domain>`
+
+Detach one domain from an app and rebuild Caddy routes.
+
+```bash
+sudo rhumbase domains detach my-app example.com
+```
+
+The command deletes the domain row, records domain/router events, rebuilds the generated Caddyfile from remaining SQLite domain rows, validates it, and reloads Caddy.
 
 ## `rhumbased`
 

@@ -16,6 +16,7 @@ type Runner interface {
 	Validate(ctx context.Context, composePath string) (ValidationResult, error)
 	Deploy(ctx context.Context, request DeployRequest) error
 	Restart(ctx context.Context, request RestartRequest) error
+	Remove(ctx context.Context, request RemoveRequest) error
 	Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error)
 	Logs(ctx context.Context, request LogsRequest) (string, error)
 }
@@ -51,6 +52,12 @@ type RestartRequest struct {
 	ServiceName string
 }
 
+type RemoveRequest struct {
+	AppName     string
+	ProjectDir  string
+	ComposePath string
+}
+
 type StatusRequest struct {
 	AppName     string
 	ProjectDir  string
@@ -63,6 +70,7 @@ type LogsRequest struct {
 	ComposePath string
 	ServiceName string
 	Lines       int
+	Follow      bool
 }
 
 type ServiceStatus struct {

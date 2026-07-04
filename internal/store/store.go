@@ -37,12 +37,15 @@ type Store interface {
 	AttachDomain(ctx context.Context, model app.Domain) error
 	ListDomains(ctx context.Context) ([]app.Domain, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
+	DeleteDomainByAppAndName(ctx context.Context, appID string, domainName string) (app.Domain, error)
 	CreateEvent(ctx context.Context, model app.Event) error
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
 	SetServerConfig(ctx context.Context, config ServerConfig) error
 	GetServerConfig(ctx context.Context) (ServerConfig, error)
 	UpsertSSHKey(ctx context.Context, key SSHKey) error
 	ListSSHKeys(ctx context.Context) ([]SSHKey, error)
+	DeleteSSHKey(ctx context.Context, name string) error
+	DeleteApp(ctx context.Context, appID string) error
 }
 
 func notFound(kind string, id string) error {

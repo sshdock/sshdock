@@ -10,12 +10,14 @@ type FakeRunner struct {
 	ValidateErr error
 	DeployErr   error
 	RestartErr  error
+	RemoveErr   error
 	StatusErr   error
 	LogsErr     error
 
 	ValidatedPath   string
 	DeployRequests  []DeployRequest
 	RestartRequests []RestartRequest
+	RemoveRequests  []RemoveRequest
 	StatusRequests  []StatusRequest
 	LogsRequests    []LogsRequest
 }
@@ -37,6 +39,11 @@ func (f *FakeRunner) Deploy(_ context.Context, request DeployRequest) error {
 func (f *FakeRunner) Restart(_ context.Context, request RestartRequest) error {
 	f.RestartRequests = append(f.RestartRequests, request)
 	return f.RestartErr
+}
+
+func (f *FakeRunner) Remove(_ context.Context, request RemoveRequest) error {
+	f.RemoveRequests = append(f.RemoveRequests, request)
+	return f.RemoveErr
 }
 
 func (f *FakeRunner) Status(_ context.Context, request StatusRequest) ([]ServiceStatus, error) {

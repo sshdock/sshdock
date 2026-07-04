@@ -44,7 +44,7 @@ func Default() Config {
 		GitHost:                     "server",
 		GitAuthorizedKeysPath:       filepath.Join(dataDir, "git", ".ssh", "authorized_keys"),
 		GitReceiveCommand:           "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive",
-		CaddyConfigPath:             "/etc/caddy/sshdock.caddyfile",
+		CaddyConfigPath:             "/etc/caddy/sshdock/sshdock.caddyfile",
 	}
 }
 

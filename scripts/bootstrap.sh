@@ -301,7 +301,7 @@ ensure_daemon_docker_access() {
 
 normalize_runtime_ownership() {
 	local data_dir_actual git_home_actual git_ssh_dir_actual git_authorized_keys_actual
-	local dashboard_home_actual dashboard_ssh_dir_actual dashboard_authorized_keys_actual
+	local dashboard_home_actual dashboard_ssh_dir_actual dashboard_authorized_keys_actual caddy_dir_actual
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
@@ -309,6 +309,7 @@ normalize_runtime_ownership() {
 	dashboard_home_actual="$(prefix_path "$DASHBOARD_HOME_DIR")"
 	dashboard_ssh_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
 	dashboard_authorized_keys_actual="$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")"
+	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 
 	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual" "$dashboard_home_actual"
 	run chmod 0700 "$git_ssh_dir_actual" "$dashboard_ssh_dir_actual"
@@ -321,6 +322,7 @@ normalize_runtime_ownership() {
 	fi
 
 	run chown -R "$DAEMON_USER:$DAEMON_USER" "$data_dir_actual"
+	run chown -R "$DAEMON_USER:$DAEMON_USER" "$caddy_dir_actual"
 	run chown -R "$GIT_USER:$GIT_USER" "$git_home_actual"
 	run chmod 0755 "$git_home_actual"
 	run chmod 0700 "$git_ssh_dir_actual"
@@ -548,6 +550,9 @@ configure_caddy_import() {
 		printf '# SSHDock generated routes\n' > "$generated_actual"
 	fi
 	run chmod 0644 "$generated_actual"
+	if [ "$SKIP_CHOWN" != "1" ] && [ "$(id -u)" -eq 0 ]; then
+		run chown "$DAEMON_USER:$DAEMON_USER" "$generated_actual"
+	fi
 
 	if [ ! -f "$caddy_main_actual" ]; then
 		printf '# Caddy config managed by the system administrator.\n%s\n' "$import_line" > "$caddy_main_actual"
@@ -578,7 +583,7 @@ INSTALL_BIN_DIR="${SSHDOCK_INSTALL_BIN_DIR:-/usr/local/bin}"
 DATA_DIR="${SSHDOCK_DATA_DIR:-/var/lib/sshdock}"
 APPS_DIR="${SSHDOCK_APPS_DIR:-$DATA_DIR/apps}"
 SYSTEMD_DIR="${SSHDOCK_SYSTEMD_DIR:-/etc/systemd/system}"
-CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock.caddyfile}"
+CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock/sshdock.caddyfile}"
 CADDY_MAIN_CONFIG_PATH="${SSHDOCK_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
 SSH_LISTEN_ADDR="${SSHDOCK_SSH_LISTEN_ADDR:-:2222}"
 DASHBOARD_USER="${SSHDOCK_DASHBOARD_USER:-dashboard}"

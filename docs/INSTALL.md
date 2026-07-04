@@ -7,8 +7,8 @@ This document defines the Dokku-style installation flow for SSHDock v0.
 Run this on a fresh Ubuntu LTS or Debian stable VPS:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.1.0-rc.1/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.1.0-rc.1 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.1.0-rc.2/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.0-rc.2 bash bootstrap.sh
 sudo sshdock diagnostics
 
 cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
@@ -18,7 +18,7 @@ git remote add sshdock git@sshdock.example.com:my-app.git
 git push sshdock main
 ```
 
-Replace `v0.1.0-rc.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
+Replace `v0.1.0-rc.2` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
 
 ## OS Assumptions
 
@@ -62,7 +62,7 @@ By default, the bootstrap script installs missing apt dependencies on real root 
 Set `SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
 
 ```bash
-sudo SSHDOCK_TAG=v0.1.0-rc.1 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.0-rc.2 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
 ```
 
 Check-only mode requires these commands to work before installation continues:
@@ -95,7 +95,7 @@ Default install layout:
 /var/lib/sshdock/git/.ssh/authorized_keys
 /etc/systemd/system/sshdockd.service
 /etc/caddy/Caddyfile
-/etc/caddy/sshdock.caddyfile
+/etc/caddy/sshdock/sshdock.caddyfile
 ```
 
 By default, `scripts/bootstrap.sh` downloads:
@@ -150,13 +150,13 @@ caddy version
 SSHDock should write its generated route config to the configured Caddy config path, defaulting to:
 
 ```text
-/etc/caddy/sshdock.caddyfile
+/etc/caddy/sshdock/sshdock.caddyfile
 ```
 
-The installer creates `/etc/caddy/sshdock.caddyfile` if it is missing and ensures `/etc/caddy/Caddyfile` imports it exactly once:
+The installer creates `/etc/caddy/sshdock/sshdock.caddyfile` if it is missing and ensures `/etc/caddy/Caddyfile` imports it exactly once:
 
 ```text
-import /etc/caddy/sshdock.caddyfile
+import /etc/caddy/sshdock/sshdock.caddyfile
 ```
 
 If `/etc/caddy/Caddyfile` already exists and lacks the import, the installer writes a one-time backup beside it before appending the import.
@@ -380,7 +380,7 @@ Expected service behavior:
 - use `SSHDOCK_COMPOSE_RUNNER=docker`
 - use `SSHDOCK_GIT_HOST=server` unless overridden at install time
 - use `/var/lib/sshdock/git/.ssh/authorized_keys` as the Git receive key file unless overridden
-- use `/etc/caddy/sshdock.caddyfile` as the generated Caddy config path unless overridden
+- use `/etc/caddy/sshdock/sshdock.caddyfile` as the generated Caddy config path unless overridden
 - run SQLite migrations on startup
 - redeploy each deployed app's latest good release on startup so Compose stacks recover after a host reboot
 - write logs to journald
@@ -452,7 +452,7 @@ For v0, backup the complete SSHDock state directory before upgrades or host main
   dashboard/
 ```
 
-Also keep a copy of generated Caddy config, normally `/etc/caddy/sshdock.caddyfile`, and any systemd unit overrides you add outside the default installer.
+Also keep a copy of generated Caddy config, normally `/etc/caddy/sshdock/sshdock.caddyfile`, and any systemd unit overrides you add outside the default installer.
 
 Restore order:
 

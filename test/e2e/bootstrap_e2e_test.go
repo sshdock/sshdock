@@ -139,7 +139,7 @@ exit 0
 		"Environment=SSHDOCK_DATA_DIR=/var/lib/sshdock",
 		"Environment=SSHDOCK_GIT_HOST=server",
 		"Environment=SSHDOCK_COMPOSE_RUNNER=docker",
-		"Environment=SSHDOCK_CADDY_CONFIG_PATH=/etc/caddy/sshdock.caddyfile",
+		"Environment=SSHDOCK_CADDY_CONFIG_PATH=/etc/caddy/sshdock/sshdock.caddyfile",
 		"ExecStart=/usr/local/bin/sshdockd daemon",
 	} {
 		if !strings.Contains(unit, want) {
@@ -242,6 +242,7 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 		"usermod --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
 		"chown -R sshdock:sshdock " + filepath.Join(installRoot, "var/lib/sshdock"),
+		"chown -R sshdock:sshdock " + filepath.Join(installRoot, "etc/caddy/sshdock"),
 		"chown -R git:git " + filepath.Join(installRoot, "var/lib/sshdock/git"),
 		"chown dashboard:dashboard " + filepath.Join(installRoot, "var/lib/sshdock/dashboard") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh/authorized_keys"),
 		"chmod 0755 " + filepath.Join(installRoot, "var/lib/sshdock/git"),
@@ -278,14 +279,14 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 
 	caddyfilePath := filepath.Join(installRoot, "etc/caddy/Caddyfile")
 	caddyfile := readFile(t, caddyfilePath)
-	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock.caddyfile"); count != 1 {
+	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock/sshdock.caddyfile"); count != 1 {
 		t.Fatalf("Caddyfile import count = %d:\n%s", count, caddyfile)
 	}
-	assertFileMode(t, filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile"), 0o644)
+	assertFileMode(t, filepath.Join(installRoot, "etc/caddy/sshdock/sshdock.caddyfile"), 0o644)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
 	caddyfile = readFile(t, caddyfilePath)
-	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock.caddyfile"); count != 1 {
+	if count := strings.Count(caddyfile, "import /etc/caddy/sshdock/sshdock.caddyfile"); count != 1 {
 		t.Fatalf("rerun Caddyfile import count = %d:\n%s", count, caddyfile)
 	}
 }

@@ -51,8 +51,8 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.DashboardCommand != "sudo -n -u sshdock /usr/local/bin/sshdock-dashboard" {
 		t.Fatalf("DashboardCommand = %q", cfg.DashboardCommand)
 	}
-	if cfg.CaddyConfigPath == "" {
-		t.Fatal("CaddyConfigPath is empty")
+	if cfg.CaddyConfigPath != "/etc/caddy/sshdock/sshdock.caddyfile" {
+		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
 	}
 	if cfg.CaddyAdminAddress != "" {
 		t.Fatalf("CaddyAdminAddress = %q, want empty default", cfg.CaddyAdminAddress)

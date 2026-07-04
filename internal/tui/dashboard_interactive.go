@@ -65,7 +65,7 @@ type dashboardRefreshMsg struct {
 	err      error
 }
 
-var dashboardTabs = []string{"Summary", "Services", "Routes", "Releases", "Deploys", "Logs"}
+var dashboardTabs = []string{"Summary", "Services", "Routes", "Releases", "Deploys", "Events", "Logs"}
 
 var (
 	dashboardTitleStyle = lipgloss.NewStyle().
@@ -412,6 +412,8 @@ func (m InteractiveDashboardModel) detailContent(width int) string {
 		builder.WriteString(renderReleaseTable(width, selected.Detail.Releases()))
 	case "Deploys":
 		builder.WriteString(renderDeployTable(width, selected.Detail.LatestDeployments(5)))
+	case "Events":
+		builder.WriteString(renderEventTable(width, selected.Detail.Events()))
 	case "Logs":
 		builder.WriteString(m.logsBlock())
 	}
@@ -742,6 +744,7 @@ func renderSummaryTable(width int, detail AppDetailScreen) string {
 		{"Routes", fmt.Sprintf("%d", len(detail.Domains()))},
 		{"Releases", fmt.Sprintf("%d", len(detail.Releases()))},
 		{"Deploys", fmt.Sprintf("%d", len(detail.LatestDeployments(5)))},
+		{"Events", fmt.Sprintf("%d", len(detail.Events()))},
 	}
 	return renderDashboardTable(width, []dashboardTableColumn{
 		{Header: "Field", MinWidth: 8, Priority: 0},
@@ -823,6 +826,25 @@ func renderDeployTable(width int, deployments []DeploymentView) string {
 		{Header: "Status", MinWidth: 9, Priority: 0},
 		{Header: "Release", MinWidth: 12, Priority: 1},
 		{Header: "Started", MinWidth: 12, Priority: 2},
+	}, rows)
+}
+
+func renderEventTable(width int, events []EventView) string {
+	if len(events) == 0 {
+		return "- none"
+	}
+	rows := make([][]string, 0, len(events))
+	for _, event := range events {
+		rows = append(rows, []string{
+			event.Type,
+			event.Message,
+			formatDashboardTime(event.CreatedAt),
+		})
+	}
+	return renderDashboardTable(width, []dashboardTableColumn{
+		{Header: "Type", MinWidth: 16, Priority: 0},
+		{Header: "Message", MinWidth: 16, Flex: true, Priority: 0},
+		{Header: "Created", MinWidth: 12, Priority: 2},
 	}, rows)
 }
 

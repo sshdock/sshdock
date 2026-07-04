@@ -17,6 +17,9 @@ func TestAppDetailScreenSections(t *testing.T) {
 		Deployments: []DeploymentView{
 			{ID: "dep_1", ReleaseID: "rel_1", Status: "succeeded"},
 		},
+		Events: []EventView{
+			{Type: "deploy.succeeded", Message: "Deploy succeeded"},
+		},
 		Actions: []string{"restart app", "rollback release"},
 	}
 	screen := NewAppDetailScreen(view)
@@ -35,6 +38,9 @@ func TestAppDetailScreenSections(t *testing.T) {
 	}
 	if len(screen.LatestDeployments(1)) != 1 || screen.LatestDeployments(1)[0].Status != "succeeded" {
 		t.Fatalf("deployments = %#v", screen.LatestDeployments(1))
+	}
+	if len(screen.Events()) != 1 || screen.Events()[0].Type != "deploy.succeeded" {
+		t.Fatalf("events = %#v", screen.Events())
 	}
 	if len(screen.Actions()) != 2 {
 		t.Fatalf("actions = %#v", screen.Actions())

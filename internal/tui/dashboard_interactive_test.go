@@ -74,7 +74,7 @@ func TestInteractiveDashboardModelTabsScrollRefreshAndQuit(t *testing.T) {
 		t.Fatalf("second tab did not show routes table:\n%s", view)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 		model = updated.(InteractiveDashboardModel)
 	}
@@ -195,6 +195,7 @@ func TestInteractiveDashboardModelDetailTabsRenderTables(t *testing.T) {
 		"Routes":   {"Domain", "Service", "Target", "HTTPS", "one.example.com"},
 		"Releases": {"Release", "Status", "Commit", "Created", "rel_one"},
 		"Deploys":  {"Deploy", "Status", "Release", "Started", "dep_one"},
+		"Events":   {"Type", "Message", "deploy.succeeded", "Deploy succeeded"},
 		"Logs":     {"Service", "Line", "web", "first log"},
 	}
 
@@ -262,6 +263,7 @@ func testDashboardSnapshot() DashboardSnapshot {
 					Domains:     []DomainView{{DomainName: "one.example.com", ServiceName: "web", Target: "web:3000", HTTPS: true}},
 					Releases:    []ReleaseView{{ID: "rel_one", Status: "succeeded", CommitSHA: "abc123"}},
 					Deployments: []DeploymentView{{ID: "dep_one", Status: "succeeded", ReleaseID: "rel_one"}},
+					Events:      []EventView{{Type: "deploy.succeeded", Message: "Deploy succeeded"}},
 				}),
 				Logs: map[string]LogsView{"web": NewLogsView("one", "web", "first log\nsecond log\nthird log\nfourth log\nfifth log\nsixth log\n")},
 			},

@@ -16,6 +16,7 @@ type DashboardStore interface {
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
 	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
+	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
 }
 
 type DashboardHandler struct {
@@ -81,11 +82,16 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 			return DashboardSnapshot{}, fmt.Errorf("list deployments for %s: %w", model.ID, err)
 		}
 
+		events, err := h.store.ListEventsByApp(ctx, model.ID)
+		if err != nil {
+			return DashboardSnapshot{}, fmt.Errorf("list events for %s: %w", model.ID, err)
+		}
+
 		services, logsByService, err := h.serviceStatusAndLogs(ctx, model, releases)
 		if err != nil {
 			return DashboardSnapshot{}, err
 		}
-		view := NewAppDetailView(model, services, domains, releases, deployments)
+		view := NewAppDetailView(model, services, domains, releases, deployments, events)
 		appsByID[model.ID] = DashboardAppSnapshot{
 			Detail: NewAppDetailScreen(view),
 			Logs:   logsByService,
@@ -195,6 +201,9 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 	if err := renderDeployments(writer, screen.LatestDeployments(5)); err != nil {
 		return err
 	}
+	if err := renderEvents(writer, screen.Events()); err != nil {
+		return err
+	}
 	return renderLogs(writer, logsByService)
 }
 
@@ -256,6 +265,22 @@ func renderDeployments(writer io.Writer, deployments []DeploymentView) error {
 	}
 	for _, deployment := range deployments {
 		if _, err := fmt.Fprintf(writer, "- %s %s %s\n", deployment.ID, deployment.Status, deployment.ReleaseID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderEvents(writer io.Writer, events []EventView) error {
+	if _, err := fmt.Fprintln(writer, "Events"); err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		_, err := fmt.Fprintln(writer, "- none")
+		return err
+	}
+	for _, event := range events {
+		if _, err := fmt.Fprintf(writer, "- %s %s\n", event.Type, event.Message); err != nil {
 			return err
 		}
 	}

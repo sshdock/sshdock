@@ -28,6 +28,7 @@ type AppDetailView struct {
 	Domains     []DomainView
 	Releases    []ReleaseView
 	Deployments []DeploymentView
+	Events      []EventView
 	Actions     []string
 }
 
@@ -67,6 +68,12 @@ type DeploymentView struct {
 	ErrorMessage string
 }
 
+type EventView struct {
+	Type      string
+	Message   string
+	CreatedAt time.Time
+}
+
 type LogsView struct {
 	AppID       string
 	ServiceName string
@@ -92,13 +99,14 @@ func NewAppListView(apps []app.App, latestReleases map[string]app.Release, domai
 	return AppListView{Items: items}
 }
 
-func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains []app.Domain, releases []app.Release, deployments []app.Deployment) AppDetailView {
+func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains []app.Domain, releases []app.Release, deployments []app.Deployment, events []app.Event) AppDetailView {
 	return AppDetailView{
 		App:         newAppSummary(model),
 		Services:    newServiceViews(services),
 		Domains:     newDomainViews(domains),
 		Releases:    newReleaseViews(releases),
 		Deployments: newDeploymentViews(deployments),
+		Events:      newEventViews(events),
 		Actions:     []string{"restart app", "redeploy app", "rollback release", "attach domain"},
 	}
 }
@@ -170,6 +178,18 @@ func newDeploymentViews(deployments []app.Deployment) []DeploymentView {
 			StartedAt:    deployment.StartedAt,
 			FinishedAt:   deployment.FinishedAt,
 			ErrorMessage: deployment.ErrorMessage,
+		})
+	}
+	return views
+}
+
+func newEventViews(events []app.Event) []EventView {
+	views := make([]EventView, 0, len(events))
+	for _, event := range events {
+		views = append(views, EventView{
+			Type:      event.Type,
+			Message:   event.Message,
+			CreatedAt: event.CreatedAt,
 		})
 	}
 	return views

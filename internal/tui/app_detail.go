@@ -32,6 +32,10 @@ func (s AppDetailScreen) LatestDeployments(limit int) []DeploymentView {
 	return s.view.Deployments[:limit]
 }
 
+func (s AppDetailScreen) Events() []EventView {
+	return s.view.Events
+}
+
 func (s AppDetailScreen) Actions() []string {
 	return s.view.Actions
 }

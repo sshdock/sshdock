@@ -40,6 +40,11 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
 			},
 		},
+		eventsByApp: map[string][]app.Event{
+			"my-app": {
+				{ID: "evt_1", AppID: "my-app", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now},
+			},
+		},
 	}
 	runner := &compose.FakeRunner{
 		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
@@ -69,6 +74,8 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"rel_new succeeded abc123",
 		"Deployments",
 		"dep_1 succeeded rel_new",
+		"Events",
+		"deploy.succeeded Deploy succeeded",
 		"Logs web",
 		"first log",
 		"second log",
@@ -115,6 +122,11 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
 			},
 		},
+		eventsByApp: map[string][]app.Event{
+			"my-app": {
+				{ID: "evt_1", AppID: "my-app", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now},
+			},
+		},
 	}
 	runner := &compose.FakeRunner{
 		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
@@ -136,6 +148,9 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 	if got := snapshot.AppsByID["my-app"].Logs["web"].Lines; len(got) != 2 || got[0] != "first log" || got[1] != "second log" {
 		t.Fatalf("snapshot logs = %#v", got)
 	}
+	if got := snapshot.AppsByID["my-app"].Detail.Events(); len(got) != 1 || got[0].Type != "deploy.succeeded" {
+		t.Fatalf("snapshot events = %#v", got)
+	}
 }
 
 func TestDashboardHandlerRendersEmptyAppList(t *testing.T) {
@@ -156,6 +171,7 @@ type fakeDashboardStore struct {
 	releasesByApp    map[string][]app.Release
 	domainsByApp     map[string][]app.Domain
 	deploymentsByApp map[string][]app.Deployment
+	eventsByApp      map[string][]app.Event
 }
 
 func (f *fakeDashboardStore) ListApps(context.Context) ([]app.App, error) {
@@ -172,4 +188,8 @@ func (f *fakeDashboardStore) ListDomainsByApp(_ context.Context, appID string) (
 
 func (f *fakeDashboardStore) ListDeploymentsByApp(_ context.Context, appID string) ([]app.Deployment, error) {
 	return append([]app.Deployment(nil), f.deploymentsByApp[appID]...), nil
+}
+
+func (f *fakeDashboardStore) ListEventsByApp(_ context.Context, appID string) ([]app.Event, error) {
+	return append([]app.Event(nil), f.eventsByApp[appID]...), nil
 }

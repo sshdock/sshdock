@@ -48,8 +48,9 @@ func TestNewAppDetailView(t *testing.T) {
 	domains := []app.Domain{{ID: "dom_1", AppID: "app_1", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true}}
 	releases := []app.Release{{ID: "rel_1", AppID: "app_1", CommitSHA: "abc123", ComposePath: "compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now}}
 	deployments := []app.Deployment{{ID: "dep_1", AppID: "app_1", ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}}
+	events := []app.Event{{ID: "evt_1", AppID: "app_1", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now}}
 
-	view := NewAppDetailView(model, services, domains, releases, deployments)
+	view := NewAppDetailView(model, services, domains, releases, deployments, events)
 
 	if view.App.Name != "my-app" || view.App.Status != "healthy" {
 		t.Fatalf("app view = %#v", view.App)
@@ -65,6 +66,9 @@ func TestNewAppDetailView(t *testing.T) {
 	}
 	if len(view.Deployments) != 1 || view.Deployments[0].Status != "succeeded" {
 		t.Fatalf("deployments = %#v", view.Deployments)
+	}
+	if len(view.Events) != 1 || view.Events[0].Type != "deploy.succeeded" || view.Events[0].Message != "Deploy succeeded" {
+		t.Fatalf("events = %#v", view.Events)
 	}
 	if len(view.Actions) == 0 {
 		t.Fatal("expected basic action labels")

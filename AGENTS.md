@@ -1,8 +1,10 @@
 # AGENTS.md
 
-## Project
+This is the public operating contract for agents and contributors working on SSHDock.
 
-Project name: SSHDock
+Keep this file stable, concise, and free of private deployment details. Product planning notes, raw VPS evidence, screenshots, command transcripts, and reference research belong in `.local/`, which is intentionally ignored by Git.
+
+## Product Guardrails
 
 SSHDock is an SSH-native PaaS for solo developers.
 
@@ -10,27 +12,7 @@ North-star:
 
 > Git push Compose apps. Operate over SSH.
 
-## Core Pillars
-
-1. Heroku-style app lifecycle
-   - Git push deploys the app.
-   - The platform handles build, release, run, config, domains, HTTPS, logs, app status, restart, release history, and rollback.
-
-2. Compose as the app contract
-   - One repo represents one full-stack app.
-   - The app is defined by `compose.yml` or `docker-compose.yml`.
-   - The platform treats the whole Compose stack as the app unit.
-
-3. SSH-only TUI operations
-   - No web dashboard.
-   - No exposed admin panel.
-   - Users operate the platform through `ssh dashboard@server`.
-
-## v0 Scope
-
-v0 is single-node only.
-
-Runtime:
+v0 is single-node only:
 
 - Go
 - Docker Engine
@@ -39,43 +21,20 @@ Runtime:
 - SQLite
 - SSH TUI
 
-Do not introduce:
-
-- Web dashboard
-- Kubernetes
-- k3s
-- Docker Swarm
-- Multi-node scheduling
-- Teams/RBAC
-- Marketplace
-- Hosted cloud features
-- AI assistant
-
-## Product References
-
-Use these as product references, not code sources:
-
-- Coolify: <https://github.com/coollabsio/coolify>
-- Dokku: <https://github.com/dokku/dokku>
-- CapRover: <https://github.com/caprover/caprover>
-- Dokploy: <https://github.com/dokploy/dokploy>
-
-Reference lessons:
-
-- Coolify: broad self-hosted PaaS convenience.
-- Dokku: excellent Heroku-like git push deployment.
-- CapRover: simple app/database deployment and one-click app flow.
-- Dokploy: modern Compose-friendly PaaS.
-
-SSHDock should not become a clone of these tools.
-
-SSHDock should stay:
+SSHDock must stay:
 
 - SSH-native
 - Compose-first
 - Git-push deployable
 - Single-node-first
 - Small, inspectable, and boring in the good way
+
+Do not introduce:
+
+- Web dashboard
+- Kubernetes, k3s, Docker Swarm, or multi-node scheduling
+- Teams, RBAC, marketplace, hosted cloud features, or AI assistant features
+- Product pillars that are not reflected in public docs and local planning notes
 
 ## Engineering Rules
 
@@ -87,9 +46,9 @@ SSHDock should stay:
 - Do not hardcode paths outside config.
 - Keep error messages actionable.
 - Store important runtime changes as events or release records.
-- Do not add new product pillars without updating `PRD.md`.
+- Update public docs when user-facing behavior changes.
 
-## Expected Repo Layout
+## Repo Layout
 
 - `cmd/sshdock/`: user/admin CLI
 - `cmd/sshdockd/`: daemon
@@ -101,7 +60,19 @@ SSHDock should stay:
 - `internal/store/`: SQLite persistence
 - `internal/harness/`: fake runners and test helpers
 - `examples/`: sample apps
-- `docs/`: product and architecture docs
+- `docs/`: public install, command, and operations docs
+
+## Public And Local Docs
+
+Public docs should explain how to install, use, verify, and contribute to SSHDock.
+
+Keep local-only material under `.local/`:
+
+- PRD, task tracker, architecture notes, and reference research
+- VPS evidence, screenshots, command transcripts, raw logs, and private domains
+- Personal workflow notes or temporary release checklists
+
+Do not add private hostnames, IPs, SSH key paths, fingerprints, backup paths, hashes, or raw development logs to tracked files.
 
 ## Commands
 
@@ -146,5 +117,5 @@ For every implementation task:
 1. Code compiles.
 2. Tests pass.
 3. `make ci` passes.
-4. Docs are updated if behavior changes.
+4. Public docs are updated if behavior changes.
 5. No unsupported platform scope is added.

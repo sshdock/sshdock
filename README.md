@@ -111,7 +111,7 @@ services:
       - "127.0.0.1:3000:80"
 ```
 
-Current MVP state:
+Current v0 capabilities:
 
 - `sshdock` persists app and domain metadata in SQLite.
 - `sshdock apps create` creates a local bare Git repository and installs a `post-receive` hook.
@@ -160,7 +160,7 @@ git@<server-domain>:<app>.git
 
 With `sshdock server domain set example.com`, the control host is `sshdock.example.com` and the default app host is `<app>.example.com`. Namespace paths such as `git@<server-domain>:<owner>/<repo>.git` are future work because they require owner-aware SSH key authorization.
 
-Target result when runtime milestones are complete:
+A deployed app follows this path:
 
 - Code is received through Git
 - Compose file is detected
@@ -405,15 +405,16 @@ Use fake adapters for:
 
 Integration tests are tiered. `make e2e` uses real local Git with fake Compose, while `make e2e-docker` also uses the local Docker daemon.
 
+See [`docs/TESTING.md`](docs/TESTING.md) for the full test-tier guide.
+
 ## Docs
 
 Important docs:
 
-- `AGENTS.md`: Codex and contributor instructions
-- `PRD.md`: product requirements
-- `ARCHITECTURE.md`: system design
-- `TASKS.md`: MVP implementation tasks
-- `REFERENCES.md`: competitor and technical references
+- `AGENTS.md`: public agent and contributor operating contract
+- `docs/`: install, command, testing, and public operations notes
+
+Private planning notes live under `.local/`, which is intentionally ignored and not published.
 
 ## Product Principle
 

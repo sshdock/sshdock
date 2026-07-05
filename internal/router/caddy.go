@@ -155,6 +155,10 @@ func renderCaddyfile(routes map[string]Route, upstreamHost string, adminAddress 
 		builder.WriteString("\n")
 		builder.WriteString("}\n\n")
 	}
+	if len(domains) == 0 && adminAddress == "" {
+		builder.WriteString("# SSHDock has no active routes.\n")
+		return builder.String()
+	}
 	for _, domain := range domains {
 		route := routes[domain]
 		builder.WriteString(domain)

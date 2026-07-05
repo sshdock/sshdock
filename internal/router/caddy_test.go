@@ -108,6 +108,38 @@ func TestCaddyRouterSyncRoutesReplacesConfigWithRoutes(t *testing.T) {
 	}
 }
 
+func TestCaddyRouterSyncRoutesWithNoRoutesReplacesStaleConfig(t *testing.T) {
+	ctx := context.Background()
+	configPath := filepath.Join(t.TempDir(), "Caddyfile")
+	oldConfig := "old.example.com {\n\treverse_proxy 127.0.0.1:3000\n}\n"
+	if err := os.WriteFile(configPath, []byte(oldConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile old config: %v", err)
+	}
+	executor := &recordingCaddyExecutor{}
+	router := NewCaddyRouter(CaddyRouterConfig{
+		ConfigPath: configPath,
+		Executor:   executor,
+	})
+
+	if err := router.SyncRoutes(ctx, nil); err != nil {
+		t.Fatalf("SyncRoutes nil: %v", err)
+	}
+
+	config := readText(t, configPath)
+	if strings.TrimSpace(config) == "" {
+		t.Fatalf("no-route config is empty")
+	}
+	if strings.Contains(config, "old.example.com") {
+		t.Fatalf("stale route remains in no-route config:\n%s", config)
+	}
+	if len(executor.Commands) != 2 {
+		t.Fatalf("commands = %#v, want validate and reload", executor.Commands)
+	}
+	if executor.Commands[0].Args[0] != "validate" || executor.Commands[1].Args[0] != "reload" {
+		t.Fatalf("commands = %#v, want validate then reload", executor.Commands)
+	}
+}
+
 func TestCaddyRouterValidationFailureDoesNotReplaceExistingConfigOrReload(t *testing.T) {
 	ctx := context.Background()
 	configPath := filepath.Join(t.TempDir(), "Caddyfile")

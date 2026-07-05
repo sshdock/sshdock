@@ -703,6 +703,93 @@ func TestStoreBackendAppRemoveCleansRuntimeStateAndPreservesOtherRoutes(t *testi
 	}
 }
 
+func TestStoreBackendAppRemoveSyncsEmptyRoutesWhenRemovingFinalRoutedApp(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	runner := &compose.FakeRunner{}
+	routePublisher := &fakeRoutePublisher{}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Router:         routePublisher,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	appRoot := filepath.Join(appsDir, "my-app")
+	repoPath := filepath.Join(appRoot, "repo.git")
+	worktreePath := filepath.Join(appRoot, "worktree")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll repo: %v", err)
+	}
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree: %v", err)
+	}
+	composePath := filepath.Join(worktreePath, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile compose: %v", err)
+	}
+	model := app.App{ID: "my-app", Name: "my-app", NodeID: "node-a", RepoPath: repoPath, WorktreePath: worktreePath, Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp my-app: %v", err)
+	}
+	if err := sqlite.CreateRelease(ctx, app.Release{ID: "rel_1", AppID: "my-app", CommitSHA: "abc123", ComposePath: composePath, Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain my-app: %v", err)
+	}
+
+	if code := cliRunner.Run([]string{"apps", "remove", "my-app", "--force"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps remove exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if len(routePublisher.Syncs) != 1 {
+		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
+	}
+	if len(routePublisher.Syncs[0]) != 0 {
+		t.Fatalf("router sync routes = %#v, want empty", routePublisher.Syncs[0])
+	}
+}
+
+func TestStoreBackendDetachDomainSyncsEmptyRoutesWhenDetachingFinalDomain(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	now := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	routePublisher := &fakeRoutePublisher{}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: filepath.Join(t.TempDir(), "apps"),
+		Router:  routePublisher,
+		Now:     func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	model := app.App{ID: "my-app", Name: "my-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp my-app: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("AttachDomain my-app: %v", err)
+	}
+
+	if code := cliRunner.Run([]string{"domains", "detach", "my-app", "example.com"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains detach exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if len(routePublisher.Syncs) != 1 {
+		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
+	}
+	if len(routePublisher.Syncs[0]) != 0 {
+		t.Fatalf("router sync routes = %#v, want empty", routePublisher.Syncs[0])
+	}
+}
+
 func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)

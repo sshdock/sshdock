@@ -7,8 +7,8 @@ This document defines the Dokku-style installation flow for SSHDock v0.
 Run this on a fresh Ubuntu LTS or Debian stable VPS:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.1.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.1.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.1.1/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.1 bash bootstrap.sh
 sudo sshdock diagnostics
 
 cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
@@ -18,7 +18,7 @@ git remote add sshdock git@sshdock.example.com:my-app.git
 git push sshdock main
 ```
 
-Replace `v0.1.0` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
+Replace `v0.1.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
 
 ## OS Assumptions
 
@@ -62,7 +62,7 @@ By default, the bootstrap script installs missing apt dependencies on real root 
 Set `SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
 
 ```bash
-sudo SSHDOCK_TAG=v0.1.0 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
+sudo SSHDOCK_TAG=v0.1.1 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
 ```
 
 Check-only mode requires these commands to work before installation continues:

@@ -482,6 +482,7 @@ configure_dashboard_sudoers() {
 
 	run mkdir -p "$(dirname "$sudoers_actual")"
 	cat > "$sudoers_tmp" <<SUDOERS
+Defaults:$DASHBOARD_USER env_keep += "SSH_ORIGINAL_COMMAND"
 $DASHBOARD_USER ALL=($DAEMON_USER) NOPASSWD: $DASHBOARD_WRAPPER_PATH
 SUDOERS
 	run chmod 0440 "$sudoers_tmp"

@@ -121,6 +121,7 @@ exit 0
 	dashboardSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")
 	dashboardSudoers := readFile(t, dashboardSudoersPath)
 	for _, want := range []string{
+		`Defaults:dashboard env_keep += "SSH_ORIGINAL_COMMAND"`,
 		"dashboard ALL=(sshdock) NOPASSWD: /usr/local/bin/sshdock-dashboard",
 	} {
 		if !strings.Contains(dashboardSudoers, want) {

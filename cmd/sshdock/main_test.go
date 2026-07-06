@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,6 +152,30 @@ func TestRunWithEnvDiagnosticsReportsConfigFailure(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "SSHDOCK_GIT_HOST is required") {
 		t.Fatalf("diagnostics stdout missing config error:\n%s", stdout.String())
+	}
+}
+
+func TestCLIRunnerFromEnvDefaultsToDocker(t *testing.T) {
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "")
+
+	runner, err := cliRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("cliRunnerFromEnv: %v", err)
+	}
+	if got := fmt.Sprintf("%T", runner); got != "*compose.DockerRunner" {
+		t.Fatalf("runner type = %s, want *compose.DockerRunner", got)
+	}
+}
+
+func TestCLIRunnerFromEnvCanSelectFakeForTests(t *testing.T) {
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+
+	runner, err := cliRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("cliRunnerFromEnv: %v", err)
+	}
+	if got := fmt.Sprintf("%T", runner); got != "*compose.FakeRunner" {
+		t.Fatalf("runner type = %s, want *compose.FakeRunner", got)
 	}
 }
 

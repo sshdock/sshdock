@@ -1,0 +1,36 @@
+services:
+  web:
+    image: wordpress:apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18081:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: sshdock_wordpress
+      WORDPRESS_DB_USER: sshdock_wordpress
+      WORDPRESS_DB_PASSWORD: sshdock_demo_password
+    volumes:
+      - wordpress-data:/var/www/html
+    restart: unless-stopped
+
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_DATABASE: sshdock_wordpress
+      MARIADB_USER: sshdock_wordpress
+      MARIADB_PASSWORD: sshdock_demo_password
+      MARIADB_ROOT_PASSWORD: sshdock_demo_root_password
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u root -p$${MARIADB_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  wordpress-data:
+  mariadb-data:

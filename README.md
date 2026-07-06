@@ -59,8 +59,8 @@ SSHDock is not:
 Install SSHDock on the server:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.2.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.2.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.2.1/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.2.1 bash bootstrap.sh
 sudo sshdock diagnostics
 ```
 
@@ -117,7 +117,7 @@ Current v0 capabilities:
 - `sshdock apps create` creates a local bare Git repository and installs a `post-receive` hook.
 - Local Git pushes can drive `sshdockd git-hook` and record releases/deployments when `sshdockd` is on `PATH`.
 - `sshdockd git-receive` supports OpenSSH forced-command push-to-create for flat `<app>.git` paths; the installer hands off from the locked-down `git` SSH user to the `sshdock` daemon user through a narrow sudoers rule.
-- `SSHDOCK_COMPOSE_RUNNER=docker` enables real Docker Compose deployment through `sshdockd git-hook`.
+- Production installs run runtime app actions through Docker Compose; `sshdock` CLI recovery commands default to Docker, and `SSHDOCK_COMPOSE_RUNNER=fake` is available for tests.
 - `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `sshdockd.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
 - `sshdock server domain set <domain>` persists the base domain, derives the control host as `sshdock.<domain>`, and makes app remote output use `git@sshdock.<domain>:<app>.git`.
 - `sshdock ssh-keys add <name>`, `sshdock ssh-keys list`, and `sshdock ssh-keys remove <name>` manage deploy/dashboard SSH keys and rewrite both Git receive and dashboard `authorized_keys` files with forced commands.
@@ -276,7 +276,7 @@ internal/
   tui/
 
 examples/
-  node-postgres/
+  static-site/
   wordpress-lite/
 
 test/
@@ -413,6 +413,7 @@ Important docs:
 
 - `AGENTS.md`: public agent and contributor operating contract
 - `docs/`: install, command, testing, and public operations notes
+- `docs/EXAMPLES.md`: runnable static-site and WordPress-lite confidence examples
 
 Private planning notes live under `.local/`, which is intentionally ignored and not published.
 

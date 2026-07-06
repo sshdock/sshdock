@@ -166,16 +166,16 @@ func commandNeedsRecoveryRunner(args []string) bool {
 
 func cliRunnerFromEnv() (compose.Runner, error) {
 	runner := os.Getenv("SSHDOCK_COMPOSE_RUNNER")
-	if runner == "" || runner == "fake" {
+	if runner == "" || runner == "docker" {
+		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
+	}
+	if runner == "fake" {
 		return &compose.FakeRunner{
 			DeployErr:  envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"),
 			RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
 			RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 			LogOutput:  os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS"),
 		}, nil
-	}
-	if runner == "docker" {
-		return compose.NewDockerRunner(compose.LocalCommandExecutor{}), nil
 	}
 
 	return nil, fmt.Errorf("unsupported SSHDOCK_COMPOSE_RUNNER %q", runner)

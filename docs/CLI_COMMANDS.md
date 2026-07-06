@@ -151,7 +151,7 @@ sudo sshdock apps restart my-app
 sudo sshdock apps restart my-app web
 ```
 
-Whole-app restart maps to `docker compose restart` for the project when `SSHDOCK_COMPOSE_RUNNER=docker`. Service restart targets only the selected Compose service.
+Whole-app restart maps to `docker compose restart` for the project when using the default Docker runner. Service restart targets only the selected Compose service.
 
 ### `sshdock apps redeploy <name>`
 
@@ -373,7 +373,7 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_DASHBOARD_COMMAND`: forced command for dashboard keys.
 - `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
 - `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
-- `SSHDOCK_COMPOSE_RUNNER`: `fake` for tests or `docker` for real Docker Compose.
+- `SSHDOCK_COMPOSE_RUNNER`: set `docker` for real `sshdockd` runtime hooks and dashboards; set `fake` only for tests. `sshdock` CLI recovery commands default to Docker when this variable is unset.
 
 For local development, set `SSHDOCK_DATA_DIR` to avoid writing to `/var/lib/sshdock`:
 

@@ -14,6 +14,7 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         arch:
           - amd64
@@ -43,3 +44,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}

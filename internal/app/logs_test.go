@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/sshdock/sshdock/internal/compose"
@@ -22,7 +23,7 @@ func TestServiceLogsRequestsRunnerLogs(t *testing.T) {
 	}
 
 	want := compose.LogsRequest{AppName: "my-app", ServiceName: "web", Lines: 50}
-	if len(runner.LogsRequests) != 1 || runner.LogsRequests[0] != want {
+	if len(runner.LogsRequests) != 1 || !reflect.DeepEqual(runner.LogsRequests[0], want) {
 		t.Fatalf("LogsRequests = %#v, want [%#v]", runner.LogsRequests, want)
 	}
 }

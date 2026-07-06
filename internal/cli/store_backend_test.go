@@ -492,6 +492,13 @@ func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
 	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
 		t.Fatalf("Set config: %v", err)
 	}
+	projectDir := filepath.Join(appsDir, "my-app", "worktree")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll project dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".sshdock.yml"), []byte("config:\n  required:\n    - DATABASE_URL\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile manifest: %v", err)
+	}
 
 	runner := &compose.FakeRunner{LogOutput: "connecting to postgres://secret\n"}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
@@ -510,6 +517,12 @@ func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
 	}
 	if stdout.String() != "connecting to <redacted>\n" {
 		t.Fatalf("logs stdout = %q", stdout.String())
+	}
+	if len(runner.LogsRequests) != 1 {
+		t.Fatalf("logs requests = %#v", runner.LogsRequests)
+	}
+	if runner.LogsRequests[0].Env["DATABASE_URL"] != "postgres://secret" {
+		t.Fatalf("logs request env = %#v", runner.LogsRequests[0].Env)
 	}
 }
 

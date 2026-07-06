@@ -89,7 +89,8 @@ func runServe(stderr io.Writer) int {
 		return 1
 	}
 
-	handler := tui.NewDashboardHandler(sqlite, runner)
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(ctx, sqlite, cfg)))
+	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
 	server := tui.NewSSHServer(tui.SSHServerConfig{
 		ListenAddr:         cfg.SSHListenAddr,
 		DashboardUser:      cfg.DashboardUser,
@@ -191,7 +192,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	handler := tui.NewDashboardHandler(sqlite, runner)
+	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
 	snapshot, err := handler.Snapshot(ctx)
 	if err != nil {
 		fmt.Fprintln(stderr, err)

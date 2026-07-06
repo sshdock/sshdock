@@ -19,9 +19,14 @@ type DashboardStore interface {
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
 }
 
+type DashboardConfigResolver interface {
+	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
+}
+
 type DashboardHandler struct {
-	store  DashboardStore
-	runner compose.Runner
+	store          DashboardStore
+	runner         compose.Runner
+	configResolver DashboardConfigResolver
 }
 
 type DashboardSnapshot struct {
@@ -37,6 +42,10 @@ type DashboardAppSnapshot struct {
 
 func NewDashboardHandler(store DashboardStore, runner compose.Runner) *DashboardHandler {
 	return &DashboardHandler{store: store, runner: runner}
+}
+
+func NewDashboardHandlerWithConfig(store DashboardStore, runner compose.Runner, resolver DashboardConfigResolver) *DashboardHandler {
+	return &DashboardHandler{store: store, runner: runner, configResolver: resolver}
 }
 
 func (h *DashboardHandler) HandleSession(ctx context.Context, session Session) error {
@@ -134,10 +143,15 @@ func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.A
 	}
 
 	projectDir := filepath.Dir(latest.ComposePath)
+	env, err := h.resolveConfigEnv(ctx, model.ID, projectDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
+	}
 	services, err := h.runner.Status(ctx, compose.StatusRequest{
 		AppName:     model.ID,
 		ProjectDir:  projectDir,
 		ComposePath: latest.ComposePath,
+		Env:         env,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("load service status for %s: %w", model.ID, err)
@@ -150,14 +164,22 @@ func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.A
 			ComposePath: latest.ComposePath,
 			ServiceName: service.Name,
 			Lines:       50,
+			Env:         env,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("load logs for %s/%s: %w", model.ID, service.Name, err)
 		}
-		logsByService[service.Name] = NewLogsView(model.ID, service.Name, output)
+		logsByService[service.Name] = NewLogsView(model.ID, service.Name, compose.RedactValues(output, env))
 	}
 
 	return services, logsByService, nil
+}
+
+func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
+	if h.configResolver == nil {
+		return nil, nil
+	}
+	return h.configResolver.ResolveAppConfig(ctx, appID, projectDir)
 }
 
 func renderAppList(writer io.Writer, screen AppListScreen) error {

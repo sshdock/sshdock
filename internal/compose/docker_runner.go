@@ -154,7 +154,7 @@ func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error 
 
 func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error) {
 	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "ps", "--format", "json")
-	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args})
+	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	if err != nil {
 		return nil, err
 	}
@@ -163,12 +163,12 @@ func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]Ser
 }
 
 func (r *DockerRunner) Logs(ctx context.Context, request LogsRequest) (string, error) {
-	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request)})
+	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request), Env: request.Env})
 }
 
 func (r *DockerRunner) StreamLogs(ctx context.Context, request LogsRequest, stdout io.Writer, stderr io.Writer) error {
 	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
-		return streamer.Stream(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request)}, stdout, stderr)
+		return streamer.Stream(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request), Env: request.Env}, stdout, stderr)
 	}
 	output, err := r.Logs(ctx, request)
 	if err != nil {

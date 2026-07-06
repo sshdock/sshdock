@@ -200,7 +200,8 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 		t.Fatalf("Restart: %v", err)
 	}
 
-	statuses, err := runner.Status(ctx, StatusRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath})
+	inspectEnv := map[string]string{"DATABASE_URL": "postgres://secret"}
+	statuses, err := runner.Status(ctx, StatusRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, Env: inspectEnv})
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -208,7 +209,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 		t.Fatalf("Status = %#v", statuses)
 	}
 
-	logs, err := runner.Logs(ctx, LogsRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web", Lines: 50, Follow: true})
+	logs, err := runner.Logs(ctx, LogsRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web", Lines: 50, Follow: true, Env: inspectEnv})
 	if err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
@@ -219,8 +220,8 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	want := []Command{
 		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "config"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "restart", "web"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--format", "json"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--format", "json"}, Env: inspectEnv},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}, Env: inspectEnv},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)

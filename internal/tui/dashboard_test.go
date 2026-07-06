@@ -48,10 +48,11 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 	}
 	runner := &compose.FakeRunner{
 		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
-		LogOutput: "first log\nsecond log\n",
+		LogOutput: "first log\npostgres://secret\n",
 	}
 	var output bytes.Buffer
-	handler := NewDashboardHandler(store, runner)
+	config := &fakeDashboardConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	handler := NewDashboardHandlerWithConfig(store, runner, config)
 
 	if err := handler.Render(ctx, &output); err != nil {
 		t.Fatalf("Render: %v", err)
@@ -78,11 +79,14 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"deploy.succeeded Deploy succeeded",
 		"Logs web",
 		"first log",
-		"second log",
+		"<redacted>",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("dashboard output missing %q:\n%s", want, rendered)
 		}
+	}
+	if strings.Contains(rendered, "postgres://secret") {
+		t.Fatalf("dashboard output leaked config value:\n%s", rendered)
 	}
 	if len(runner.StatusRequests) != 1 {
 		t.Fatalf("status requests = %#v", runner.StatusRequests)
@@ -91,12 +95,18 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 	if statusRequest.AppName != "my-app" || statusRequest.ComposePath != "/tmp/apps/my-app/worktree/compose.yml" || statusRequest.ProjectDir != "/tmp/apps/my-app/worktree" {
 		t.Fatalf("status request = %#v", statusRequest)
 	}
+	if statusRequest.Env["DATABASE_URL"] != "postgres://secret" {
+		t.Fatalf("status request env = %#v", statusRequest.Env)
+	}
 	if len(runner.LogsRequests) != 1 {
 		t.Fatalf("logs requests = %#v", runner.LogsRequests)
 	}
 	logsRequest := runner.LogsRequests[0]
 	if logsRequest.AppName != "my-app" || logsRequest.ServiceName != "web" || logsRequest.Lines != 50 {
 		t.Fatalf("logs request = %#v", logsRequest)
+	}
+	if logsRequest.Env["DATABASE_URL"] != "postgres://secret" {
+		t.Fatalf("logs request env = %#v", logsRequest.Env)
 	}
 }
 
@@ -172,6 +182,18 @@ type fakeDashboardStore struct {
 	domainsByApp     map[string][]app.Domain
 	deploymentsByApp map[string][]app.Deployment
 	eventsByApp      map[string][]app.Event
+}
+
+type fakeDashboardConfigResolver struct {
+	env map[string]string
+}
+
+func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string, _ string) (map[string]string, error) {
+	result := make(map[string]string, len(f.env))
+	for key, value := range f.env {
+		result[key] = value
+	}
+	return result, nil
 }
 
 func (f *fakeDashboardStore) ListApps(context.Context) ([]app.App, error) {

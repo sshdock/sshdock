@@ -64,6 +64,7 @@ type StatusRequest struct {
 	AppName     string
 	ProjectDir  string
 	ComposePath string
+	Env         map[string]string
 }
 
 type LogsRequest struct {
@@ -73,6 +74,7 @@ type LogsRequest struct {
 	ServiceName string
 	Lines       int
 	Follow      bool
+	Env         map[string]string
 }
 
 type ServiceStatus struct {

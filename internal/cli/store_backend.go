@@ -286,13 +286,19 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	if !ok || release.ComposePath == "" {
 		return fmt.Errorf("no deployed release for app %q", request.AppName)
 	}
+	projectDir := projectDirFromModel(model, release)
+	env, err := b.configEnv(ctx, request.AppName, projectDir)
+	if err != nil {
+		return err
+	}
 	logsRequest := compose.LogsRequest{
 		AppName:     request.AppName,
-		ProjectDir:  projectDirFromModel(model, release),
+		ProjectDir:  projectDir,
 		ComposePath: release.ComposePath,
 		ServiceName: request.ServiceName,
 		Lines:       100,
 		Follow:      request.Follow,
+		Env:         env,
 	}
 	redactionValues, err := b.configRedactionValues(ctx, request.AppName)
 	if err != nil {
@@ -656,6 +662,17 @@ func (b *StoreBackend) configRedactionValues(ctx context.Context, appName string
 		values[entry.Name] = value
 	}
 	return values, nil
+}
+
+func (b *StoreBackend) configEnv(ctx context.Context, appName string, projectDir string) (map[string]string, error) {
+	if b.configManager == nil {
+		return nil, nil
+	}
+	env, err := b.configManager.ResolveAppConfig(ctx, appName, projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve config for logs: %w", err)
+	}
+	return env, nil
 }
 
 type redactingWriter struct {

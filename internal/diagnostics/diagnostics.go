@@ -42,6 +42,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 
 	report.checkDir("data dir", cfg.DataDir)
 	report.checkDir("apps dir", cfg.AppsDir)
+	report.checkDir("config key dir", filepath.Dir(cfg.ConfigKeyPath))
 	report.checkDir("sqlite dir", filepath.Dir(cfg.SQLiteDBPath))
 	report.checkDir("git home dir", cfg.GitHomeDir)
 	report.checkDir("git authorized_keys dir", filepath.Dir(cfg.GitAuthorizedKeysPath))

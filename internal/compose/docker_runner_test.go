@@ -100,6 +100,43 @@ func TestDockerRunnerUpdatesLatestOnlyAfterUpSucceeds(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, `services:
+  web:
+    image: example/web:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+`)
+	executor := &recordingExecutor{}
+	runner := NewDockerRunner(executor)
+
+	err := runner.Deploy(ctx, DeployRequest{
+		AppName:     "my-app",
+		ProjectDir:  projectDir,
+		ComposePath: composePath,
+		CommitSHA:   "abc123",
+		Env:         map[string]string{"DATABASE_URL": "postgres://secret"},
+	})
+	if err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+
+	if len(executor.Commands) != 3 {
+		t.Fatalf("commands = %#v, want config/pull/up", executor.Commands)
+	}
+	for _, command := range executor.Commands {
+		if command.Env["DATABASE_URL"] != "postgres://secret" {
+			t.Fatalf("command missing DATABASE_URL env: %#v", command)
+		}
+		if strings.Contains(strings.Join(command.Args, " "), "postgres://secret") {
+			t.Fatalf("secret leaked into command args: %#v", command)
+		}
+	}
+}
+
 func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()

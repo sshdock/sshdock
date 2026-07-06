@@ -243,6 +243,16 @@ SSHDOCK_COMPOSE_RUNNER=fake
 
 `SSHDOCK_COMPOSE_RUNNER=fake` is intentional. It makes this test a real Git/hook/store pass without requiring Docker.
 
+## Config Harness
+
+Run:
+
+```bash
+make config-e2e
+```
+
+This target imports an app config value into encrypted SQLite storage, commits only `.sshdock.yml` plus Compose interpolation references, runs the post-receive deploy path with the fake Compose runner, and verifies the decrypted value reaches Docker Compose through the process environment instead of a committed `.env` file.
+
 ## Opt-In Docker E2E
 
 Run:

@@ -77,6 +77,14 @@ Add the Git remote:
 git remote add sshdock git@sshdock.example.com:my-app.git
 ```
 
+If the app declares required config in `.sshdock.yml`, create the app metadata first and store values over SSH before deploying:
+
+```bash
+sudo sshdock apps create my-app
+ssh dashboard@sshdock.example.com config set my-app DATABASE_URL < .env.production.database_url
+ssh dashboard@sshdock.example.com config list my-app
+```
+
 Deploy:
 
 ```bash
@@ -121,6 +129,7 @@ Current v0 capabilities:
 - `scripts/bootstrap.sh` installs Ubuntu/Debian dependencies by default, installs local or released binaries, writes `sshdockd.service`, configures the Caddy import, normalizes runtime ownership, and can be tested under a fake root with `make bootstrap-e2e`.
 - `sshdock server domain set <domain>` persists the base domain, derives the control host as `sshdock.<domain>`, and makes app remote output use `git@sshdock.<domain>:<app>.git`.
 - `sshdock ssh-keys add <name>`, `sshdock ssh-keys list`, and `sshdock ssh-keys remove <name>` manage deploy/dashboard SSH keys and rewrite both Git receive and dashboard `authorized_keys` files with forced commands.
+- `sshdock config set/import/list/get/unset` stores app-scoped config over SSH; list output is redacted, get is an explicit reveal, and values are encrypted in SQLite with a host-local key outside the database.
 - First push through real OpenSSH can create an app, receive Git, run the generated `post-receive` hook, deploy with fake or Docker Compose runners, and record app/release/deployment/event state.
 - Successful deploys auto-route `<app>.<base-domain>` when the app name is DNS-label-safe and Compose exposes exactly one inferred TCP host port. Unsafe inference records `route.auto_skipped`; successful routing records `route.auto_attached` and Caddy reload events.
 - `sshdock domains attach <app> <service> <domain> --port <host-port>`, `sshdock domains list <app>`, and `sshdock domains detach <app> <domain>` persist domain state, rebuild the generated Caddyfile from SQLite, validate it, reload Caddy, and record domain/router events for manual overrides.
@@ -196,6 +205,20 @@ Supported Compose features for v0:
 Full Docker Compose compatibility is not a v0 goal.
 
 Unsupported or risky Compose features should fail with clear errors.
+
+Apps can commit `.sshdock.yml` to declare required config keys without committing values:
+
+```yaml
+config:
+  required:
+    - DATABASE_URL
+    - name: API_TOKEN
+      scope: worker
+```
+
+Deploy fails before Docker Compose starts if a required key is missing, and the error includes `ssh dashboard@<host> config set ...` recovery commands. SSHDock passes decrypted values only to the `docker compose` process environment for interpolation. Containers receive only values explicitly referenced by the app's Compose file.
+
+Local encryption protects against SQLite-only leaks and ordinary database backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up `/var/lib/sshdock/config.key` with `sshdock.db`; losing either one makes encrypted config unrecoverable.
 
 ## Runtime Stack
 

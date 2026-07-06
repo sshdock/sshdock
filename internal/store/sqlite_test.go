@@ -424,6 +424,79 @@ func TestSQLiteStoreSSHKeys(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAppConfigValues(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	createdAt := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Minute)
+
+	first := AppConfigValue{
+		AppID:      "my-app",
+		Name:       "DATABASE_URL",
+		Ciphertext: []byte("ciphertext-1"),
+		Nonce:      []byte("nonce-1234567"),
+		KeyVersion: 1,
+		CreatedAt:  createdAt,
+		UpdatedAt:  createdAt,
+		MutatedBy:  "dashboard",
+	}
+	if err := store.UpsertAppConfigValue(ctx, first); err != nil {
+		t.Fatalf("UpsertAppConfigValue: %v", err)
+	}
+
+	scoped := AppConfigValue{
+		AppID:      "my-app",
+		Name:       "API_TOKEN",
+		Scope:      "worker",
+		Ciphertext: []byte("ciphertext-2"),
+		Nonce:      []byte("nonce-7654321"),
+		KeyVersion: 1,
+		CreatedAt:  createdAt,
+		UpdatedAt:  createdAt,
+		MutatedBy:  "dashboard",
+	}
+	if err := store.UpsertAppConfigValue(ctx, scoped); err != nil {
+		t.Fatalf("UpsertAppConfigValue scoped: %v", err)
+	}
+
+	replacement := first
+	replacement.Ciphertext = []byte("ciphertext-new")
+	replacement.Nonce = []byte("nonce-new1234")
+	replacement.UpdatedAt = updatedAt
+	if err := store.UpsertAppConfigValue(ctx, replacement); err != nil {
+		t.Fatalf("UpsertAppConfigValue replacement: %v", err)
+	}
+
+	got, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "DATABASE_URL"})
+	if err != nil {
+		t.Fatalf("GetAppConfigValue: %v", err)
+	}
+	if string(got.Ciphertext) != "ciphertext-new" || !got.CreatedAt.Equal(createdAt) || !got.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("config value = %#v", got)
+	}
+
+	values, err := store.ListAppConfigValues(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListAppConfigValues: %v", err)
+	}
+	if len(values) != 2 {
+		t.Fatalf("values = %#v, want two", values)
+	}
+	if values[0].Name != "DATABASE_URL" || values[0].Scope != "" || values[1].Name != "API_TOKEN" || values[1].Scope != "worker" {
+		t.Fatalf("values ordering/content = %#v", values)
+	}
+
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); err != nil {
+		t.Fatalf("DeleteAppConfigValue: %v", err)
+	}
+	if _, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetAppConfigValue deleted error = %v, want ErrNotFound", err)
+	}
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeleteAppConfigValue missing error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
@@ -453,6 +526,9 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if err := store.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: model.ID, Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now}); err != nil {
 		t.Fatalf("CreateEvent: %v", err)
 	}
+	if err := store.UpsertAppConfigValue(ctx, AppConfigValue{AppID: model.ID, Name: "SECRET", Ciphertext: []byte("ciphertext"), Nonce: []byte("nonce-1234567"), KeyVersion: 1, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("UpsertAppConfigValue: %v", err)
+	}
 
 	if err := store.DeleteApp(ctx, model.ID); err != nil {
 		t.Fatalf("DeleteApp: %v", err)
@@ -472,6 +548,9 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	}
 	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 0 {
 		t.Fatalf("events after DeleteApp = %#v, err = %v", events, err)
+	}
+	if values, err := store.ListAppConfigValues(ctx, model.ID); err != nil || len(values) != 0 {
+		t.Fatalf("config values after DeleteApp = %#v, err = %v", values, err)
 	}
 	if err := store.DeleteApp(ctx, model.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("DeleteApp missing error = %v, want ErrNotFound", err)

@@ -23,6 +23,24 @@ type SSHKey struct {
 	CreatedAt time.Time
 }
 
+type AppConfigRef struct {
+	AppID string
+	Name  string
+	Scope string
+}
+
+type AppConfigValue struct {
+	AppID      string
+	Name       string
+	Scope      string
+	Ciphertext []byte
+	Nonce      []byte
+	KeyVersion int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	MutatedBy  string
+}
+
 type Store interface {
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
@@ -46,6 +64,10 @@ type Store interface {
 	UpsertSSHKey(ctx context.Context, key SSHKey) error
 	ListSSHKeys(ctx context.Context) ([]SSHKey, error)
 	DeleteSSHKey(ctx context.Context, name string) error
+	UpsertAppConfigValue(ctx context.Context, value AppConfigValue) error
+	GetAppConfigValue(ctx context.Context, ref AppConfigRef) (AppConfigValue, error)
+	ListAppConfigValues(ctx context.Context, appID string) ([]AppConfigValue, error)
+	DeleteAppConfigValue(ctx context.Context, ref AppConfigRef) error
 	DeleteApp(ctx context.Context, appID string) error
 }
 

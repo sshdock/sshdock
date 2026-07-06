@@ -11,10 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/cli"
 	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/diagnostics"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
@@ -59,6 +61,8 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(context.Background(), sqlite, cfg)))
+
 	var recoveryRunner compose.Runner
 	if commandNeedsRecoveryRunner(args) {
 		recoveryRunner, err = cliRunnerFromEnv()
@@ -89,6 +93,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		}),
 		RecoveryRunner:   recoveryRunner,
 		RecoveryCheckout: gitrecv.LocalWorktreeCheckout{},
+		ConfigManager:    configService,
 	})
 	runner := cli.NewRunner(backend, version.String())
 	return runner.RunWithInput(args, os.Stdin, stdout, stderr)
@@ -104,6 +109,9 @@ func runDiagnostics(stdout io.Writer) int {
 }
 
 func commandNeedsStore(args []string) bool {
+	if len(args) >= 1 && args[0] == "config" {
+		return true
+	}
 	if len(args) == 2 && args[0] == "apps" && args[1] == "list" {
 		return true
 	}
@@ -162,6 +170,18 @@ func commandNeedsRecoveryRunner(args []string) bool {
 		return true
 	}
 	return false
+}
+
+func configRecoveryHost(ctx context.Context, persistentStore store.Store, cfg config.Config) string {
+	if serverConfig, err := persistentStore.GetServerConfig(ctx); err == nil {
+		if serverConfig.BaseDomain != "" {
+			return domaincfg.ControlHost(serverConfig.BaseDomain)
+		}
+		if serverConfig.GitHost != "" {
+			return serverConfig.GitHost
+		}
+	}
+	return cfg.GitHost
 }
 
 func cliRunnerFromEnv() (compose.Runner, error) {

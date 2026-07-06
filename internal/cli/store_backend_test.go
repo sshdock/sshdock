@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
@@ -478,6 +479,37 @@ func TestStoreBackendLifecycleInspectionCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	configService := appconfig.NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), appconfig.WithClock(func() time.Time { return now }))
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
+		t.Fatalf("Set config: %v", err)
+	}
+
+	runner := &compose.FakeRunner{LogOutput: "connecting to postgres://secret\n"}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		ConfigManager:  configService,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := cliRunner.Run([]string{"logs", "my-app", "web"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("logs exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "connecting to <redacted>\n" {
+		t.Fatalf("logs stdout = %q", stdout.String())
 	}
 }
 

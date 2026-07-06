@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -299,6 +300,73 @@ func TestServiceRedeployLatestSuccessfulReleaseCreatesDeploymentAndUpdatesState(
 	assertEventTypes(t, store.events["app_1"], []string{"redeploy.started", "redeploy.succeeded"})
 }
 
+func TestServiceRedeployLatestPassesResolvedConfigEnvironment(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	if _, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1"); err != nil {
+		t.Fatalf("RedeployLatest: %v", err)
+	}
+	if len(resolver.requests) != 1 {
+		t.Fatalf("resolver requests = %#v", resolver.requests)
+	}
+	if resolver.requests[0] != (configResolveRequest{appID: "app_1", projectDir: "/apps/app_1/worktree"}) {
+		t.Fatalf("resolver request = %#v", resolver.requests[0])
+	}
+	if len(runner.deploys) != 1 || runner.deploys[0].Env["DATABASE_URL"] != "postgres://secret" {
+		t.Fatalf("deploy requests = %#v", runner.deploys)
+	}
+}
+
+func TestServiceRollbackPassesResolvedConfigEnvironment(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	resolver := &fakeConfigResolver{env: map[string]string{"API_TOKEN": "secret"}}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	if _, err := service.RollbackRelease(ctx, "app_1", "rel_good", "dep_rollback_1"); err != nil {
+		t.Fatalf("RollbackRelease: %v", err)
+	}
+	if len(runner.deploys) != 1 || runner.deploys[0].Env["API_TOKEN"] != "secret" {
+		t.Fatalf("deploy requests = %#v", runner.deploys)
+	}
+}
+
+func TestServiceRedeployConfigFailureStopsBeforeCompose(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	resolver := &fakeConfigResolver{err: errors.New("missing required config for app_1: SECRET")}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	if err == nil || err.Error() != "missing required config for app_1: SECRET" {
+		t.Fatalf("RedeployLatest error = %v", err)
+	}
+	if len(runner.deploys) != 0 {
+		t.Fatalf("compose deploys = %#v, want none", runner.deploys)
+	}
+	if store.deploymentStatuses["dep_redeploy_1"] != DeploymentStatusFailed {
+		t.Fatalf("deployment status = %q", store.deploymentStatuses["dep_redeploy_1"])
+	}
+	if store.deploymentErrors["dep_redeploy_1"] != "missing required config for app_1: SECRET" {
+		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
+	}
+}
+
 func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
@@ -323,6 +391,32 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
 	}
 	assertEventTypes(t, store.events["app_1"], []string{"redeploy.started", "redeploy.failed"})
+}
+
+func TestServiceRedeployFailureRedactsResolvedConfigValues(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	failure := errors.New("docker output included postgres://secret")
+	runner := &fakeRecoveryRunner{deployErr: failure}
+	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	if !errors.Is(err, failure) {
+		t.Fatalf("RedeployLatest error = %v, want wrapped failure", err)
+	}
+	if strings.Contains(err.Error(), "postgres://secret") {
+		t.Fatalf("returned error leaked secret: %v", err)
+	}
+	if store.deploymentErrors["dep_redeploy_1"] != "docker output included <redacted>" {
+		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
+	}
+	if strings.Contains(store.events["app_1"][1].Message, "postgres://secret") {
+		t.Fatalf("event leaked secret: %#v", store.events["app_1"][1])
+	}
 }
 
 func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
@@ -376,6 +470,22 @@ type fakeRecoveryRunner struct {
 
 	deployErr  error
 	restartErr error
+}
+
+type configResolveRequest struct {
+	appID      string
+	projectDir string
+}
+
+type fakeConfigResolver struct {
+	env      map[string]string
+	err      error
+	requests []configResolveRequest
+}
+
+func (f *fakeConfigResolver) ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
+	f.requests = append(f.requests, configResolveRequest{appID: appID, projectDir: projectDir})
+	return f.env, f.err
 }
 
 type checkoutCall struct {

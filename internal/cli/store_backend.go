@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
 	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
@@ -36,6 +38,7 @@ type StoreBackendConfig struct {
 	Router                      routeSyncer
 	RecoveryRunner              compose.Runner
 	RecoveryCheckout            appmodel.WorktreeCheckout
+	ConfigManager               configManager
 	Now                         func() time.Time
 }
 
@@ -45,6 +48,14 @@ type routeSyncer interface {
 
 type logStreamer interface {
 	StreamLogs(ctx context.Context, request compose.LogsRequest, stdout io.Writer, stderr io.Writer) error
+}
+
+type configManager interface {
+	Set(ctx context.Context, request appconfig.SetRequest) error
+	List(ctx context.Context, appID string) ([]appconfig.Entry, error)
+	Reveal(ctx context.Context, ref appconfig.ConfigRef) (string, error)
+	Unset(ctx context.Context, ref appconfig.ConfigRef) error
+	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
 }
 
 type StoreBackend struct {
@@ -60,6 +71,7 @@ type StoreBackend struct {
 	router                      routeSyncer
 	recoveryRunner              compose.Runner
 	recoveryCheckout            appmodel.WorktreeCheckout
+	configManager               configManager
 	now                         func() time.Time
 }
 
@@ -87,6 +99,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		router:                      cfg.Router,
 		recoveryRunner:              cfg.RecoveryRunner,
 		recoveryCheckout:            cfg.RecoveryCheckout,
+		configManager:               cfg.ConfigManager,
 		now:                         cfg.Now,
 	}
 }
@@ -281,9 +294,13 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 		Lines:       100,
 		Follow:      request.Follow,
 	}
+	redactionValues, err := b.configRedactionValues(ctx, request.AppName)
+	if err != nil {
+		return err
+	}
 	if request.Follow {
 		if streamer, ok := b.recoveryRunner.(logStreamer); ok {
-			if err := streamer.StreamLogs(ctx, logsRequest, stdout, stderr); err != nil {
+			if err := streamer.StreamLogs(ctx, logsRequest, redactingWriter{target: stdout, values: redactionValues}, redactingWriter{target: stderr, values: redactionValues}); err != nil {
 				return fmt.Errorf("stream logs for app %q: %w", request.AppName, err)
 			}
 			return nil
@@ -294,7 +311,7 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	if err != nil {
 		return fmt.Errorf("load logs for app %q: %w", request.AppName, err)
 	}
-	_, err = fmt.Fprint(stdout, output)
+	_, err = fmt.Fprint(stdout, compose.RedactValues(output, redactionValues))
 	return err
 
 }
@@ -545,6 +562,115 @@ func (b *StoreBackend) RemoveSSHKey(name string) error {
 	return nil
 }
 
+func (b *StoreBackend) SetConfig(appName string, name string, scope string, value []byte) error {
+	if b.configManager == nil {
+		return fmt.Errorf("config manager is not configured")
+	}
+	return b.configManager.Set(context.Background(), appconfig.SetRequest{
+		AppID:     appName,
+		Name:      name,
+		Scope:     scope,
+		Value:     value,
+		MutatedBy: "dashboard",
+	})
+}
+
+func (b *StoreBackend) ImportConfig(appName string, scope string, input io.Reader) (int, error) {
+	if b.configManager == nil {
+		return 0, fmt.Errorf("config manager is not configured")
+	}
+	if input == nil {
+		input = strings.NewReader("")
+	}
+	scanner := bufio.NewScanner(input)
+	count := 0
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return count, fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
+		}
+		if err := b.SetConfig(appName, strings.TrimSpace(name), scope, []byte(value)); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, scanner.Err()
+}
+
+func (b *StoreBackend) ListConfig(appName string) ([]ConfigEntry, error) {
+	if b.configManager == nil {
+		return nil, fmt.Errorf("config manager is not configured")
+	}
+	entries, err := b.configManager.List(context.Background(), appName)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ConfigEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, ConfigEntry{
+			Name:          entry.Name,
+			Scope:         entry.Scope,
+			Status:        entry.Status,
+			RedactedValue: entry.RedactedValue,
+			UpdatedAt:     entry.UpdatedAt,
+			MutatedBy:     entry.MutatedBy,
+		})
+	}
+	return result, nil
+}
+
+func (b *StoreBackend) GetConfig(appName string, name string, scope string) (string, error) {
+	if b.configManager == nil {
+		return "", fmt.Errorf("config manager is not configured")
+	}
+	return b.configManager.Reveal(context.Background(), appconfig.ConfigRef{AppID: appName, Name: name, Scope: scope})
+}
+
+func (b *StoreBackend) UnsetConfig(appName string, name string, scope string) error {
+	if b.configManager == nil {
+		return fmt.Errorf("config manager is not configured")
+	}
+	return b.configManager.Unset(context.Background(), appconfig.ConfigRef{AppID: appName, Name: name, Scope: scope})
+}
+
+func (b *StoreBackend) configRedactionValues(ctx context.Context, appName string) (map[string]string, error) {
+	if b.configManager == nil {
+		return nil, nil
+	}
+	entries, err := b.configManager.List(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("load config metadata for log redaction: %w", err)
+	}
+	values := map[string]string{}
+	for _, entry := range entries {
+		value, err := b.configManager.Reveal(ctx, appconfig.ConfigRef{AppID: appName, Name: entry.Name, Scope: entry.Scope})
+		if err != nil {
+			return nil, fmt.Errorf("load config value %s for log redaction: %w", entry.Name, err)
+		}
+		values[entry.Name] = value
+	}
+	return values, nil
+}
+
+type redactingWriter struct {
+	target io.Writer
+	values map[string]string
+}
+
+func (w redactingWriter) Write(p []byte) (int, error) {
+	if w.target == nil {
+		return len(p), nil
+	}
+	_, err := io.WriteString(w.target, compose.RedactValues(string(p), w.values))
+	return len(p), err
+}
+
 func cliApp(model appmodel.App) App {
 	return App{
 		Name:   model.Name,
@@ -570,6 +696,9 @@ func (b *StoreBackend) recoveryService() *appmodel.Service {
 	}
 	if b.recoveryCheckout != nil {
 		options = append(options, appmodel.WithWorktreeCheckout(b.recoveryCheckout))
+	}
+	if b.configManager != nil {
+		options = append(options, appmodel.WithConfigResolver(b.configManager))
 	}
 	return appmodel.NewService(b.store, options...)
 }

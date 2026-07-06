@@ -33,6 +33,10 @@ type routeSyncer interface {
 	SyncRoutes(ctx context.Context, routes []router.Route) error
 }
 
+type configResolver interface {
+	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
+}
+
 type WorktreeCheckout interface {
 	Checkout(ctx context.Context, repoPath string, worktreePath string, commitSHA string) error
 }
@@ -44,19 +48,21 @@ func (f WorktreeCheckoutFunc) Checkout(ctx context.Context, repoPath string, wor
 }
 
 type PostReceiveHandlerConfig struct {
-	Store    postReceiveStore
-	Runner   compose.Runner
-	Router   routeSyncer
-	Checkout WorktreeCheckout
-	Now      func() time.Time
+	Store          postReceiveStore
+	Runner         compose.Runner
+	Router         routeSyncer
+	ConfigResolver configResolver
+	Checkout       WorktreeCheckout
+	Now            func() time.Time
 }
 
 type PostReceiveHandler struct {
-	store    postReceiveStore
-	runner   compose.Runner
-	router   routeSyncer
-	checkout WorktreeCheckout
-	now      func() time.Time
+	store          postReceiveStore
+	runner         compose.Runner
+	router         routeSyncer
+	configResolver configResolver
+	checkout       WorktreeCheckout
+	now            func() time.Time
 }
 
 func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler {
@@ -68,11 +74,12 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 	}
 
 	return &PostReceiveHandler{
-		store:    config.Store,
-		runner:   config.Runner,
-		router:   config.Router,
-		checkout: config.Checkout,
-		now:      now,
+		store:          config.Store,
+		runner:         config.Runner,
+		router:         config.Router,
+		configResolver: config.ConfigResolver,
+		checkout:       config.Checkout,
+		now:            now,
 	}
 }
 
@@ -162,6 +169,22 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		return err
 	}
 
+	env, err := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
+	if err != nil {
+		finishedAt := h.now()
+		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, err.Error())
+		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
+		_ = h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusFailed, finishedAt)
+		_ = h.store.CreateEvent(ctx, app.Event{
+			ID:        EventID(deploymentID, "failed"),
+			AppID:     event.AppName,
+			Type:      "deploy.failed",
+			Message:   "Deploy failed for release " + releaseID + ": " + err.Error(),
+			CreatedAt: finishedAt,
+		})
+		return err
+	}
+
 	err = h.runner.Deploy(ctx, compose.DeployRequest{
 		AppName:               event.AppName,
 		ProjectDir:            worktreePath,
@@ -169,6 +192,7 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		ReleaseID:             releaseID,
 		CommitSHA:             event.CommitSHA,
 		ProjectName:           compose.ProjectName(event.AppName),
+		Env:                   env,
 		KeepReleases:          5,
 		SuccessfulReleaseSHAs: priorSuccessfulReleaseSHAs,
 		CleanupRecorder: cleanupEventRecorder{
@@ -179,6 +203,7 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		},
 	})
 	if err != nil {
+		err = compose.RedactError(err, env)
 		finishedAt := h.now()
 		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, err.Error())
 		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
@@ -213,6 +238,13 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		return err
 	}
 	return h.autoRoute(ctx, event.AppName, composePath, deploymentID, finishedAt)
+}
+
+func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName string, projectDir string) (map[string]string, error) {
+	if h.configResolver == nil {
+		return nil, nil
+	}
+	return h.configResolver.ResolveAppConfig(ctx, appName, projectDir)
 }
 
 func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, composePath string, deploymentID string, createdAt time.Time) error {

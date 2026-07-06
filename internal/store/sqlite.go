@@ -516,6 +516,88 @@ func (s *SQLiteStore) DeleteSSHKey(ctx context.Context, name string) error {
 	return nil
 }
 
+func (s *SQLiteStore) UpsertAppConfigValue(ctx context.Context, value AppConfigValue) error {
+	_, err := s.db.ExecContext(ctx, `
+		insert into app_config_values (app_id, name, scope, ciphertext, nonce, key_version, created_at, updated_at, mutated_by)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		on conflict(app_id, name, scope) do update set
+			ciphertext = excluded.ciphertext,
+			nonce = excluded.nonce,
+			key_version = excluded.key_version,
+			updated_at = excluded.updated_at,
+			mutated_by = excluded.mutated_by`,
+		value.AppID,
+		value.Name,
+		value.Scope,
+		value.Ciphertext,
+		value.Nonce,
+		value.KeyVersion,
+		formatTime(value.CreatedAt),
+		formatTime(value.UpdatedAt),
+		value.MutatedBy,
+	)
+	return err
+}
+
+func (s *SQLiteStore) GetAppConfigValue(ctx context.Context, ref AppConfigRef) (AppConfigValue, error) {
+	row := s.db.QueryRowContext(ctx, `
+		select app_id, name, scope, ciphertext, nonce, key_version, created_at, updated_at, mutated_by
+		from app_config_values
+		where app_id = ? and name = ? and scope = ?`,
+		ref.AppID,
+		ref.Name,
+		ref.Scope,
+	)
+	value, err := scanAppConfigValue(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AppConfigValue{}, notFound("app config value", ref.AppID+"/"+ref.Scope+"/"+ref.Name)
+	}
+	return value, err
+}
+
+func (s *SQLiteStore) ListAppConfigValues(ctx context.Context, appID string) ([]AppConfigValue, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select app_id, name, scope, ciphertext, nonce, key_version, created_at, updated_at, mutated_by
+		from app_config_values
+		where app_id = ?
+		order by scope, name`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var values []AppConfigValue
+	for rows.Next() {
+		value, err := scanAppConfigValue(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteAppConfigValue(ctx context.Context, ref AppConfigRef) error {
+	result, err := s.db.ExecContext(ctx, `
+		delete from app_config_values
+		where app_id = ? and name = ? and scope = ?`,
+		ref.AppID,
+		ref.Name,
+		ref.Scope,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("app config value", ref.AppID+"/"+ref.Scope+"/"+ref.Name)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -536,6 +618,7 @@ func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {
 		`delete from deployments where app_id = ?`,
 		`delete from releases where app_id = ?`,
 		`delete from domains where app_id = ?`,
+		`delete from app_config_values where app_id = ?`,
 		`delete from apps where id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, statement, appID); err != nil {
@@ -700,6 +783,38 @@ func scanEvent(s scanner) (app.Event, error) {
 	}
 
 	return model, nil
+}
+
+func scanAppConfigValue(s scanner) (AppConfigValue, error) {
+	var value AppConfigValue
+	var createdAt string
+	var updatedAt string
+	err := s.Scan(
+		&value.AppID,
+		&value.Name,
+		&value.Scope,
+		&value.Ciphertext,
+		&value.Nonce,
+		&value.KeyVersion,
+		&createdAt,
+		&updatedAt,
+		&value.MutatedBy,
+	)
+	if err != nil {
+		return AppConfigValue{}, err
+	}
+
+	var parseErr error
+	value.CreatedAt, parseErr = parseTime(createdAt)
+	if parseErr != nil {
+		return AppConfigValue{}, parseErr
+	}
+	value.UpdatedAt, parseErr = parseTime(updatedAt)
+	if parseErr != nil {
+		return AppConfigValue{}, parseErr
+	}
+
+	return value, nil
 }
 
 func formatTime(value time.Time) string {

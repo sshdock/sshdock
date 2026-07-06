@@ -11,6 +11,7 @@ type Config struct {
 	DataDir                     string
 	SQLiteDBPath                string
 	AppsDir                     string
+	ConfigKeyPath               string
 	NodeID                      string
 	SSHListenAddr               string
 	DashboardUser               string
@@ -33,6 +34,7 @@ func Default() Config {
 		DataDir:                     dataDir,
 		SQLiteDBPath:                filepath.Join(dataDir, "sshdock.db"),
 		AppsDir:                     filepath.Join(dataDir, "apps"),
+		ConfigKeyPath:               filepath.Join(dataDir, "config.key"),
 		NodeID:                      "local",
 		SSHListenAddr:               ":2222",
 		DashboardUser:               "dashboard",
@@ -54,6 +56,7 @@ func LoadFromEnv() Config {
 	cfg.DataDir = envOrDefault("SSHDOCK_DATA_DIR", cfg.DataDir)
 	cfg.SQLiteDBPath = envOrDefault("SSHDOCK_SQLITE_DB_PATH", filepath.Join(cfg.DataDir, "sshdock.db"))
 	cfg.AppsDir = envOrDefault("SSHDOCK_APPS_DIR", filepath.Join(cfg.DataDir, "apps"))
+	cfg.ConfigKeyPath = envOrDefault("SSHDOCK_CONFIG_KEY_PATH", filepath.Join(cfg.DataDir, "config.key"))
 	cfg.NodeID = envOrDefault("SSHDOCK_NODE_ID", cfg.NodeID)
 	cfg.SSHListenAddr = envOrDefault("SSHDOCK_SSH_LISTEN_ADDR", cfg.SSHListenAddr)
 	cfg.DashboardUser = envOrDefault("SSHDOCK_DASHBOARD_USER", cfg.DashboardUser)
@@ -91,6 +94,7 @@ func (c Config) Validate() error {
 		{env: "SSHDOCK_DATA_DIR", value: c.DataDir},
 		{env: "SSHDOCK_SQLITE_DB_PATH", value: c.SQLiteDBPath},
 		{env: "SSHDOCK_APPS_DIR", value: c.AppsDir},
+		{env: "SSHDOCK_CONFIG_KEY_PATH", value: c.ConfigKeyPath},
 		{env: "SSHDOCK_NODE_ID", value: c.NodeID},
 		{env: "SSHDOCK_SSH_LISTEN_ADDR", value: c.SSHListenAddr},
 		{env: "SSHDOCK_DASHBOARD_USER", value: c.DashboardUser},

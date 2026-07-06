@@ -63,9 +63,22 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			public_key text not null,
 			created_at text not null
 		)`,
+		`create table if not exists app_config_values (
+			app_id text not null,
+			name text not null,
+			scope text not null default '',
+			ciphertext blob not null,
+			nonce blob not null,
+			key_version integer not null,
+			created_at text not null,
+			updated_at text not null,
+			mutated_by text not null,
+			primary key (app_id, name, scope)
+		)`,
 		`create index if not exists idx_releases_app_id on releases(app_id)`,
 		`create index if not exists idx_domains_app_id on domains(app_id)`,
 		`create index if not exists idx_events_app_id on events(app_id)`,
+		`create index if not exists idx_app_config_values_app_id on app_config_values(app_id)`,
 	}
 
 	for _, statement := range statements {

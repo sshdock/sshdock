@@ -31,12 +31,13 @@ type serviceStore interface {
 }
 
 type Service struct {
-	store    serviceStore
-	now      func() time.Time
-	logs     logsRunner
-	deploy   deployRunner
-	recover  recoveryRunner
-	checkout WorktreeCheckout
+	store          serviceStore
+	now            func() time.Time
+	logs           logsRunner
+	deploy         deployRunner
+	recover        recoveryRunner
+	checkout       WorktreeCheckout
+	configResolver configResolver
 }
 
 type ServiceOption func(*Service)
@@ -56,6 +57,10 @@ type recoveryRunner interface {
 
 type WorktreeCheckout interface {
 	Checkout(ctx context.Context, repoPath string, worktreePath string, commitSHA string) error
+}
+
+type configResolver interface {
+	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
 }
 
 func NewService(store serviceStore, options ...ServiceOption) *Service {
@@ -104,6 +109,12 @@ func WithRecoveryRunner(runner recoveryRunner) ServiceOption {
 func WithWorktreeCheckout(checkout WorktreeCheckout) ServiceOption {
 	return func(service *Service) {
 		service.checkout = checkout
+	}
+}
+
+func WithConfigResolver(resolver configResolver) ServiceOption {
+	return func(service *Service) {
+		service.configResolver = resolver
 	}
 }
 
@@ -217,13 +228,24 @@ func (s *Service) RollbackRelease(ctx context.Context, appID string, releaseID s
 		deployment.ErrorMessage = err.Error()
 		return deployment, err
 	}
+	projectDir := projectDir(model, release)
+	env, err := s.resolveDeployEnv(ctx, appID, projectDir)
+	if err != nil {
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "rollback.failed", "Rollback failed for release "+releaseID+": "+err.Error(), err.Error())
+		deployment.Status = DeploymentStatusFailed
+		deployment.FinishedAt = s.now()
+		deployment.ErrorMessage = err.Error()
+		return deployment, err
+	}
 	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
-		ProjectDir:  projectDir(model, release),
+		ProjectDir:  projectDir,
 		ReleaseID:   release.ID,
 		CommitSHA:   release.CommitSHA,
 		ComposePath: release.ComposePath,
+		Env:         env,
 	}); err != nil {
+		err = compose.RedactError(err, env)
 		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "rollback.failed", "Rollback failed for release "+releaseID+": "+err.Error(), err.Error())
 		deployment.Status = DeploymentStatusFailed
 		deployment.FinishedAt = s.now()
@@ -288,13 +310,24 @@ func (s *Service) RedeployLatest(ctx context.Context, appID string, deploymentID
 		deployment.ErrorMessage = err.Error()
 		return deployment, err
 	}
+	projectDir := projectDir(model, release)
+	env, err := s.resolveDeployEnv(ctx, appID, projectDir)
+	if err != nil {
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "redeploy.failed", "Redeploy failed for release "+release.ID+": "+err.Error(), err.Error())
+		deployment.Status = DeploymentStatusFailed
+		deployment.FinishedAt = s.now()
+		deployment.ErrorMessage = err.Error()
+		return deployment, err
+	}
 	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
-		ProjectDir:  projectDir(model, release),
+		ProjectDir:  projectDir,
 		ReleaseID:   release.ID,
 		CommitSHA:   release.CommitSHA,
 		ComposePath: release.ComposePath,
+		Env:         env,
 	}); err != nil {
+		err = compose.RedactError(err, env)
 		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "redeploy.failed", "Redeploy failed for release "+release.ID+": "+err.Error(), err.Error())
 		deployment.Status = DeploymentStatusFailed
 		deployment.FinishedAt = s.now()
@@ -420,6 +453,13 @@ func (s *Service) checkoutRelease(ctx context.Context, model App, release Releas
 		return nil
 	}
 	return s.checkout.Checkout(ctx, model.RepoPath, projectDir(model, release), release.CommitSHA)
+}
+
+func (s *Service) resolveDeployEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
+	if s.configResolver == nil {
+		return nil, nil
+	}
+	return s.configResolver.ResolveAppConfig(ctx, appID, projectDir)
 }
 
 func (s *Service) startRecoveryDeployment(ctx context.Context, deploymentID string, appID string, releaseID string, eventType string, message string) (Deployment, error) {

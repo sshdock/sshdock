@@ -47,13 +47,13 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 	baseFiles := []string{request.ComposePath}
 	baseArgs := composeArgs(baseFiles, projectName)
 
-	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: commandArgs(baseArgs, "config")}); err != nil {
+	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "config"))); err != nil {
 		return err
 	}
 	if _, err := ValidateFile(request.ComposePath); err != nil {
 		return err
 	}
-	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: commandArgs(baseArgs, "pull", "--ignore-buildable")}); err != nil {
+	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable"))); err != nil {
 		return err
 	}
 
@@ -72,13 +72,13 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 
 		buildArgs := commandArgs(composeArgs(deployFiles, projectName), "build")
 		buildArgs = append(buildArgs, buildServices...)
-		if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: buildArgs}); err != nil {
+		if _, err := r.executor.Run(ctx, deployCommand(request, buildArgs)); err != nil {
 			return err
 		}
 	}
 
 	upArgs := commandArgs(composeArgs(deployFiles, projectName), "up", "-d")
-	if _, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: upArgs}); err != nil {
+	if _, err := r.executor.Run(ctx, deployCommand(request, upArgs)); err != nil {
 		return err
 	}
 
@@ -187,6 +187,10 @@ func composeArgs(composeFiles []string, projectName string) []string {
 		args = append(args, "-p", projectName)
 	}
 	return args
+}
+
+func deployCommand(request DeployRequest, args []string) Command {
+	return Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env}
 }
 
 func commandArgs(base []string, tail ...string) []string {

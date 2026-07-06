@@ -52,6 +52,16 @@ type Event struct {
 	CreatedAt time.Time
 }
 
+type ConfigEntry struct {
+	Name          string
+	Scope         string
+	Status        string
+	RedactedValue string
+	Value         string
+	UpdatedAt     time.Time
+	MutatedBy     string
+}
+
 type LogRequest struct {
 	AppName     string
 	ServiceName string
@@ -77,6 +87,11 @@ type Backend interface {
 	AddSSHKey(name string, publicKey string) error
 	ListSSHKeys() ([]SSHKey, error)
 	RemoveSSHKey(name string) error
+	SetConfig(appName string, name string, scope string, value []byte) error
+	ImportConfig(appName string, scope string, input io.Reader) (int, error)
+	ListConfig(appName string) ([]ConfigEntry, error)
+	GetConfig(appName string, name string, scope string) (string, error)
+	UnsetConfig(appName string, name string, scope string) error
 }
 
 type MemoryBackend struct {
@@ -87,6 +102,7 @@ type MemoryBackend struct {
 	events      []Event
 	domains     []Domain
 	keys        map[string]SSHKey
+	config      map[string]map[configKey]string
 	logOutput   string
 	logRequests []LogRequest
 }
@@ -100,6 +116,7 @@ func NewMemoryBackend(gitHost string) *MemoryBackend {
 		gitHost: gitHost,
 		apps:    map[string]App{},
 		keys:    map[string]SSHKey{},
+		config:  map[string]map[configKey]string{},
 	}
 }
 
@@ -320,6 +337,90 @@ func (b *MemoryBackend) RemoveSSHKey(name string) error {
 	return nil
 }
 
+func (b *MemoryBackend) SetConfig(appName string, name string, scope string, value []byte) error {
+	if _, ok := b.apps[appName]; !ok {
+		return fmt.Errorf("app %q not found", appName)
+	}
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("config key name is required")
+	}
+	if b.config[appName] == nil {
+		b.config[appName] = map[configKey]string{}
+	}
+	b.config[appName][configKey{name: name, scope: scope}] = string(value)
+	return nil
+}
+
+func (b *MemoryBackend) ImportConfig(appName string, scope string, input io.Reader) (int, error) {
+	if input == nil {
+		input = strings.NewReader("")
+	}
+	scanner := bufio.NewScanner(input)
+	count := 0
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return count, fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
+		}
+		if err := b.SetConfig(appName, strings.TrimSpace(name), scope, []byte(value)); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, scanner.Err()
+}
+
+func (b *MemoryBackend) ListConfig(appName string) ([]ConfigEntry, error) {
+	if _, ok := b.apps[appName]; !ok {
+		return nil, fmt.Errorf("app %q not found", appName)
+	}
+	values := b.config[appName]
+	entries := make([]ConfigEntry, 0, len(values))
+	for key := range values {
+		entries = append(entries, ConfigEntry{Name: key.name, Scope: key.scope, Status: "set", RedactedValue: "<redacted>"})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Scope == entries[j].Scope {
+			return entries[i].Name < entries[j].Name
+		}
+		return entries[i].Scope < entries[j].Scope
+	})
+	return entries, nil
+}
+
+func (b *MemoryBackend) GetConfig(appName string, name string, scope string) (string, error) {
+	if _, ok := b.apps[appName]; !ok {
+		return "", fmt.Errorf("app %q not found", appName)
+	}
+	value, ok := b.config[appName][configKey{name: name, scope: scope}]
+	if !ok {
+		return "", fmt.Errorf("config %q not found for app %q", name, appName)
+	}
+	return value, nil
+}
+
+func (b *MemoryBackend) UnsetConfig(appName string, name string, scope string) error {
+	if _, ok := b.apps[appName]; !ok {
+		return fmt.Errorf("app %q not found", appName)
+	}
+	if _, ok := b.config[appName][configKey{name: name, scope: scope}]; !ok {
+		return fmt.Errorf("config %q not found for app %q", name, appName)
+	}
+	delete(b.config[appName], configKey{name: name, scope: scope})
+	return nil
+}
+
+type configKey struct {
+	name  string
+	scope string
+}
+
 type Runner struct {
 	backend Backend
 	version string
@@ -343,6 +444,8 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 		switch args[0] {
 		case "apps":
 			return r.runApps(args[1:], stdin, stdout, stderr)
+		case "config":
+			return r.runConfig(args[1:], stdin, stdout, stderr)
 		case "domains":
 			return r.runDomains(args[1:], stdout, stderr)
 		case "events":
@@ -356,6 +459,98 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 		case "ssh-keys":
 			return r.runSSHKeys(args[1:], stdin, stdout, stderr)
 		}
+	}
+
+	printUsage(stderr)
+	return 2
+}
+
+func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) >= 3 && args[0] == "set" {
+		remaining, scope, ok := parseScopeOption(args[3:])
+		if !ok || len(remaining) != 0 {
+			printUsage(stderr)
+			return 2
+		}
+		if stdin == nil {
+			stdin = strings.NewReader("")
+		}
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			fmt.Fprintf(stderr, "read config value: %v\n", err)
+			return 1
+		}
+		value := strings.TrimRight(string(data), "\r\n")
+		if err := r.backend.SetConfig(args[1], args[2], scope, []byte(value)); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "set config %s for %s\n", args[2], args[1])
+		return 0
+	}
+
+	if len(args) >= 2 && args[0] == "import" {
+		remaining, scope, ok := parseScopeOption(args[2:])
+		if !ok || len(remaining) != 0 {
+			printUsage(stderr)
+			return 2
+		}
+		count, err := r.backend.ImportConfig(args[1], scope, stdin)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "imported %d config value(s) for %s\n", count, args[1])
+		return 0
+	}
+
+	if len(args) == 2 && args[0] == "list" {
+		entries, err := r.backend.ListConfig(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if len(entries) == 0 {
+			fmt.Fprintln(stdout, "no config")
+			return 0
+		}
+		for _, entry := range entries {
+			scope := entry.Scope
+			if scope == "" {
+				scope = "-"
+			}
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Name, scope, entry.Status, entry.RedactedValue, formatCLITime(entry.UpdatedAt), entry.MutatedBy)
+		}
+		return 0
+	}
+
+	if len(args) >= 3 && args[0] == "get" {
+		remaining, scope, ok := parseScopeOption(args[3:])
+		if !ok || len(remaining) != 0 {
+			printUsage(stderr)
+			return 2
+		}
+		value, err := r.backend.GetConfig(args[1], args[2], scope)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, value)
+		return 0
+	}
+
+	if len(args) >= 3 && args[0] == "unset" {
+		remaining, scope, ok := parseScopeOption(args[3:])
+		if !ok || len(remaining) != 0 {
+			printUsage(stderr)
+			return 2
+		}
+		if err := r.backend.UnsetConfig(args[1], args[2], scope); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "unset config %s for %s\n", args[2], args[1])
+		return 0
 	}
 
 	printUsage(stderr)
@@ -655,7 +850,7 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 }
 
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
+	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | config set <app> <key> [--scope <scope>] | config import <app> [--scope <scope>] | config list <app> | config get <app> <key> [--scope <scope>] | config unset <app> <key> [--scope <scope>] | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
 }
 
 func validatePublicKey(publicKey string) error {
@@ -704,6 +899,23 @@ func parseRemoveArgs(args []string) (string, bool, bool) {
 		return "", false, false
 	}
 	return appName, force, appName != ""
+}
+
+func parseScopeOption(args []string) ([]string, string, bool) {
+	remaining := make([]string, 0, len(args))
+	var scope string
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--scope" {
+			remaining = append(remaining, args[i])
+			continue
+		}
+		if i+1 >= len(args) || scope != "" {
+			return nil, "", false
+		}
+		scope = args[i+1]
+		i++
+	}
+	return remaining, scope, true
 }
 
 func formatCLITime(value time.Time) string {

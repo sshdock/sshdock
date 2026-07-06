@@ -121,6 +121,97 @@ func TestSSHKeysAddReadsPublicKeyFromInput(t *testing.T) {
 	}
 }
 
+func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "created", NodeID: "local"}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.RunWithInput([]string{"config", "set", "my-app", "DATABASE_URL"}, strings.NewReader("postgres://secret\n"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config set exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "postgres://secret") || strings.Contains(stderr.String(), "postgres://secret") {
+		t.Fatalf("config set leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "list", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config list exit code = %d, stderr = %q", code, stderr.String())
+	}
+	listOutput := stdout.String()
+	if !strings.Contains(listOutput, "DATABASE_URL\t-\tset\t<redacted>") {
+		t.Fatalf("config list stdout = %q", listOutput)
+	}
+	if strings.Contains(listOutput, "postgres://secret") {
+		t.Fatalf("config list leaked secret: %q", listOutput)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "get", "my-app", "DATABASE_URL"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config get exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "postgres://secret\n" {
+		t.Fatalf("config get stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "unset", "my-app", "DATABASE_URL"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config unset exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "unset config DATABASE_URL for my-app") {
+		t.Fatalf("config unset stdout = %q", stdout.String())
+	}
+}
+
+func TestConfigImportSupportsScope(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "created", NodeID: "local"}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.RunWithInput(
+		[]string{"config", "import", "my-app", "--scope", "worker"},
+		strings.NewReader("API_TOKEN=worker-secret\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("config import exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "worker-secret") || strings.Contains(stderr.String(), "worker-secret") {
+		t.Fatalf("config import leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "list", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config list exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "API_TOKEN\tworker\tset\t<redacted>") {
+		t.Fatalf("config list stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "get", "my-app", "API_TOKEN", "--scope", "worker"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config get scoped exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "worker-secret\n" {
+		t.Fatalf("config get scoped stdout = %q", stdout.String())
+	}
+}
+
 func TestLifecycleInspectionCommands(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}

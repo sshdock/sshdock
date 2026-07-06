@@ -222,6 +222,66 @@ services:
 	}
 }
 
+func TestPostReceiveHandlerPassesResolvedConfigEnvironment(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	runner := &compose.FakeRunner{}
+	resolver := &fakeHookConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         runner,
+		ConfigResolver: resolver,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(resolver.requests) != 1 || resolver.requests[0] != (hookConfigResolveRequest{appID: "my-app", projectDir: worktreePath}) {
+		t.Fatalf("resolver requests = %#v", resolver.requests)
+	}
+	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].Env["DATABASE_URL"] != "postgres://secret" {
+		t.Fatalf("deploy requests = %#v", runner.DeployRequests)
+	}
+}
+
+func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	runner := &compose.FakeRunner{}
+	resolver := &fakeHookConfigResolver{err: errors.New("missing required config for my-app: SECRET")}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         runner,
+		ConfigResolver: resolver,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	if err == nil || err.Error() != "missing required config for my-app: SECRET" {
+		t.Fatalf("Handle error = %v", err)
+	}
+	if len(runner.DeployRequests) != 0 {
+		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
+	}
+	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusFailed) {
+		t.Fatalf("deployment status = %q", status)
+	}
+	if errorMessage := queryDeploymentError(t, dbPath, "dep_abc123"); errorMessage != "missing required config for my-app: SECRET" {
+		t.Fatalf("deployment error = %q", errorMessage)
+	}
+}
+
 func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
@@ -447,6 +507,42 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	}
 }
 
+func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	failure := errors.New("docker output included api-secret")
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         &compose.FakeRunner{DeployErr: failure},
+		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"API_TOKEN": "api-secret"}},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	if !errors.Is(err, failure) {
+		t.Fatalf("Handle error = %v, want wrapped failure", err)
+	}
+	if strings.Contains(err.Error(), "api-secret") {
+		t.Fatalf("Handle error leaked secret: %v", err)
+	}
+	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
+	if errorMessage != "docker output included <redacted>" {
+		t.Fatalf("deployment error = %q", errorMessage)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	if strings.Contains(events[1].Message, "api-secret") {
+		t.Fatalf("event leaked secret: %#v", events[1])
+	}
+}
+
 func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
@@ -571,6 +667,22 @@ func writeHookCompose(t *testing.T, worktreePath string, content string) {
 type fakeHookRouteSyncer struct {
 	Syncs [][]router.Route
 	Err   error
+}
+
+type hookConfigResolveRequest struct {
+	appID      string
+	projectDir string
+}
+
+type fakeHookConfigResolver struct {
+	env      map[string]string
+	err      error
+	requests []hookConfigResolveRequest
+}
+
+func (f *fakeHookConfigResolver) ResolveAppConfig(_ context.Context, appID string, projectDir string) (map[string]string, error) {
+	f.requests = append(f.requests, hookConfigResolveRequest{appID: appID, projectDir: projectDir})
+	return f.env, f.err
 }
 
 func (f *fakeHookRouteSyncer) SyncRoutes(_ context.Context, routes []router.Route) error {

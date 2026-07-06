@@ -6,6 +6,7 @@ type Command struct {
 	Name string
 	Args []string
 	Dir  string
+	Env  map[string]string
 }
 
 type CommandExecutor interface {
@@ -40,6 +41,7 @@ type DeployRequest struct {
 	ReleaseID             string
 	CommitSHA             string
 	ProjectName           string
+	Env                   map[string]string
 	KeepReleases          int
 	SuccessfulReleaseSHAs []string
 	CleanupRecorder       CleanupRecorder

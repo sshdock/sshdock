@@ -15,9 +15,11 @@ import (
 	"github.com/mattn/go-isatty"
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/cli"
 	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/config"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
@@ -132,7 +134,8 @@ func runDaemon(stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	service := appmodel.NewService(sqlite, appmodel.WithRecoveryRunner(runner), appmodel.WithWorktreeCheckout(gitrecv.LocalWorktreeCheckout{}))
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(ctx, sqlite, cfg)))
+	service := appmodel.NewService(sqlite, appmodel.WithRecoveryRunner(runner), appmodel.WithWorktreeCheckout(gitrecv.LocalWorktreeCheckout{}), appmodel.WithConfigResolver(configService))
 	if err := service.RecoverDeployedApps(ctx); err != nil {
 		fmt.Fprintf(stderr, "recover deployed apps: %v\n", err)
 		return 1
@@ -165,6 +168,23 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(ctx, sqlite, cfg)))
+	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
+		args, ok := dashboardOriginalCommandArgs(originalCommand)
+		if !ok {
+			fmt.Fprintln(stderr, "dashboard SSH command supports config commands only")
+			return 2
+		}
+		backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
+			NodeID:        cfg.NodeID,
+			AppsDir:       cfg.AppsDir,
+			GitHost:       cfg.GitHost,
+			ConfigManager: configService,
+		})
+		runner := cli.NewRunner(backend, version.String())
+		return runner.RunWithInput(args, stdin, stdout, stderr)
+	}
+
 	runner, err := dashboardRunnerFromEnv()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -182,7 +202,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		stdin = os.Stdin
 	}
 	if dashboardHasInteractiveTerminal(stdin, stdout) {
-		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, runner), stdin, stdout); err != nil {
+		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, runner, configService), stdin, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -205,6 +225,26 @@ func dashboardHasInteractiveTerminal(stdin io.Reader, stdout io.Writer) bool {
 	return isatty.IsTerminal(input.Fd()) && isatty.IsTerminal(output.Fd())
 }
 
+func dashboardOriginalCommandArgs(command string) ([]string, bool) {
+	fields := strings.Fields(command)
+	if len(fields) == 0 || fields[0] != "config" {
+		return nil, false
+	}
+	return fields, true
+}
+
+func configRecoveryHost(ctx context.Context, persistentStore store.Store, cfg config.Config) string {
+	if serverConfig, err := persistentStore.GetServerConfig(ctx); err == nil {
+		if serverConfig.BaseDomain != "" {
+			return domaincfg.ControlHost(serverConfig.BaseDomain)
+		}
+		if serverConfig.GitHost != "" {
+			return serverConfig.GitHost
+		}
+	}
+	return cfg.GitHost
+}
+
 type dashboardCLIBackend interface {
 	RestartApp(appName string) error
 	RestartService(appName string, serviceName string) error
@@ -219,7 +259,7 @@ type dashboardActionBackend struct {
 	backend dashboardCLIBackend
 }
 
-func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner) tui.DashboardActions {
+func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
 	backend := cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
 		NodeID:                      cfg.NodeID,
 		AppsDir:                     cfg.AppsDir,
@@ -236,6 +276,7 @@ func newDashboardActions(persistentStore store.Store, cfg config.Config, runner 
 		}),
 		RecoveryRunner:   runner,
 		RecoveryCheckout: gitrecv.LocalWorktreeCheckout{},
+		ConfigManager:    configService,
 	})
 	return dashboardActionBackend{backend: backend}
 }
@@ -312,10 +353,12 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(context.Background(), sqlite, cfg)))
 
 	handler := gitrecv.NewPostReceiveHandler(gitrecv.PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: runner,
+		Store:          sqlite,
+		Runner:         runner,
+		ConfigResolver: configService,
 		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
 			ConfigPath:   cfg.CaddyConfigPath,
 			Executor:     router.LocalCommandExecutor{},

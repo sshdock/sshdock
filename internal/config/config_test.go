@@ -18,6 +18,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.AppsDir != filepath.Join(cfg.DataDir, "apps") {
 		t.Fatalf("AppsDir = %q, want path under data dir", cfg.AppsDir)
 	}
+	if cfg.ConfigKeyPath != filepath.Join(cfg.DataDir, "config.key") {
+		t.Fatalf("ConfigKeyPath = %q, want path under data dir", cfg.ConfigKeyPath)
+	}
 	if cfg.NodeID != "local" {
 		t.Fatalf("NodeID = %q, want local", cfg.NodeID)
 	}
@@ -66,6 +69,7 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("SSHDOCK_DATA_DIR", "/tmp/sshdock-data")
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", "/tmp/sshdock.sqlite")
 	t.Setenv("SSHDOCK_APPS_DIR", "/tmp/sshdock-apps")
+	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", "/tmp/sshdock-config.key")
 	t.Setenv("SSHDOCK_NODE_ID", "node-a")
 	t.Setenv("SSHDOCK_SSH_LISTEN_ADDR", "127.0.0.1:2222")
 	t.Setenv("SSHDOCK_DASHBOARD_USER", "operator")
@@ -90,6 +94,9 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.AppsDir != "/tmp/sshdock-apps" {
 		t.Fatalf("AppsDir = %q", cfg.AppsDir)
+	}
+	if cfg.ConfigKeyPath != "/tmp/sshdock-config.key" {
+		t.Fatalf("ConfigKeyPath = %q", cfg.ConfigKeyPath)
 	}
 	if cfg.NodeID != "node-a" {
 		t.Fatalf("NodeID = %q", cfg.NodeID)
@@ -153,6 +160,7 @@ func TestAppPathsAreDerivedFromDataDirectory(t *testing.T) {
 func TestValidateReportsActionableMissingFields(t *testing.T) {
 	cfg := Default()
 	cfg.DataDir = " "
+	cfg.ConfigKeyPath = " "
 	cfg.GitHost = " "
 	cfg.DashboardCommand = " "
 	cfg.GitReceiveCommand = " "
@@ -165,6 +173,7 @@ func TestValidateReportsActionableMissingFields(t *testing.T) {
 	message := err.Error()
 	for _, want := range []string{
 		"SSHDOCK_DATA_DIR is required",
+		"SSHDOCK_CONFIG_KEY_PATH is required",
 		"SSHDOCK_GIT_HOST is required",
 		"SSHDOCK_DASHBOARD_COMMAND is required",
 		"SSHDOCK_GIT_RECEIVE_COMMAND is required",

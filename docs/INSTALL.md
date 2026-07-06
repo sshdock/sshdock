@@ -430,7 +430,7 @@ sudo sshdock diagnostics
 The command checks:
 
 - required SSHDock config values
-- data, app, Git, dashboard, SQLite, and Caddy config directories
+- data, app, config key, Git, dashboard, SQLite, and Caddy config directories
 - Docker and Docker Compose
 - Caddy
 - SSH client and server commands
@@ -446,6 +446,7 @@ For v0, backup the complete SSHDock state directory before upgrades or host main
 ```text
 /var/lib/sshdock/
   sshdock.db
+  config.key
   apps/
     <app>/
       repo.git/
@@ -456,13 +457,16 @@ For v0, backup the complete SSHDock state directory before upgrades or host main
 
 Also keep a copy of generated Caddy config, normally `/etc/caddy/sshdock/sshdock.caddyfile`, and any systemd unit overrides you add outside the default installer.
 
+`config.key` is the host-local 32-byte encryption key for app config values. Keep it outside SQLite, preserve `0600`-style permissions, and back it up with `sshdock.db`. Losing either the database or this key makes encrypted config values unrecoverable.
+
 Restore order:
 
 1. Stop `sshdockd`.
 2. Restore `/var/lib/sshdock/` with original ownership.
-3. Restore generated Caddy config if needed.
-4. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
-5. Start `sshdockd` and run `sshdock diagnostics`.
+3. Verify `config.key` is present and not group- or world-readable.
+4. Restore generated Caddy config if needed.
+5. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
+6. Start `sshdockd` and run `sshdock diagnostics`.
 
 After a reboot or restore, startup recovery may take a short time while `sshdockd` replays Compose deployments for apps that were previously deployed.
 

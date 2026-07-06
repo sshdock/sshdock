@@ -35,6 +35,76 @@ sudo sshdock diagnostics
 
 The diagnostics command checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations. A failed check exits non-zero and prints actionable failure text.
 
+### `sshdock config set <app> <key> [--scope <scope>]`
+
+Read one config value from stdin and store it for an existing app. SSHDock does not create apps from config commands, so typos do not create secret-bearing app rows.
+
+```bash
+printf '%s' "$DATABASE_URL" | ssh dashboard@sshdock.example.com config set my-app DATABASE_URL
+```
+
+The value is encrypted before it is stored in SQLite. The default key file is `/var/lib/sshdock/config.key`, or `SSHDOCK_CONFIG_KEY_PATH` when overridden.
+
+### `sshdock config import <app> [--scope <scope>]`
+
+Read `KEY=VALUE` lines from stdin and store each value for an existing app.
+
+```bash
+ssh dashboard@sshdock.example.com config import my-app < .env.production
+```
+
+Blank lines and `#` comments are ignored. Values are not printed.
+
+### `sshdock config list <app>`
+
+List key names, optional scopes, status, update time, and mutation source without revealing values.
+
+```bash
+ssh dashboard@sshdock.example.com config list my-app
+```
+
+Output format:
+
+```text
+<key>	<scope-or->	<status>	<redacted>	<updated-at>	<mutated-by>
+```
+
+### `sshdock config get <app> <key> [--scope <scope>]`
+
+Explicitly reveal one config value.
+
+```bash
+ssh dashboard@sshdock.example.com config get my-app DATABASE_URL
+```
+
+Use this sparingly; normal list, dashboard, event, deployment-error, and log paths redact known stored config values.
+
+### `sshdock config unset <app> <key> [--scope <scope>]`
+
+Remove one stored config value.
+
+```bash
+ssh dashboard@sshdock.example.com config unset my-app DATABASE_URL
+```
+
+Config commands also work as local `sudo sshdock config ...` commands on the server.
+
+### `.sshdock.yml` Config Manifest
+
+Apps can commit `.sshdock.yml` to declare required keys without committing values:
+
+```yaml
+config:
+  required:
+    - DATABASE_URL
+    - name: API_TOKEN
+      scope: worker
+```
+
+On deploy, SSHDock loads required values, passes them only to the `docker compose` process environment, and fails before Compose starts if any required key is missing. Missing-key errors include exact `ssh dashboard@<host> config set ...` recovery commands.
+
+This local encryption model protects against database-only leaks and ordinary SQLite backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up the SQLite database and the host-local config key together.
+
 ### `sshdock server domain set <domain>`
 
 Set the canonical v0 base domain. SSHDock derives the Git/dashboard control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.

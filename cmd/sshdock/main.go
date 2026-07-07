@@ -109,6 +109,9 @@ func runDiagnostics(stdout io.Writer) int {
 }
 
 func commandNeedsStore(args []string) bool {
+	if commandIsHelpRequest(args) {
+		return false
+	}
 	if len(args) >= 1 && args[0] == "config" {
 		return true
 	}
@@ -154,6 +157,19 @@ func commandNeedsStore(args []string) bool {
 	}
 
 	return false
+}
+
+func commandIsHelpRequest(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	if len(args) == 1 {
+		return args[0] == "help" || args[0] == "-h" || args[0] == "--help"
+	}
+	if args[0] == "help" {
+		return true
+	}
+	return len(args) == 2 && (args[1] == "-h" || args[1] == "--help")
 }
 
 func commandNeedsRecoveryRunner(args []string) bool {

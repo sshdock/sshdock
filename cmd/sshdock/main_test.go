@@ -127,11 +127,34 @@ func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: sshdock") {
+	if !strings.Contains(stderr.String(), `Run "sshdock help" for available commands.`) {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestRunWithEnvHelpDoesNotOpenStore(t *testing.T) {
+	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blockingFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Setenv("SSHDOCK_DATA_DIR", filepath.Join(blockingFile, "data"))
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(blockingFile, "data", "sshdock.db"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runWithEnv([]string{"config", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Config commands store encrypted app config.") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 

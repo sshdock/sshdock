@@ -437,6 +437,27 @@ func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 0 || (len(args) == 1 && isHelpArg(args[0])) {
+		printRootHelp(stdout)
+		return 0
+	}
+
+	if args[0] == "help" {
+		if len(args) == 1 {
+			printRootHelp(stdout)
+			return 0
+		}
+		if len(args) == 2 {
+			return printHelpTopic(args[1], stdout, stderr)
+		}
+		printInvalidUsage(stderr, "help")
+		return 2
+	}
+
+	if len(args) == 2 && isHelpArg(args[1]) {
+		return printHelpTopic(args[0], stdout, stderr)
+	}
+
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintf(stdout, "sshdock %s\n", r.version)
 		return 0
@@ -463,7 +484,7 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 		}
 	}
 
-	printUsage(stderr)
+	printUnknownCommand(stderr, args[0])
 	return 2
 }
 
@@ -471,7 +492,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	if len(args) >= 3 && args[0] == "set" {
 		remaining, scope, ok := parseScopeOption(args[3:])
 		if !ok || len(remaining) != 0 {
-			printUsage(stderr)
+			printInvalidUsage(stderr, "config")
 			return 2
 		}
 		if stdin == nil {
@@ -495,7 +516,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	if len(args) >= 2 && args[0] == "import" {
 		remaining, scope, ok := parseScopeOption(args[2:])
 		if !ok || len(remaining) != 0 {
-			printUsage(stderr)
+			printInvalidUsage(stderr, "config")
 			return 2
 		}
 		count, err := r.backend.ImportConfig(args[1], scope, stdin)
@@ -545,7 +566,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	if len(args) >= 3 && args[0] == "get" {
 		remaining, scope, ok := parseScopeOption(args[3:])
 		if !ok || len(remaining) != 0 {
-			printUsage(stderr)
+			printInvalidUsage(stderr, "config")
 			return 2
 		}
 		value, err := r.backend.GetConfig(args[1], args[2], scope)
@@ -564,7 +585,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	if len(args) >= 3 && args[0] == "unset" {
 		remaining, scope, ok := parseScopeOption(args[3:])
 		if !ok || len(remaining) != 0 {
-			printUsage(stderr)
+			printInvalidUsage(stderr, "config")
 			return 2
 		}
 		if err := r.backend.UnsetConfig(args[1], args[2], scope); err != nil {
@@ -576,7 +597,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "config")
 	return 2
 }
 
@@ -676,7 +697,7 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	if len(args) >= 2 && args[0] == "remove" {
 		appName, force, ok := parseRemoveArgs(args[1:])
 		if !ok {
-			printUsage(stderr)
+			printInvalidUsage(stderr, "apps")
 			return 2
 		}
 		if !force {
@@ -720,7 +741,7 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "apps")
 	return 2
 }
 
@@ -773,7 +794,7 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "domains")
 	return 2
 }
 
@@ -794,14 +815,14 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "events")
 	return 2
 }
 
 func (r *Runner) runLogs(args []string, stdout io.Writer, stderr io.Writer) int {
 	request, ok := parseLogsArgs(args)
 	if !ok {
-		printUsage(stderr)
+		printInvalidUsage(stderr, "logs")
 		return 2
 	}
 	if err := r.backend.Logs(request, stdout, stderr); err != nil {
@@ -828,7 +849,7 @@ func (r *Runner) runReleases(args []string, stdout io.Writer, stderr io.Writer) 
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "releases")
 	return 2
 }
 
@@ -849,7 +870,7 @@ func (r *Runner) runServer(args []string, stdout io.Writer, stderr io.Writer) in
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "server")
 	return 2
 }
 
@@ -896,12 +917,182 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 		return 0
 	}
 
-	printUsage(stderr)
+	printInvalidUsage(stderr, "ssh-keys")
 	return 2
 }
 
-func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | config set <app> <key> [--scope <scope>] | config import <app> [--scope <scope>] | config list <app> | config keys <app> | config get <app> <key> [--scope <scope>] | config unset <app> <key> [--scope <scope>] | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
+func isHelpArg(arg string) bool {
+	return arg == "-h" || arg == "--help"
+}
+
+func printRootHelp(stdout io.Writer) {
+	fmt.Fprint(stdout, `SSHDock - Git push Compose apps. Operate over SSH.
+
+Usage:
+  sshdock <command> [arguments]
+  sshdock help [command]
+
+Core:
+  version                              Print CLI version
+  diagnostics                          Check runtime readiness
+
+Apps:
+  apps create <name>                   Create an app repo and print Git remote
+  apps list                            List apps
+  apps info <name>                     Show app details
+  apps restart <name> [service]        Restart an app or service
+  apps redeploy <name>                 Redeploy the latest good release
+  apps rollback <name> <release-id>    Roll back to a release
+  apps remove <name> [--force]         Remove an app
+
+Config:
+  config set <app> <key> [--scope <scope>]
+  config import <app> [--scope <scope>]
+  config list <app>
+  config keys <app>
+  config get <app> <key> [--scope <scope>]
+  config unset <app> <key> [--scope <scope>]
+
+Domains:
+  domains attach <app> <service> <domain> --port <port>
+  domains list <app>
+  domains detach <app> <domain>
+
+Operations:
+  logs <app> [service] [-f]
+  releases list <app>
+  events list <app>
+
+Access:
+  ssh-keys add <name>
+  ssh-keys list
+  ssh-keys remove <name>
+
+Server:
+  server domain set <domain>
+
+Use "sshdock help <command>" for details.
+`)
+}
+
+func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
+	switch topic {
+	case "apps":
+		printTopicHelp(stdout, "Apps manage Compose app records and lifecycle actions.", []string{
+			"sshdock apps create <name>",
+			"sshdock apps list",
+			"sshdock apps info <name>",
+			"sshdock apps restart <name> [service]",
+			"sshdock apps redeploy <name>",
+			"sshdock apps rollback <name> <release-id>",
+			"sshdock apps remove <name> [--force]",
+		}, []string{
+			"sudo sshdock apps create my-app",
+			"sudo sshdock apps list",
+			"sudo sshdock apps restart my-app web",
+		})
+	case "config":
+		printTopicHelp(stdout, "Config commands store encrypted app config.", []string{
+			"sshdock config set <app> <key> [--scope <scope>]",
+			"sshdock config import <app> [--scope <scope>]",
+			"sshdock config list <app>",
+			"sshdock config keys <app>",
+			"sshdock config get <app> <key> [--scope <scope>]",
+			"sshdock config unset <app> <key> [--scope <scope>]",
+		}, []string{
+			`printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
+			"ssh dashboard@<host> config import my-app < .env.production",
+			"ssh dashboard@<host> config keys my-app",
+			"sudo sshdock config get my-app DATABASE_URL",
+		})
+	case "domains":
+		printTopicHelp(stdout, "Domain commands attach public hostnames to app services.", []string{
+			"sshdock domains attach <app> <service> <domain> --port <port>",
+			"sshdock domains list <app>",
+			"sshdock domains detach <app> <domain>",
+		}, []string{
+			"sudo sshdock domains attach my-app web app.example.com --port 3000",
+			"sudo sshdock domains list my-app",
+		})
+	case "logs":
+		printTopicHelp(stdout, "Logs stream recent Compose logs for an app or service.", []string{
+			"sshdock logs <app> [service] [-f]",
+		}, []string{
+			"sudo sshdock logs my-app",
+			"sudo sshdock logs my-app web -f",
+		})
+	case "releases":
+		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{
+			"sshdock releases list <app>",
+		}, []string{
+			"sudo sshdock releases list my-app",
+		})
+	case "events":
+		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events.", []string{
+			"sshdock events list <app>",
+		}, []string{
+			"sudo sshdock events list my-app",
+		})
+	case "server":
+		printTopicHelp(stdout, "Server commands configure single-node SSHDock host behavior.", []string{
+			"sshdock server domain set <domain>",
+		}, []string{
+			"sudo sshdock server domain set example.com",
+		})
+	case "ssh-keys":
+		printTopicHelp(stdout, "SSH key commands manage deploy and dashboard access keys.", []string{
+			"sshdock ssh-keys add <name>",
+			"sshdock ssh-keys list",
+			"sshdock ssh-keys remove <name>",
+		}, []string{
+			"cat ~/.ssh/id_ed25519.pub | sudo sshdock ssh-keys add admin",
+			"sudo sshdock ssh-keys list",
+		})
+	case "version":
+		printTopicHelp(stdout, "Version prints the CLI version.", []string{
+			"sshdock version",
+		}, []string{
+			"sshdock version",
+		})
+	case "diagnostics":
+		printTopicHelp(stdout, "Diagnostics checks SSHDock runtime readiness.", []string{
+			"sshdock diagnostics",
+		}, []string{
+			"sudo sshdock diagnostics",
+		})
+	default:
+		fmt.Fprintf(stderr, "unknown help topic %q\n", topic)
+		fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)
+		return 2
+	}
+	return 0
+}
+
+func printTopicHelp(stdout io.Writer, description string, usage []string, examples []string) {
+	fmt.Fprintln(stdout, description)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Usage:")
+	for _, line := range usage {
+		fmt.Fprintf(stdout, "  %s\n", line)
+	}
+	if len(examples) == 0 {
+		return
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Examples:")
+	for _, line := range examples {
+		fmt.Fprintf(stdout, "  %s\n", line)
+	}
+}
+
+func printUnknownCommand(stderr io.Writer, command string) {
+	fmt.Fprintf(stderr, "unknown command %q\n", command)
+	fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)
+}
+
+func printInvalidUsage(stderr io.Writer, topic string) {
+	fmt.Fprintf(stderr, "invalid %s command or arguments\n", topic)
+	fmt.Fprintf(stderr, "Run \"sshdock help %s\" for usage.\n", topic)
 }
 
 func validatePublicKey(publicKey string) error {

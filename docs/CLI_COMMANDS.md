@@ -17,6 +17,22 @@ ssh dashboard@server
 
 ## `sshdock`
 
+Running `sshdock`, `sshdock help`, `sshdock --help`, or `sshdock -h` prints grouped top-level help without opening the runtime store.
+
+```bash
+sshdock help
+```
+
+Use group help for command-specific usage and examples:
+
+```bash
+sshdock help config
+sshdock config --help
+sshdock apps --help
+```
+
+Invalid commands print a short error and a help command to run next.
+
 ### `sshdock version`
 
 Print the CLI version.

@@ -23,6 +23,100 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestRootHelpPrintsGroupedCommands(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "no args", args: nil},
+		{name: "help", args: []string{"help"}},
+		{name: "long flag", args: []string{"--help"}},
+		{name: "short flag", args: []string{"-h"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			runner := NewRunner(NewMemoryBackend("server"), "dev")
+
+			code := runner.Run(test.args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", stderr.String())
+			}
+			output := stdout.String()
+			for _, want := range []string{
+				"SSHDock - Git push Compose apps. Operate over SSH.",
+				"Usage:",
+				"  sshdock <command> [arguments]",
+				"Core:",
+				"Apps:",
+				"Config:",
+				"Domains:",
+				"Operations:",
+				"Access:",
+				"Server:",
+				"  config keys <app>",
+				`Use "sshdock help <command>" for details.`,
+			} {
+				if !strings.Contains(output, want) {
+					t.Fatalf("stdout missing %q:\n%s", want, output)
+				}
+			}
+			if strings.Contains(output, "usage: sshdock version |") {
+				t.Fatalf("stdout still has single-line usage:\n%s", output)
+			}
+		})
+	}
+}
+
+func TestGroupHelpPrintsUsageAndExamples(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := NewRunner(NewMemoryBackend("server"), "dev")
+
+	code := runner.Run([]string{"help", "config"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"Config commands store encrypted app config.",
+		"Usage:",
+		"  sshdock config set <app> <key> [--scope <scope>]",
+		"  sshdock config keys <app>",
+		"Examples:",
+		`  printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
+		"  ssh dashboard@<host> config keys my-app",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCommandHelpFlagPrintsGroupHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := NewRunner(NewMemoryBackend("server"), "dev")
+
+	code := runner.Run([]string{"config", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Config commands store encrypted app config.") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestAppsCreatePrintsRemoteNextSteps(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -406,7 +500,19 @@ func TestUnknownCommandPrintsUsage(t *testing.T) {
 	if code == 0 {
 		t.Fatal("exit code = 0, want non-zero")
 	}
-	if !strings.Contains(stderr.String(), "usage: sshdock") {
-		t.Fatalf("stderr = %q", stderr.String())
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	output := stderr.String()
+	for _, want := range []string{
+		`unknown command "unknown"`,
+		`Run "sshdock help" for available commands.`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "usage: sshdock version |") {
+		t.Fatalf("stderr still has single-line usage:\n%s", output)
 	}
 }

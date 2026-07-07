@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
@@ -17,6 +18,7 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 		dir           string
 		wantService   string
 		wantRoutePort int
+		wantConfig    []appconfig.RequiredKey
 		requiredFiles []string
 	}{
 		{
@@ -38,6 +40,22 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			requiredFiles: []string{
 				"README.md",
 				"compose.yml",
+			},
+		},
+		{
+			name:          "config app",
+			dir:           filepath.Join(root, "examples", "config-app"),
+			wantService:   "web",
+			wantRoutePort: 18082,
+			wantConfig: []appconfig.RequiredKey{
+				{Name: "APP_MESSAGE"},
+			},
+			requiredFiles: []string{
+				"README.md",
+				"compose.yml",
+				"Dockerfile",
+				"server.py",
+				".sshdock.yml",
 			},
 		},
 	}
@@ -66,7 +84,61 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			if target.ServiceName != tt.wantService || target.Port != tt.wantRoutePort {
 				t.Fatalf("route target = %#v, want %s:%d", target, tt.wantService, tt.wantRoutePort)
 			}
+
+			if len(tt.wantConfig) > 0 {
+				manifest, err := appconfig.LoadManifest(tt.dir)
+				if err != nil {
+					t.Fatalf("LoadManifest(%s): %v", tt.dir, err)
+				}
+				if len(manifest.Required) != len(tt.wantConfig) {
+					t.Fatalf("manifest required keys = %#v, want %#v", manifest.Required, tt.wantConfig)
+				}
+				for i, want := range tt.wantConfig {
+					if manifest.Required[i] != want {
+						t.Fatalf("manifest required key %d = %#v, want %#v", i, manifest.Required[i], want)
+					}
+				}
+			}
 		})
+	}
+}
+
+func TestConfigExampleDocumentsConfigWorkflow(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "examples", "config-app")
+
+	if fileExists(filepath.Join(dir, ".env")) {
+		t.Fatalf("config-app must not commit .env")
+	}
+
+	composePath := filepath.Join(dir, "compose.yml")
+	composeContents, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", composePath, err)
+	}
+	if !strings.Contains(string(composeContents), "APP_MESSAGE=${APP_MESSAGE}") {
+		t.Fatalf("compose file must pass APP_MESSAGE from SSHDock config")
+	}
+
+	readmePath := filepath.Join(dir, "README.md")
+	readmeContents, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", readmePath, err)
+	}
+	readme := string(readmeContents)
+	for _, want := range []string{
+		"git push sshdock main",
+		"missing required config",
+		"ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE",
+		"ssh dashboard@sshdock.example.com config list config-app",
+		"ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE",
+		"curl -fsS https://config-app.example.com",
+		"SSHDock config example:",
+		"push again",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("%s missing %q", readmePath, want)
+		}
 	}
 }
 
@@ -105,6 +177,7 @@ func TestExamplesDocumentCleanup(t *testing.T) {
 				"Clean up:",
 				"sudo sshdock apps remove static-site --force",
 				"sudo sshdock apps remove wordpress-lite --force",
+				"sudo sshdock apps remove config-app --force",
 				"sudo docker volume rm sshdock_wordpress-lite_wordpress-data sshdock_wordpress-lite_mariadb-data",
 			},
 		},
@@ -124,6 +197,15 @@ func TestExamplesDocumentCleanup(t *testing.T) {
 				"## Clean Up",
 				"sudo sshdock apps remove wordpress-lite --force",
 				"sudo docker volume rm sshdock_wordpress-lite_wordpress-data sshdock_wordpress-lite_mariadb-data",
+			},
+		},
+		{
+			name: "config app readme",
+			path: filepath.Join(root, "examples", "config-app", "README.md"),
+			want: []string{
+				"## Clean Up",
+				"sudo sshdock apps remove config-app --force",
+				"No Docker volumes need to be removed",
 			},
 		},
 	}
@@ -158,10 +240,14 @@ func TestExamplesDocumentGitHubCopy(t *testing.T) {
 			want: []string{
 				"mkdir static-site",
 				"mkdir wordpress-lite",
+				"mkdir config-app",
 				"raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site",
 				"raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite",
+				"raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/compose.yml",
 				"curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/public/index.html",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/.sshdock.yml",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/server.py",
 				"git init -b main",
 			},
 		},
@@ -184,6 +270,20 @@ func TestExamplesDocumentGitHubCopy(t *testing.T) {
 				"raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/compose.yml",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/README.md",
+				"git init -b main",
+			},
+		},
+		{
+			name: "config app readme",
+			path: filepath.Join(root, "examples", "config-app", "README.md"),
+			want: []string{
+				"mkdir config-app",
+				"raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/compose.yml",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/.sshdock.yml",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/Dockerfile",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/server.py",
+				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/README.md",
 				"git init -b main",
 			},
 		},

@@ -1,0 +1,7 @@
+services:
+  web:
+    build: .
+    environment:
+      - APP_MESSAGE=${APP_MESSAGE}
+    ports:
+      - "127.0.0.1:18082:8080"

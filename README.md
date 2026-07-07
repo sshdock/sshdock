@@ -299,6 +299,7 @@ internal/
   tui/
 
 examples/
+  config-app/
   static-site/
   wordpress-lite/
 
@@ -436,7 +437,7 @@ Important docs:
 
 - `AGENTS.md`: public agent and contributor operating contract
 - `docs/`: install, command, testing, and public operations notes
-- `docs/EXAMPLES.md`: runnable static-site and WordPress-lite confidence examples
+- `docs/EXAMPLES.md`: runnable static-site, config-app, and WordPress-lite confidence examples
 
 Private planning notes live under `.local/`, which is intentionally ignored and not published.
 

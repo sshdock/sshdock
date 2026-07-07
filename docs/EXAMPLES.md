@@ -6,6 +6,8 @@ These examples are small public confidence checks for the v0 happy path:
 git push -> first app creation -> Compose deploy -> default route -> HTTPS -> SSH dashboard visibility
 ```
 
+The config example also proves the required-config guard before Compose starts.
+
 They are meant to be copied into a new local directory and pushed to a real SSHDock server. The deploy commands below fetch the example files from GitHub without cloning this repository. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`.
 
 ## Minimal Static Site
@@ -82,6 +84,112 @@ Expected cleanup evidence:
 - `apps list` no longer shows `static-site`.
 - No Docker containers named `sshdock_static-site-*` remain.
 - The local `static-site` directory is removed from your machine.
+
+## Config App
+
+Path:
+
+```text
+examples/config-app
+```
+
+This example proves app-scoped config without committing values: `.sshdock.yml` declares `APP_MESSAGE`, Compose references `${APP_MESSAGE}`, the first push fails before Compose starts, and the second push succeeds after the value is stored over SSH.
+
+The app renders `APP_MESSAGE` publicly, so use a non-secret demo value for this example. The same config feature can store secrets, but applications should not return real secrets in HTTP responses.
+
+Deploy:
+
+```bash
+mkdir config-app
+cd config-app
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/.sshdock.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/server.py
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/README.md
+git init -b main
+git add .
+git commit -m "Deploy config app"
+git remote add sshdock git@sshdock.example.com:config-app.git
+git push sshdock main
+```
+
+Expected first-push evidence:
+
+- The remote creates `config-app`.
+- Deploy fails with `missing required config for config-app: APP_MESSAGE`.
+- The error includes `ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE`.
+- Docker Compose does not start.
+
+Set the missing value:
+
+```bash
+printf '%s\n' 'Hello from SSHDock config' | ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE
+ssh dashboard@sshdock.example.com config list config-app
+ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE
+```
+
+Expected config evidence:
+
+- `config set` confirms the key was stored without echoing the value.
+- `config list config-app` shows `APP_MESSAGE` as `<redacted>`.
+- `config get config-app APP_MESSAGE` prints `Hello from SSHDock config`.
+
+Create a new commit so Git runs the receive hook, then push again:
+
+```bash
+git commit --allow-empty -m "Deploy with config"
+git push sshdock main
+```
+
+Verify on the server:
+
+```bash
+sudo sshdock apps list
+sudo sshdock domains list config-app
+sudo sshdock events list config-app
+sudo sshdock logs config-app web
+ssh -T dashboard@sshdock.example.com
+```
+
+Verify from your machine:
+
+```bash
+curl -I http://config-app.example.com
+curl -fsS https://config-app.example.com
+```
+
+Expected deploy evidence:
+
+- `apps list` shows `config-app healthy local`.
+- `domains list config-app` includes `config-app.example.com`, service `web`, and port `18082`.
+- `events list config-app` includes the initial failed deploy, the later `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
+- HTTP returns a redirect to HTTPS.
+- HTTPS returns `SSHDock config example: Hello from SSHDock config`.
+- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, logs, and redacted config.
+
+Clean up:
+
+On the SSHDock server:
+
+```bash
+sudo sshdock apps remove config-app --force
+sudo sshdock apps list
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_config-app-' || true
+```
+
+On your machine, remove the scratch copy:
+
+```bash
+cd ..
+rm -rf config-app
+```
+
+Expected cleanup evidence:
+
+- `apps list` no longer shows `config-app`.
+- No Docker containers named `sshdock_config-app-*` remain.
+- The local `config-app` directory is removed from your machine.
 
 ## WordPress Lite
 

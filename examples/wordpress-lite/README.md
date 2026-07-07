@@ -11,8 +11,8 @@ Replace `example.com` with your SSHDock base domain.
 ```bash
 mkdir wordpress-lite
 cd wordpress-lite
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/wordpress-lite/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/wordpress-lite/README.md
 git init -b main
 git add .
 git commit -m "Deploy WordPress lite"

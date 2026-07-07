@@ -11,10 +11,10 @@ Replace `example.com` with your SSHDock base domain.
 ```bash
 mkdir static-site
 cd static-site
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/README.md
 mkdir public
-curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/public/index.html
+curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/public/index.html
 git init -b main
 git add .
 git commit -m "Deploy static site"

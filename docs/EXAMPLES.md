@@ -6,7 +6,7 @@ These examples are small public confidence checks for the v0 happy path:
 git push -> first app creation -> Compose deploy -> default route -> HTTPS -> SSH dashboard visibility
 ```
 
-The config example also proves the required-config guard before Compose starts.
+The build-service example proves Compose builds, and the config example proves the required-config guard before Compose starts.
 
 They are meant to be copied into a new local directory and pushed to a real SSHDock server. The deploy commands below fetch the example files from GitHub without cloning this repository. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`.
 
@@ -25,10 +25,10 @@ Deploy:
 ```bash
 mkdir static-site
 cd static-site
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/README.md
 mkdir public
-curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/main/examples/static-site/public/index.html
+curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/public/index.html
 git init -b main
 git add .
 git commit -m "Deploy static site"
@@ -85,6 +85,81 @@ Expected cleanup evidence:
 - No Docker containers named `sshdock_static-site-*` remain.
 - The local `static-site` directory is removed from your machine.
 
+## Build Service
+
+Path:
+
+```text
+examples/build-service
+```
+
+This example proves the Compose build path: one `web` service built from a local Dockerfile, one loopback-published port, automatic route inference, and app logs served through SSHDock.
+
+Deploy:
+
+```bash
+mkdir build-service
+cd build-service
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/server.py
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/README.md
+git init -b main
+git add .
+git commit -m "Deploy build service"
+git remote add sshdock git@sshdock.example.com:build-service.git
+git push sshdock main
+```
+
+Verify on the server:
+
+```bash
+sudo sshdock apps list
+sudo sshdock domains list build-service
+sudo sshdock events list build-service
+sudo sshdock logs build-service web
+ssh -T dashboard@sshdock.example.com
+```
+
+Verify from your machine:
+
+```bash
+curl -I http://build-service.example.com
+curl -fsS https://build-service.example.com
+```
+
+Expected evidence:
+
+- `apps list` shows `build-service healthy local`.
+- `domains list build-service` includes `build-service.example.com`, service `web`, and port `18083`.
+- `events list build-service` includes `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
+- HTTP returns a redirect to HTTPS.
+- HTTPS returns `SSHDock build service OK`.
+- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
+
+Clean up:
+
+On the SSHDock server:
+
+```bash
+sudo sshdock apps remove build-service --force
+sudo sshdock apps list
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_build-service-' || true
+```
+
+On your machine, remove the scratch copy:
+
+```bash
+cd ..
+rm -rf build-service
+```
+
+Expected cleanup evidence:
+
+- `apps list` no longer shows `build-service`.
+- No Docker containers named `sshdock_build-service-*` remain.
+- The local `build-service` directory is removed from your machine.
+
 ## Config App
 
 Path:
@@ -102,11 +177,11 @@ Deploy:
 ```bash
 mkdir config-app
 cd config-app
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/.sshdock.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/Dockerfile
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/server.py
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/README.md
 git init -b main
 git add .
 git commit -m "Deploy config app"
@@ -208,8 +283,8 @@ Deploy:
 ```bash
 mkdir wordpress-lite
 cd wordpress-lite
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/wordpress-lite/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/wordpress-lite/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/wordpress-lite/README.md
 git init -b main
 git add .
 git commit -m "Deploy WordPress lite"

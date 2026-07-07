@@ -21,6 +21,19 @@ The default e2e still uses fake runtime adapters for:
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
 The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`.
 
+## Internal Dogfood Readiness
+
+Before accepting a dogfood release line, run the normal local gate plus the focused install, config, and hardening harnesses:
+
+```bash
+make ci
+make bootstrap-e2e
+make config-e2e
+make hardening-e2e
+```
+
+The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push the static-site, build-service, and config-backed examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and rollback, verify reboot recovery and final-route cleanup, and complete the documented backup/restore drill. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
+
 ## Command
 
 Run:

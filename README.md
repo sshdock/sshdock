@@ -22,8 +22,8 @@ SSHDock is not a Kubernetes platform, hosted cloud product, multi-node scheduler
 Install SSHDock on a fresh Ubuntu/Debian server:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.2.1/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.2.1 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
 sudo sshdock diagnostics
 ```
 
@@ -128,7 +128,7 @@ sudo sshdock apps redeploy my-app
 
 Config values are encrypted in SQLite with a host-local key outside the database. Back up the SQLite database and config key together.
 
-See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples and [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
+See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable static-site, build-service, config-backed, and WordPress-lite examples. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
 
 ## Docs
 

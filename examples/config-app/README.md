@@ -13,11 +13,11 @@ Replace `example.com` with your SSHDock base domain.
 ```bash
 mkdir config-app
 cd config-app
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/.sshdock.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/Dockerfile
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/server.py
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/config-app/README.md
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/README.md
 git init -b main
 git add .
 git commit -m "Deploy config app"

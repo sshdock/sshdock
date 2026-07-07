@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +137,9 @@ func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
 	if strings.Contains(stdout.String(), "postgres://secret") || strings.Contains(stderr.String(), "postgres://secret") {
 		t.Fatalf("config set leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
+	if !strings.Contains(stdout.String(), "redeploy required for running containers") || !strings.Contains(stdout.String(), "sudo sshdock apps redeploy my-app") {
+		t.Fatalf("config set stdout missing redeploy hint:\n%s", stdout.String())
+	}
 
 	stdout.Reset()
 	stderr.Reset()
@@ -148,6 +153,16 @@ func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
 	}
 	if strings.Contains(listOutput, "postgres://secret") {
 		t.Fatalf("config list leaked secret: %q", listOutput)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run([]string{"config", "keys", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config keys exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "DATABASE_URL\n" {
+		t.Fatalf("config keys stdout = %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -168,6 +183,9 @@ func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "unset config DATABASE_URL for my-app") {
 		t.Fatalf("config unset stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "redeploy required for running containers") || !strings.Contains(stdout.String(), "sudo sshdock apps redeploy my-app") {
+		t.Fatalf("config unset stdout missing redeploy hint:\n%s", stdout.String())
 	}
 }
 
@@ -190,6 +208,9 @@ func TestConfigImportSupportsScope(t *testing.T) {
 	if strings.Contains(stdout.String(), "worker-secret") || strings.Contains(stderr.String(), "worker-secret") {
 		t.Fatalf("config import leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
+	if !strings.Contains(stdout.String(), "redeploy required for running containers") || !strings.Contains(stdout.String(), "sudo sshdock apps redeploy my-app") {
+		t.Fatalf("config import stdout missing redeploy hint:\n%s", stdout.String())
+	}
 
 	stdout.Reset()
 	stderr.Reset()
@@ -203,6 +224,16 @@ func TestConfigImportSupportsScope(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
+	code = runner.Run([]string{"config", "keys", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("config keys scoped exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "worker/API_TOKEN\n" {
+		t.Fatalf("config keys scoped stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
 	code = runner.Run([]string{"config", "get", "my-app", "API_TOKEN", "--scope", "worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("config get scoped exit code = %d, stderr = %q", code, stderr.String())
@@ -210,6 +241,49 @@ func TestConfigImportSupportsScope(t *testing.T) {
 	if stdout.String() != "worker-secret\n" {
 		t.Fatalf("config get scoped stdout = %q", stdout.String())
 	}
+}
+
+func TestConfigGetPermissionDeniedPrintsRevealGuidance(t *testing.T) {
+	backend := &configGetErrorBackend{
+		MemoryBackend: NewMemoryBackend("server"),
+		err:           fmt.Errorf("read config encryption key /var/lib/sshdock/config.key: %w", os.ErrPermission),
+	}
+	backend.apps["my-app"] = App{Name: "my-app", Status: "created", NodeID: "local"}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.Run([]string{"config", "get", "my-app", "DATABASE_URL", "--scope", "worker"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("config get exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("config get stdout = %q, want empty", stdout.String())
+	}
+	output := stderr.String()
+	for _, want := range []string{
+		"config get requires access to SSHDock's config encryption key",
+		"sudo sshdock config get my-app DATABASE_URL --scope worker",
+		"ssh dashboard@<host> config get my-app DATABASE_URL --scope worker",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, output)
+		}
+	}
+	for _, avoid := range []string{"/var/lib/sshdock/config.key", "permission denied"} {
+		if strings.Contains(output, avoid) {
+			t.Fatalf("stderr leaked %q:\n%s", avoid, output)
+		}
+	}
+}
+
+type configGetErrorBackend struct {
+	*MemoryBackend
+	err error
+}
+
+func (b *configGetErrorBackend) GetConfig(appName string, name string, scope string) (string, error) {
+	return "", b.err
 }
 
 func TestLifecycleInspectionCommands(t *testing.T) {

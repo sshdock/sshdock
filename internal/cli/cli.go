@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -486,6 +488,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 1
 		}
 		fmt.Fprintf(stdout, "set config %s for %s\n", args[2], args[1])
+		printConfigRedeployHint(stdout, args[1])
 		return 0
 	}
 
@@ -501,6 +504,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 1
 		}
 		fmt.Fprintf(stdout, "imported %d config value(s) for %s\n", count, args[1])
+		if count > 0 {
+			printConfigRedeployHint(stdout, args[1])
+		}
 		return 0
 	}
 
@@ -524,6 +530,18 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 		return 0
 	}
 
+	if len(args) == 2 && args[0] == "keys" {
+		entries, err := r.backend.ListConfig(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		for _, entry := range entries {
+			fmt.Fprintln(stdout, configEntryKey(entry))
+		}
+		return 0
+	}
+
 	if len(args) >= 3 && args[0] == "get" {
 		remaining, scope, ok := parseScopeOption(args[3:])
 		if !ok || len(remaining) != 0 {
@@ -532,6 +550,10 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 		}
 		value, err := r.backend.GetConfig(args[1], args[2], scope)
 		if err != nil {
+			if isConfigKeyPermissionDenied(err) {
+				printConfigGetAccessGuidance(stderr, args[1], args[2], scope)
+				return 1
+			}
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -550,11 +572,40 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 1
 		}
 		fmt.Fprintf(stdout, "unset config %s for %s\n", args[2], args[1])
+		printConfigRedeployHint(stdout, args[1])
 		return 0
 	}
 
 	printUsage(stderr)
 	return 2
+}
+
+func printConfigRedeployHint(stdout io.Writer, appName string) {
+	fmt.Fprintln(stdout, "redeploy required for running containers:")
+	fmt.Fprintf(stdout, "  sudo sshdock apps redeploy %s\n", appName)
+}
+
+func configEntryKey(entry ConfigEntry) string {
+	if entry.Scope == "" {
+		return entry.Name
+	}
+	return entry.Scope + "/" + entry.Name
+}
+
+func isConfigKeyPermissionDenied(err error) bool {
+	return errors.Is(err, os.ErrPermission) && strings.Contains(err.Error(), "config encryption key")
+}
+
+func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName string, scope string) {
+	args := []string{"config", "get", appName, keyName}
+	if scope != "" {
+		args = append(args, "--scope", scope)
+	}
+	command := strings.Join(args, " ")
+	fmt.Fprintln(stderr, "config get requires access to SSHDock's config encryption key.")
+	fmt.Fprintln(stderr, "Run one of:")
+	fmt.Fprintf(stderr, "  sudo sshdock %s\n", command)
+	fmt.Fprintf(stderr, "  ssh dashboard@<host> %s\n", command)
 }
 
 func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
@@ -850,7 +901,7 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 }
 
 func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | config set <app> <key> [--scope <scope>] | config import <app> [--scope <scope>] | config list <app> | config get <app> <key> [--scope <scope>] | config unset <app> <key> [--scope <scope>] | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
+	fmt.Fprintln(stderr, "usage: sshdock version | diagnostics | config set <app> <key> [--scope <scope>] | config import <app> [--scope <scope>] | config list <app> | config keys <app> | config get <app> <key> [--scope <scope>] | config unset <app> <key> [--scope <scope>] | logs <app> [service] [-f] | releases list <app> | events list <app> | apps create <name> | apps list | apps info <name> | apps restart <name> [service] | apps redeploy <name> | apps rollback <name> <release-id> | apps remove <name> [--force] | domains attach <app> <service> <domain> --port <port> | domains list <app> | domains detach <app> <domain> | server domain set <domain> | ssh-keys add <name> | ssh-keys list | ssh-keys remove <name>")
 }
 
 func validatePublicKey(publicKey string) error {

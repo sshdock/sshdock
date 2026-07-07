@@ -45,6 +45,8 @@ printf '%s' "$DATABASE_URL" | ssh dashboard@sshdock.example.com config set my-ap
 
 The value is encrypted before it is stored in SQLite. The default key file is `/var/lib/sshdock/config.key`, or `SSHDOCK_CONFIG_KEY_PATH` when overridden.
 
+If the app is already running, deploy or redeploy it after changing config so containers receive the new value.
+
 ### `sshdock config import <app> [--scope <scope>]`
 
 Read `KEY=VALUE` lines from stdin and store each value for an existing app.
@@ -54,6 +56,8 @@ ssh dashboard@sshdock.example.com config import my-app < .env.production
 ```
 
 Blank lines and `#` comments are ignored. Values are not printed.
+
+If one or more values are imported for a running app, deploy or redeploy it so containers receive the new values.
 
 ### `sshdock config list <app>`
 
@@ -69,6 +73,14 @@ Output format:
 <key>	<scope-or->	<status>	<redacted>	<updated-at>	<mutated-by>
 ```
 
+### `sshdock config keys <app>`
+
+Print only configured key names, one per line, without values or metadata. Scoped keys use `<scope>/<key>`.
+
+```bash
+ssh dashboard@sshdock.example.com config keys my-app
+```
+
 ### `sshdock config get <app> <key> [--scope <scope>]`
 
 Explicitly reveal one config value.
@@ -79,6 +91,8 @@ ssh dashboard@sshdock.example.com config get my-app DATABASE_URL
 
 Use this sparingly; normal list, dashboard, event, deployment-error, and log paths redact known stored config values.
 
+When running locally as a non-root user on the server, use `sudo sshdock config get ...` or the dashboard SSH command. SSHDock keeps the host-local encryption key readable only by privileged runtime users.
+
 ### `sshdock config unset <app> <key> [--scope <scope>]`
 
 Remove one stored config value.
@@ -86,6 +100,8 @@ Remove one stored config value.
 ```bash
 ssh dashboard@sshdock.example.com config unset my-app DATABASE_URL
 ```
+
+If the app is already running, deploy or redeploy it after unsetting config so containers stop receiving the removed value.
 
 Config commands also work as local `sudo sshdock config ...` commands on the server.
 

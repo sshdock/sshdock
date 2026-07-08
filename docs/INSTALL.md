@@ -421,6 +421,17 @@ An upgrade should:
 
 Upgrades must not prune Docker images broadly. Cleanup should remain scoped to SSHDock-managed image tags.
 
+After an upgrade, run:
+
+```bash
+sudo sshdock diagnostics
+sudo sshdock apps health <app>
+sudo sshdock domains check <app>
+sudo sshdock logs <app> --tail 200
+```
+
+Use the SSH dashboard Summary, Routes, Deploys, Events, and Logs tabs for the same app-level health, route, deploy, failure, and log context over SSH.
+
 ## Diagnostics
 
 Run:

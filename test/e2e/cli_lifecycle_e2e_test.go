@@ -40,6 +40,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
 		"SSHDOCK_COMPOSE_RUNNER=fake",
+		"SSHDOCK_FAKE_COMPOSE_SERVICES=web:running",
 		"SSHDOCK_FAKE_COMPOSE_LOGS=web log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
@@ -74,10 +75,18 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	publicKey := "ssh-ed25519 QUJDRA== admin@example.com\n"
 	runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 
-	assertCLIOutputContains(t, root, env, sshdockPath, []string{"logs", appName, "web"}, []string{"web log"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"apps", "health", appName}, []string{
+		"health: ok",
+		"latest release: " + releaseID + " succeeded",
+		"latest deploy:",
+		"domains: 1",
+		"services: 1 running, 0 attention",
+	})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"logs", appName, "web", "--tail", "25"}, []string{"web log"})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"releases", "list", appName}, []string{releaseID, shortSHA(commitSHA)})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", appName}, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "list", appName}, []string{domain, "web", "3000"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "check", appName}, []string{domain, "web", "3000", "missing", "router route missing"})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"ssh-keys", "list"}, []string{"admin", "SHA256:"})
 
 	runCommand(t, root, env, sshdockPath, "domains", "detach", appName, domain)
@@ -92,7 +101,10 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		t.Fatalf("ssh-keys list after remove = %q", keysOutput)
 	}
 
-	runCommand(t, root, env, sshdockPath, "apps", "remove", appName, "--force")
+	removeOutput := runCommand(t, root, env, sshdockPath, "apps", "remove", appName, "--force")
+	if !strings.Contains(removeOutput, "Docker volumes were not removed") {
+		t.Fatalf("apps remove output missing volume preservation copy:\n%s", removeOutput)
+	}
 	appsOutput := runCommand(t, root, env, sshdockPath, "apps", "list")
 	if !strings.Contains(appsOutput, "no apps") {
 		t.Fatalf("apps list after remove = %q", appsOutput)

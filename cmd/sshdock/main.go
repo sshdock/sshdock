@@ -249,7 +249,7 @@ func commandNeedsStore(args []string) bool {
 	if len(args) == 2 && args[0] == "apps" && args[1] == "list" {
 		return true
 	}
-	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info") {
+	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info" || args[1] == "health") {
 		return true
 	}
 	if len(args) >= 3 && len(args) <= 4 && args[0] == "apps" && args[1] == "remove" {
@@ -269,6 +269,9 @@ func commandNeedsStore(args []string) bool {
 		return err == nil
 	}
 	if len(args) == 3 && args[0] == "domains" && args[1] == "list" {
+		return true
+	}
+	if len(args) == 3 && args[0] == "domains" && args[1] == "check" {
 		return true
 	}
 	if len(args) == 4 && args[0] == "domains" && args[1] == "detach" {
@@ -307,6 +310,9 @@ func commandNeedsRecoveryRunner(args []string) bool {
 	if len(args) >= 2 && args[0] == "logs" {
 		return true
 	}
+	if len(args) == 3 && args[0] == "apps" && args[1] == "health" {
+		return true
+	}
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "restart" || args[1] == "redeploy") {
 		return true
 	}
@@ -341,6 +347,7 @@ func cliRunnerFromEnv() (compose.Runner, error) {
 			DeployErr:  envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"),
 			RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
 			RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
+			Services:   parseFakeServices(os.Getenv("SSHDOCK_FAKE_COMPOSE_SERVICES")),
 			LogOutput:  os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS"),
 		}, nil
 	}
@@ -354,6 +361,26 @@ func envError(name string) error {
 		return nil
 	}
 	return errors.New(value)
+}
+
+func parseFakeServices(value string) []compose.ServiceStatus {
+	if value == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	services := make([]compose.ServiceStatus, 0, len(parts))
+	for _, part := range parts {
+		name, state, ok := strings.Cut(strings.TrimSpace(part), ":")
+		if !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		services = append(services, compose.ServiceStatus{
+			Name:  strings.TrimSpace(name),
+			State: strings.TrimSpace(state),
+		})
+	}
+	return services
 }
 
 type diagnosticsLocalExecutor struct{}

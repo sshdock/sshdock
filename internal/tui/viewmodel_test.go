@@ -70,8 +70,34 @@ func TestNewAppDetailView(t *testing.T) {
 	if len(view.Events) != 1 || view.Events[0].Type != "deploy.succeeded" || view.Events[0].Message != "Deploy succeeded" {
 		t.Fatalf("events = %#v", view.Events)
 	}
+	if view.Health.RouteStatus != "routed" || view.Health.LatestDeploymentStatus != "succeeded" || view.Health.ServiceStatus != "1 running" {
+		t.Fatalf("health = %#v", view.Health)
+	}
 	if len(view.Actions) == 0 {
 		t.Fatal("expected basic action labels")
+	}
+}
+
+func TestNewAppDetailViewSummarizesLastFailure(t *testing.T) {
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	model := app.App{ID: "app_1", Name: "my-app", NodeID: "local", Status: app.AppStatusFailed}
+	deployments := []app.Deployment{{
+		ID:           "dep_failed",
+		AppID:        "app_1",
+		ReleaseID:    "rel_1",
+		Status:       app.DeploymentStatusFailed,
+		StartedAt:    now,
+		FinishedAt:   now,
+		ErrorMessage: "stage=start; detail=container exited",
+	}}
+
+	view := NewAppDetailView(model, nil, nil, nil, deployments, nil)
+
+	if view.Health.RouteStatus != "unrouted" || view.Health.LatestDeploymentStatus != "failed" {
+		t.Fatalf("health = %#v", view.Health)
+	}
+	if view.Health.LastFailure != "stage=start; detail=container exited" {
+		t.Fatalf("last failure = %q", view.Health.LastFailure)
 	}
 }
 

@@ -55,6 +55,38 @@ type Event struct {
 	CreatedAt time.Time
 }
 
+type AppHealth struct {
+	AppName                string
+	Health                 string
+	Status                 string
+	NodeID                 string
+	LatestReleaseID        string
+	LatestReleaseStatus    string
+	LatestDeploymentID     string
+	LatestDeploymentStatus string
+	DomainCount            int
+	ServiceCount           int
+	RunningServiceCount    int
+	AttentionServiceCount  int
+	LastFailure            string
+	Checks                 []HealthCheck
+}
+
+type HealthCheck struct {
+	Status string
+	Name   string
+	Detail string
+}
+
+type DomainCheck struct {
+	DomainName  string
+	ServiceName string
+	Port        int
+	HTTPS       bool
+	Status      string
+	Detail      string
+}
+
 type ConfigEntry struct {
 	Name          string
 	Scope         string
@@ -69,6 +101,7 @@ type LogRequest struct {
 	AppName     string
 	ServiceName string
 	Follow      bool
+	Lines       int
 }
 
 type Backend interface {
@@ -80,10 +113,12 @@ type Backend interface {
 	RedeployApp(name string) error
 	RollbackApp(name string, releaseID string) error
 	RemoveApp(name string) error
+	AppHealth(name string) (AppHealth, error)
 	Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error
 	ListReleases(appName string) ([]Release, error)
 	ListEvents(appName string) ([]Event, error)
 	ListDomains(appName string) ([]Domain, error)
+	CheckDomains(appName string) ([]DomainCheck, error)
 	AttachDomain(domain Domain) error
 	DetachDomain(appName string, domainName string) error
 	SetServerGitHost(host string) error
@@ -231,6 +266,33 @@ func (b *MemoryBackend) RemoveApp(name string) error {
 	return nil
 }
 
+func (b *MemoryBackend) AppHealth(name string) (AppHealth, error) {
+	model, ok := b.apps[name]
+	if !ok {
+		return AppHealth{}, fmt.Errorf("app %q not found", name)
+	}
+	report := AppHealth{
+		AppName:     model.Name,
+		Status:      model.Status,
+		NodeID:      model.NodeID,
+		DomainCount: len(memoryDomainsForApp(b.domains, name)),
+	}
+	report.Checks = append(report.Checks, healthCheckForAppStatus(model.Status))
+	if release, ok := latestCLIRelease(memoryReleasesForApp(b.releases, name)); ok {
+		report.LatestReleaseID = release.ID
+		report.LatestReleaseStatus = release.Status
+		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, release.Status))
+		if release.Failure != "" {
+			report.LastFailure = release.Failure
+		}
+	} else {
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
+	}
+	report.Checks = append(report.Checks, healthCheckForDomains(report.DomainCount))
+	report.Health = overallHealth(report.Checks)
+	return report, nil
+}
+
 func (b *MemoryBackend) Logs(request LogRequest, stdout io.Writer, _ io.Writer) error {
 	if _, ok := b.apps[request.AppName]; !ok {
 		return fmt.Errorf("app %q not found", request.AppName)
@@ -292,6 +354,25 @@ func (b *MemoryBackend) ListDomains(appName string) ([]Domain, error) {
 		return domains[i].DomainName < domains[j].DomainName
 	})
 	return domains, nil
+}
+
+func (b *MemoryBackend) CheckDomains(appName string) ([]DomainCheck, error) {
+	if _, ok := b.apps[appName]; !ok {
+		return nil, fmt.Errorf("app %q not found", appName)
+	}
+	domains := memoryDomainsForApp(b.domains, appName)
+	checks := make([]DomainCheck, 0, len(domains))
+	for _, domain := range domains {
+		checks = append(checks, DomainCheck{
+			DomainName:  domain.DomainName,
+			ServiceName: domain.ServiceName,
+			Port:        domain.Port,
+			HTTPS:       domain.HTTPS,
+			Status:      "stored",
+			Detail:      "router check unavailable",
+		})
+	}
+	return checks, nil
 }
 
 func (b *MemoryBackend) SetServerGitHost(host string) error {
@@ -677,6 +758,16 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		return 0
 	}
 
+	if len(args) == 2 && args[0] == "health" {
+		report, err := r.backend.AppHealth(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		printAppHealth(stdout, report)
+		return 0
+	}
+
 	if len(args) == 3 && args[0] == "restart" {
 		if err := r.backend.RestartService(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -721,6 +812,7 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 			return 1
 		}
 		fmt.Fprintf(stdout, "removed app %s\n", appName)
+		fmt.Fprintln(stdout, "Docker volumes were not removed; remove app-specific volumes manually after backup if desired.")
 		return 0
 	}
 
@@ -763,6 +855,22 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 		return 0
 	}
 
+	if len(args) == 2 && args[0] == "check" {
+		checks, err := r.backend.CheckDomains(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if len(checks) == 0 {
+			fmt.Fprintln(stdout, "no domains")
+			return 0
+		}
+		for _, check := range checks {
+			fmt.Fprintf(stdout, "%s\t%s\t%d\t%t\t%s\t%s\n", check.DomainName, check.ServiceName, check.Port, check.HTTPS, check.Status, check.Detail)
+		}
+		return 0
+	}
+
 	if len(args) == 3 && args[0] == "detach" {
 		if err := r.backend.DetachDomain(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -797,6 +905,36 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 
 	printInvalidUsage(stderr, "domains")
 	return 2
+}
+
+func printAppHealth(stdout io.Writer, report AppHealth) {
+	fmt.Fprintf(stdout, "app: %s\n", report.AppName)
+	fmt.Fprintf(stdout, "health: %s\n", report.Health)
+	fmt.Fprintf(stdout, "status: %s\n", cliValueOrDash(report.Status))
+	fmt.Fprintf(stdout, "node: %s\n", cliValueOrDash(report.NodeID))
+	if report.LatestReleaseID != "" || report.LatestReleaseStatus != "" {
+		fmt.Fprintf(stdout, "latest release: %s %s\n", cliValueOrDash(report.LatestReleaseID), cliValueOrDash(report.LatestReleaseStatus))
+	} else {
+		fmt.Fprintln(stdout, "latest release: -")
+	}
+	if report.LatestDeploymentID != "" || report.LatestDeploymentStatus != "" {
+		fmt.Fprintf(stdout, "latest deploy: %s %s\n", cliValueOrDash(report.LatestDeploymentID), cliValueOrDash(report.LatestDeploymentStatus))
+	} else {
+		fmt.Fprintln(stdout, "latest deploy: -")
+	}
+	fmt.Fprintf(stdout, "domains: %d\n", report.DomainCount)
+	if report.ServiceCount > 0 {
+		fmt.Fprintf(stdout, "services: %d running, %d attention\n", report.RunningServiceCount, report.AttentionServiceCount)
+	} else {
+		fmt.Fprintln(stdout, "services: -")
+	}
+	if report.LastFailure != "" {
+		fmt.Fprintf(stdout, "last failure: %s\n", report.LastFailure)
+	}
+	fmt.Fprintln(stdout, "checks:")
+	for _, check := range report.Checks {
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", check.Status, check.Name, check.Detail)
+	}
 }
 
 func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -945,6 +1083,7 @@ Apps:
   apps create <name>                   Create an app repo and print Git remote
   apps list                            List apps
   apps info <name>                     Show app details
+  apps health <name>                   Summarize app health and recovery state
   apps restart <name> [service]        Restart an app or service
   apps redeploy <name>                 Redeploy the latest good release
   apps rollback <name> <release-id>    Roll back to a release
@@ -961,13 +1100,14 @@ Config:
 Domains:
   domains attach <app> <service> <domain> --port <port>
   domains list <app>
+  domains check <app>
   domains detach <app> <domain>
 
 Operations:
   backup create [--output <archive>]
   backup inspect <archive>
   backup restore <archive>
-  logs <app> [service] [-f]
+  logs <app> [service] [-f] [--tail <lines>]
   releases list <app>
   events list <app>
 
@@ -990,6 +1130,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock apps create <name>",
 			"sshdock apps list",
 			"sshdock apps info <name>",
+			"sshdock apps health <name>",
 			"sshdock apps restart <name> [service]",
 			"sshdock apps redeploy <name>",
 			"sshdock apps rollback <name> <release-id>",
@@ -997,6 +1138,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 		}, []string{
 			"sudo sshdock apps create my-app",
 			"sudo sshdock apps list",
+			"sudo sshdock apps health my-app",
 			"sudo sshdock apps restart my-app web",
 		})
 	case "config":
@@ -1017,17 +1159,18 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 		printTopicHelp(stdout, "Domain commands attach public hostnames to app services.", []string{
 			"sshdock domains attach <app> <service> <domain> --port <port>",
 			"sshdock domains list <app>",
+			"sshdock domains check <app>",
 			"sshdock domains detach <app> <domain>",
 		}, []string{
 			"sudo sshdock domains attach my-app web app.example.com --port 3000",
-			"sudo sshdock domains list my-app",
+			"sudo sshdock domains check my-app",
 		})
 	case "logs":
 		printTopicHelp(stdout, "Logs stream recent Compose logs for an app or service.", []string{
-			"sshdock logs <app> [service] [-f]",
+			"sshdock logs <app> [service] [-f] [--tail <lines>]",
 		}, []string{
 			"sudo sshdock logs my-app",
-			"sudo sshdock logs my-app web -f",
+			"sudo sshdock logs my-app web --tail 200 -f",
 		})
 	case "backup":
 		printTopicHelp(stdout, "Backup commands create, inspect, and restore SSHDock state archives.", []string{
@@ -1125,10 +1268,31 @@ func validatePublicKey(publicKey string) error {
 }
 
 func parseLogsArgs(args []string) (LogRequest, bool) {
-	var request LogRequest
-	for _, arg := range args {
+	request := LogRequest{Lines: 100}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "-f" || arg == "--follow" {
 			request.Follow = true
+			continue
+		}
+		if arg == "--tail" {
+			if i+1 >= len(args) {
+				return LogRequest{}, false
+			}
+			lines, err := strconv.Atoi(args[i+1])
+			if err != nil || lines <= 0 {
+				return LogRequest{}, false
+			}
+			request.Lines = lines
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--tail=") {
+			lines, err := strconv.Atoi(strings.TrimPrefix(arg, "--tail="))
+			if err != nil || lines <= 0 {
+				return LogRequest{}, false
+			}
+			request.Lines = lines
 			continue
 		}
 		if request.AppName == "" {
@@ -1196,6 +1360,114 @@ func sshKeyFingerprint(publicKey string) string {
 	}
 	sum := sha256.Sum256(decoded)
 	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:])
+}
+
+func latestCLIRelease(releases []Release) (Release, bool) {
+	if len(releases) == 0 {
+		return Release{}, false
+	}
+	sort.Slice(releases, func(i, j int) bool {
+		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
+			return releases[i].ID < releases[j].ID
+		}
+		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
+	})
+	return releases[len(releases)-1], true
+}
+
+func memoryReleasesForApp(releases []Release, appName string) []Release {
+	filtered := make([]Release, 0, len(releases))
+	for _, release := range releases {
+		if release.AppName == appName {
+			filtered = append(filtered, release)
+		}
+	}
+	return filtered
+}
+
+func memoryDomainsForApp(domains []Domain, appName string) []Domain {
+	filtered := make([]Domain, 0, len(domains))
+	for _, domain := range domains {
+		if domain.AppName == appName {
+			filtered = append(filtered, domain)
+		}
+	}
+	return filtered
+}
+
+func healthCheckForAppStatus(status string) HealthCheck {
+	switch status {
+	case "healthy":
+		return HealthCheck{Status: "ok", Name: "app", Detail: "status healthy"}
+	case "failed":
+		return HealthCheck{Status: "fail", Name: "app", Detail: "status failed"}
+	default:
+		return HealthCheck{Status: "warn", Name: "app", Detail: "status " + cliValueOrDash(status)}
+	}
+}
+
+func healthCheckForRelease(id string, status string) HealthCheck {
+	detail := strings.TrimSpace(id + " " + status)
+	switch status {
+	case "succeeded", "rolled_back":
+		return HealthCheck{Status: "ok", Name: "release", Detail: detail}
+	case "failed":
+		return HealthCheck{Status: "fail", Name: "release", Detail: detail}
+	default:
+		return HealthCheck{Status: "warn", Name: "release", Detail: detail}
+	}
+}
+
+func healthCheckForDeployment(id string, status string) HealthCheck {
+	if id == "" && status == "" {
+		return HealthCheck{Status: "warn", Name: "deployment", Detail: "no deployments"}
+	}
+	detail := strings.TrimSpace(id + " " + status)
+	switch status {
+	case "succeeded":
+		return HealthCheck{Status: "ok", Name: "deployment", Detail: detail}
+	case "failed":
+		return HealthCheck{Status: "fail", Name: "deployment", Detail: detail}
+	default:
+		return HealthCheck{Status: "warn", Name: "deployment", Detail: detail}
+	}
+}
+
+func healthCheckForDomains(count int) HealthCheck {
+	if count == 0 {
+		return HealthCheck{Status: "warn", Name: "domains", Detail: "none configured"}
+	}
+	return HealthCheck{Status: "ok", Name: "domains", Detail: fmt.Sprintf("%d configured", count)}
+}
+
+func healthCheckForServices(total int, running int, attention int) HealthCheck {
+	if total == 0 {
+		return HealthCheck{Status: "warn", Name: "services", Detail: "status unavailable"}
+	}
+	if attention > 0 {
+		return HealthCheck{Status: "fail", Name: "services", Detail: fmt.Sprintf("%d running, %d attention", running, attention)}
+	}
+	return HealthCheck{Status: "ok", Name: "services", Detail: fmt.Sprintf("%d running", running)}
+}
+
+func overallHealth(checks []HealthCheck) string {
+	health := "ok"
+	for _, check := range checks {
+		if check.Status == "fail" {
+			return "fail"
+		}
+		if check.Status == "warn" || check.Status == "unknown" {
+			health = "warn"
+		}
+	}
+	return health
+}
+
+func cliValueOrDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
 }
 
 func filterReleases(releases []Release, appName string) []Release {

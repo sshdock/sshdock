@@ -46,6 +46,10 @@ type routeSyncer interface {
 	SyncRoutes(ctx context.Context, routes []router.Route) error
 }
 
+type routeReader interface {
+	Routes(ctx context.Context) ([]router.Route, error)
+}
+
 type logStreamer interface {
 	StreamLogs(ctx context.Context, request compose.LogsRequest, stdout io.Writer, stderr io.Writer) error
 }
@@ -267,6 +271,97 @@ func (b *StoreBackend) RemoveApp(name string) error {
 	return nil
 }
 
+func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
+	ctx := context.Background()
+	model, err := b.store.GetApp(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return AppHealth{}, fmt.Errorf("app %q not found", name)
+	}
+	if err != nil {
+		return AppHealth{}, fmt.Errorf("get app %q: %w", name, err)
+	}
+	releases, err := b.store.ListReleasesByApp(ctx, name)
+	if err != nil {
+		return AppHealth{}, fmt.Errorf("list releases for app %q: %w", name, err)
+	}
+	deployments, err := b.store.ListDeploymentsByApp(ctx, name)
+	if err != nil {
+		return AppHealth{}, fmt.Errorf("list deployments for app %q: %w", name, err)
+	}
+	domains, err := b.store.ListDomainsByApp(ctx, name)
+	if err != nil {
+		return AppHealth{}, fmt.Errorf("list domains for app %q: %w", name, err)
+	}
+
+	report := AppHealth{
+		AppName:     model.Name,
+		Status:      string(model.Status),
+		NodeID:      model.NodeID,
+		DomainCount: len(domains),
+	}
+	report.Checks = append(report.Checks, healthCheckForAppStatus(string(model.Status)))
+	if release, ok := latestAppRelease(releases); ok {
+		report.LatestReleaseID = release.ID
+		report.LatestReleaseStatus = string(release.Status)
+		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, string(release.Status)))
+	} else {
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
+	}
+	if deployment, ok := latestAppDeployment(deployments); ok {
+		report.LatestDeploymentID = deployment.ID
+		report.LatestDeploymentStatus = string(deployment.Status)
+		report.Checks = append(report.Checks, healthCheckForDeployment(deployment.ID, string(deployment.Status)))
+		if deployment.ErrorMessage != "" {
+			report.LastFailure = deployment.ErrorMessage
+		}
+	} else {
+		report.Checks = append(report.Checks, healthCheckForDeployment("", ""))
+	}
+	report.Checks = append(report.Checks, healthCheckForDomains(report.DomainCount))
+
+	if b.recoveryRunner != nil {
+		release, ok, err := b.latestRuntimeRelease(ctx, name)
+		if err != nil {
+			return AppHealth{}, fmt.Errorf("find runtime release for app %q: %w", name, err)
+		}
+		if ok && isRunnableReleaseStatus(release.Status) && release.ComposePath != "" {
+			if err := b.addServiceStatus(ctx, name, model, release, &report); err != nil {
+				return AppHealth{}, err
+			}
+		}
+	}
+
+	report.Health = overallHealth(report.Checks)
+	return report, nil
+}
+
+func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, model appmodel.App, release appmodel.Release, report *AppHealth) error {
+	projectDir := projectDirFromModel(model, release)
+	env, err := b.configEnv(ctx, name, projectDir)
+	if err != nil {
+		return err
+	}
+	services, err := b.recoveryRunner.Status(ctx, compose.StatusRequest{
+		AppName:     name,
+		ProjectDir:  projectDir,
+		ComposePath: release.ComposePath,
+		Env:         env,
+	})
+	if err != nil {
+		return fmt.Errorf("load service status for app %q: %w", name, err)
+	}
+	report.ServiceCount = len(services)
+	for _, service := range services {
+		if service.State == "running" {
+			report.RunningServiceCount++
+		} else {
+			report.AttentionServiceCount++
+		}
+	}
+	report.Checks = append(report.Checks, healthCheckForServices(report.ServiceCount, report.RunningServiceCount, report.AttentionServiceCount))
+	return nil
+}
+
 func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error {
 	ctx := context.Background()
 	if b.recoveryRunner == nil {
@@ -296,7 +391,7 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 		ProjectDir:  projectDir,
 		ComposePath: release.ComposePath,
 		ServiceName: request.ServiceName,
-		Lines:       100,
+		Lines:       request.Lines,
 		Follow:      request.Follow,
 		Env:         env,
 	}
@@ -401,6 +496,59 @@ func (b *StoreBackend) ListDomains(appName string) ([]Domain, error) {
 		domains = append(domains, cliDomain(model))
 	}
 	return domains, nil
+}
+
+func (b *StoreBackend) CheckDomains(appName string) ([]DomainCheck, error) {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	}
+	models, err := b.store.ListDomainsByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list domains for app %q: %w", appName, err)
+	}
+	routesByDomain := map[string]router.Route{}
+	routerAvailable := false
+	if reader, ok := b.router.(routeReader); ok {
+		routes, err := reader.Routes(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list router routes: %w", err)
+		}
+		routerAvailable = true
+		for _, route := range routes {
+			routesByDomain[route.DomainName] = route
+		}
+	}
+
+	checks := make([]DomainCheck, 0, len(models))
+	for _, model := range models {
+		check := DomainCheck{
+			DomainName:  model.DomainName,
+			ServiceName: model.ServiceName,
+			Port:        model.Port,
+			HTTPS:       model.HTTPS,
+			Status:      "stored",
+			Detail:      "router check unavailable",
+		}
+		if routerAvailable {
+			route, ok := routesByDomain[model.DomainName]
+			switch {
+			case !ok:
+				check.Status = "missing"
+				check.Detail = "router route missing"
+			case route.AppID == model.AppID && route.ServiceName == model.ServiceName && route.Port == model.Port && route.HTTPS == model.HTTPS:
+				check.Status = "ok"
+				check.Detail = "router route matches"
+			default:
+				check.Status = "mismatch"
+				check.Detail = "router route differs"
+			}
+		}
+		checks = append(checks, check)
+	}
+	return checks, nil
 }
 
 func (b *StoreBackend) AttachDomain(domain Domain) error {
@@ -751,6 +899,38 @@ func (b *StoreBackend) latestRuntimeRelease(ctx context.Context, appName string)
 		return releases[len(releases)-1], true, nil
 	}
 	return appmodel.Release{}, false, nil
+}
+
+func latestAppRelease(releases []appmodel.Release) (appmodel.Release, bool) {
+	if len(releases) == 0 {
+		return appmodel.Release{}, false
+	}
+	sorted := append([]appmodel.Release(nil), releases...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+	})
+	return sorted[len(sorted)-1], true
+}
+
+func latestAppDeployment(deployments []appmodel.Deployment) (appmodel.Deployment, bool) {
+	if len(deployments) == 0 {
+		return appmodel.Deployment{}, false
+	}
+	sorted := append([]appmodel.Deployment(nil), deployments...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].StartedAt.Equal(sorted[j].StartedAt) {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return sorted[i].StartedAt.Before(sorted[j].StartedAt)
+	})
+	return sorted[len(sorted)-1], true
+}
+
+func isRunnableReleaseStatus(status appmodel.ReleaseStatus) bool {
+	return status == appmodel.ReleaseStatusSucceeded || status == appmodel.ReleaseStatusRolledBack
 }
 
 func projectDirFromModel(model appmodel.App, release appmodel.Release) string {

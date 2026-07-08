@@ -162,7 +162,7 @@ func TestInteractiveDashboardModelResponsiveTablesAndTips(t *testing.T) {
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 60, Height: 22})
 	model = updated.(InteractiveDashboardModel)
 	view = model.View()
-	if strings.Contains(view, "succeeded") || strings.Contains(view, "Doms") {
+	if strings.Contains(view, "Doms") {
 		t.Fatalf("narrow app table should hide lower-priority columns:\n%s", view)
 	}
 	if !strings.Contains(view, "App") || !strings.Contains(view, "State") {
@@ -192,7 +192,7 @@ func TestInteractiveDashboardModelDetailTabsRenderTables(t *testing.T) {
 	model = updated.(InteractiveDashboardModel)
 
 	wantByTab := map[string][]string{
-		"Summary":  {"Field", "Value", "Node", "Services"},
+		"Summary":  {"Field", "Value", "Node", "Route", "Latest deploy", "Services"},
 		"Services": {"Service", "State", "web", "running"},
 		"Routes":   {"Domain", "Service", "Target", "HTTPS", "one.example.com"},
 		"Releases": {"Release", "Status", "Commit", "Created", "rel_one"},
@@ -368,7 +368,7 @@ func TestInteractiveDashboardRemoveRequiresExactAppName(t *testing.T) {
 	if len(actions.calls) != 0 {
 		t.Fatalf("wrong confirmation called backend: %#v", actions.calls)
 	}
-	if view := model.View(); !strings.Contains(view, "type app name exactly") || !strings.Contains(view, "confirmation did not match") {
+	if view := model.View(); !strings.Contains(view, "type app name exactly") || !strings.Contains(view, "Docker volumes stay") || !strings.Contains(view, "confirmation did not match") {
 		t.Fatalf("wrong confirmation did not keep prompt and show error:\n%s", view)
 	}
 
@@ -466,6 +466,7 @@ func testDashboardSnapshot() DashboardSnapshot {
 					Releases:    []ReleaseView{{ID: "rel_one", Status: "succeeded", CommitSHA: "abc123"}},
 					Deployments: []DeploymentView{{ID: "dep_one", Status: "succeeded", ReleaseID: "rel_one"}},
 					Events:      []EventView{{Type: "deploy.succeeded", Message: "Deploy succeeded"}},
+					Health:      HealthSummary{RouteStatus: "routed", LatestDeploymentStatus: "succeeded", ServiceStatus: "1 running"},
 				}),
 				Logs: map[string]LogsView{"web": NewLogsView("one", "web", "first log\nsecond log\nthird log\nfourth log\nfifth log\nsixth log\n")},
 			},
@@ -473,6 +474,7 @@ func testDashboardSnapshot() DashboardSnapshot {
 				Detail: NewAppDetailScreen(AppDetailView{
 					App:      AppSummary{ID: "two", Name: "two", NodeID: "local", Status: "healthy"},
 					Services: []ServiceView{{Name: "worker", State: "running"}},
+					Health:   HealthSummary{RouteStatus: "unrouted", LatestDeploymentStatus: "-", ServiceStatus: "1 running"},
 				}),
 				Logs: map[string]LogsView{"worker": NewLogsView("two", "worker", "worker log\n")},
 			},

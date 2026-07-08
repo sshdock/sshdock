@@ -197,6 +197,76 @@ func TestDomainsAttach(t *testing.T) {
 	}
 }
 
+func TestAppsHealthPrintsOperationalSummary(t *testing.T) {
+	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
+	backend.releases = []Release{{ID: "rel_1", AppName: "my-app", CommitSHA: "abc123", Status: "succeeded", CreatedAt: now}}
+	backend.domains = []Domain{{AppName: "my-app", ServiceName: "web", DomainName: "my-app.example.com", Port: 3000, HTTPS: true}}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"app: my-app",
+		"health: ok",
+		"status: healthy",
+		"latest release: rel_1 succeeded",
+		"domains: 1",
+		"ok\tapp\tstatus healthy",
+		"ok\tdomains\t1 configured",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("apps health stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestDomainsCheckPrintsRouteStatus(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
+	backend.domains = []Domain{{AppName: "my-app", ServiceName: "web", DomainName: "my-app.example.com", Port: 3000, HTTPS: true}}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.Run([]string{"domains", "check", "my-app"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("domains check exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"my-app.example.com\tweb\t3000\ttrue\tstored\trouter check unavailable",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("domains check stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestLogsTailOption(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
+	backend.logOutput = "first\nsecond\n"
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runner.Run([]string{"logs", "my-app", "web", "--tail", "25"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("logs exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if len(backend.logRequests) != 1 || backend.logRequests[0].Lines != 25 || backend.logRequests[0].ServiceName != "web" {
+		t.Fatalf("log requests = %#v", backend.logRequests)
+	}
+	if stdout.String() != "first\nsecond\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestSSHKeysAddReadsPublicKeyFromInput(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	runner := NewRunner(backend, "dev")
@@ -486,6 +556,9 @@ func TestLifecycleMutationCommands(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "removed app my-app") {
 		t.Fatalf("apps remove stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Docker volumes were not removed") {
+		t.Fatalf("apps remove stdout missing volume preservation note: %q", stdout.String())
 	}
 	if _, ok := backend.apps["my-app"]; ok {
 		t.Fatal("app still exists after remove")

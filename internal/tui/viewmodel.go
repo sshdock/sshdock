@@ -29,6 +29,7 @@ type AppDetailView struct {
 	Releases    []ReleaseView
 	Deployments []DeploymentView
 	Events      []EventView
+	Health      HealthSummary
 	Actions     []string
 }
 
@@ -74,6 +75,13 @@ type EventView struct {
 	CreatedAt time.Time
 }
 
+type HealthSummary struct {
+	RouteStatus            string
+	LatestDeploymentStatus string
+	ServiceStatus          string
+	LastFailure            string
+}
+
 type LogsView struct {
 	AppID       string
 	ServiceName string
@@ -107,6 +115,7 @@ func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains [
 		Releases:    newReleaseViews(releases),
 		Deployments: newDeploymentViews(deployments),
 		Events:      newEventViews(events),
+		Health:      newHealthSummary(services, domains, deployments),
 		Actions:     []string{"restart app", "redeploy app", "rollback release", "attach domain"},
 	}
 }
@@ -193,4 +202,39 @@ func newEventViews(events []app.Event) []EventView {
 		})
 	}
 	return views
+}
+
+func newHealthSummary(services []compose.ServiceStatus, domains []app.Domain, deployments []app.Deployment) HealthSummary {
+	summary := HealthSummary{
+		RouteStatus:            "unrouted",
+		LatestDeploymentStatus: "-",
+		ServiceStatus:          "-",
+	}
+	if len(domains) > 0 {
+		summary.RouteStatus = "routed"
+	}
+	if len(deployments) > 0 {
+		latest := deployments[0]
+		summary.LatestDeploymentStatus = string(latest.Status)
+		for _, deployment := range deployments {
+			if deployment.ErrorMessage != "" {
+				summary.LastFailure = deployment.ErrorMessage
+				break
+			}
+		}
+	}
+	if len(services) > 0 {
+		running := 0
+		for _, service := range services {
+			if service.State == "running" {
+				running++
+			}
+		}
+		if running == len(services) {
+			summary.ServiceStatus = strconv.Itoa(running) + " running"
+		} else {
+			summary.ServiceStatus = strconv.Itoa(running) + " running, " + strconv.Itoa(len(services)-running) + " attention"
+		}
+	}
+	return summary
 }

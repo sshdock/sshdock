@@ -100,14 +100,23 @@ func (f *fakeReceiveRepoSetupper) SetupBareRepo(_ context.Context, appName strin
 }
 
 type fakeRoutePublisher struct {
-	Syncs [][]router.Route
-	Err   error
+	Syncs        [][]router.Route
+	StoredRoutes []router.Route
+	Err          error
+	RoutesErr    error
 }
 
 func (f *fakeRoutePublisher) SyncRoutes(_ context.Context, routes []router.Route) error {
 	copied := append([]router.Route(nil), routes...)
 	f.Syncs = append(f.Syncs, copied)
 	return f.Err
+}
+
+func (f *fakeRoutePublisher) Routes(context.Context) ([]router.Route, error) {
+	if f.RoutesErr != nil {
+		return nil, f.RoutesErr
+	}
+	return append([]router.Route(nil), f.StoredRoutes...), nil
 }
 
 func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
@@ -510,6 +519,178 @@ func TestStoreBackendListReleasesIncludesFailedDeploymentDetail(t *testing.T) {
 		if release.ID == "rel_new" && release.Failure != failure {
 			t.Fatalf("release failure = %q, want %q", release.Failure, failure)
 		}
+	}
+}
+
+func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{
+		ID:         "dep_new",
+		AppID:      "my-app",
+		ReleaseID:  "rel_new",
+		Status:     app.DeploymentStatusSucceeded,
+		StartedAt:  now,
+		FinishedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{
+		ID:          "dom_my_app_example_com",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3000,
+		HTTPS:       true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	runner := &compose.FakeRunner{Services: []compose.ServiceStatus{
+		{Name: "web", State: "running"},
+		{Name: "worker", State: "running"},
+	}}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := cliRunner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"health: ok",
+		"latest release: rel_new succeeded",
+		"latest deploy: dep_new succeeded",
+		"domains: 1",
+		"services: 2 running, 0 attention",
+		"ok\tservices\t2 running",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("apps health stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if len(runner.StatusRequests) != 1 || runner.StatusRequests[0].AppName != "my-app" {
+		t.Fatalf("status requests = %#v", runner.StatusRequests)
+	}
+}
+
+func TestStoreBackendAppsHealthUsesLatestRunnableReleaseForServiceStatus(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	failedComposePath := filepath.Join(appsDir, "my-app", "failed", "compose.yml")
+	if err := sqlite.CreateRelease(ctx, app.Release{
+		ID:          "rel_failed",
+		AppID:       "my-app",
+		CommitSHA:   "failed",
+		ComposePath: failedComposePath,
+		Status:      app.ReleaseStatusFailed,
+		CreatedAt:   now.Add(time.Minute),
+		UpdatedAt:   now.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateRelease failed: %v", err)
+	}
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{
+		ID:           "dep_failed",
+		AppID:        "my-app",
+		ReleaseID:    "rel_failed",
+		Status:       app.DeploymentStatusFailed,
+		StartedAt:    now.Add(time.Minute),
+		FinishedAt:   now.Add(time.Minute),
+		ErrorMessage: "stage=build; detail=image pull failed",
+	}); err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+	runner := &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "web", State: "running"}}}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:         "node-a",
+		AppsDir:        appsDir,
+		RecoveryRunner: runner,
+		Now:            func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := cliRunner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"health: fail",
+		"latest release: rel_failed failed",
+		"latest deploy: dep_failed failed",
+		"last failure: stage=build; detail=image pull failed",
+		"services: 1 running, 0 attention",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("apps health stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if len(runner.StatusRequests) != 1 {
+		t.Fatalf("status requests = %#v", runner.StatusRequests)
+	}
+	wantComposePath := filepath.Join(appsDir, "my-app", "worktree", "compose.yml")
+	if runner.StatusRequests[0].ComposePath != wantComposePath {
+		t.Fatalf("status compose path = %q, want %q", runner.StatusRequests[0].ComposePath, wantComposePath)
+	}
+}
+
+func TestStoreBackendDomainsCheckReportsRouterMismatch(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	model := app.App{ID: "my-app", Name: "my-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{
+		ID:          "dom_my_app_example_com",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3000,
+		HTTPS:       true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	routePublisher := &fakeRoutePublisher{StoredRoutes: []router.Route{{
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        4000,
+		HTTPS:       true,
+	}}}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		NodeID:  "node-a",
+		AppsDir: appsDir,
+		Router:  routePublisher,
+		Now:     func() time.Time { return now },
+	})
+	cliRunner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := cliRunner.Run([]string{"domains", "check", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains check exit code = %d, stderr = %q", code, stderr.String())
+	}
+	want := "my-app.example.com\tweb\t3000\ttrue\tmismatch\trouter route differs"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("domains check stdout missing %q:\n%s", want, stdout.String())
 	}
 }
 

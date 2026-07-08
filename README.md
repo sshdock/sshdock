@@ -89,7 +89,8 @@ Inspect apps and app state:
 ```bash
 sudo sshdock apps list
 sudo sshdock apps info my-app
-sudo sshdock logs my-app
+sudo sshdock apps health my-app
+sudo sshdock logs my-app --tail 200
 sudo sshdock releases list my-app
 sudo sshdock events list my-app
 ```
@@ -109,6 +110,7 @@ Manual domain attach is available when auto-routing is not enough:
 ```bash
 sudo sshdock domains attach my-app web app.example.com --port 3000
 sudo sshdock domains list my-app
+sudo sshdock domains check my-app
 ```
 
 Remove an app without deleting Docker volumes:

@@ -254,6 +254,15 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 	if _, err := fmt.Fprintf(writer, "Status: %s\nNode: %s\n", metadata.Status, metadata.NodeID); err != nil {
 		return err
 	}
+	health := screen.Health()
+	if _, err := fmt.Fprintf(writer, "Route: %s\nLatest deploy: %s\nService status: %s\n", valueOrDash(health.RouteStatus), valueOrDash(health.LatestDeploymentStatus), valueOrDash(health.ServiceStatus)); err != nil {
+		return err
+	}
+	if health.LastFailure != "" {
+		if _, err := fmt.Fprintf(writer, "Last failure: %s\n", health.LastFailure); err != nil {
+			return err
+		}
+	}
 
 	if err := renderServices(writer, screen.Services()); err != nil {
 		return err

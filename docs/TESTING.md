@@ -148,6 +148,12 @@ make tui-actions-e2e
 
 That target drives the interactive dashboard model against SQLite state, the shared CLI lifecycle backend, a fake Compose runner, and a fake router. It covers restart app, restart service, redeploy, rollback, domain attach, domain detach, app removal, and persisted event visibility. App removal is verified through the shared backend path and the fake Compose remove request, preserving the same volume-preserving contract as `sshdock apps remove`.
 
+Focused CLI tests cover `sshdock apps health <app>`, `sshdock domains check <app>`, and `sshdock logs --tail <lines>`:
+
+```bash
+go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendAppsHealth|StoreBackendDomainsCheck)'
+```
+
 ### Real SSH Dashboard Screenshot Capture
 
 Run:

@@ -286,17 +286,27 @@ sudo sshdock apps info my-app
 
 Output includes name, status, and assigned node.
 
-### `sshdock logs <app> [service] [-f]`
+### `sshdock apps health <name>`
+
+Summarize an app's operational state in one command.
+
+```bash
+sudo sshdock apps health my-app
+```
+
+Output includes app status, node, latest release, latest deployment, domain count, service status when Compose status is available, last failure detail when present, and check rows for app status, release, deployment, domains, and services.
+
+### `sshdock logs <app> [service] [-f] [--tail <lines>]`
 
 Show recent app or service logs through the configured Compose runner.
 
 ```bash
 sudo sshdock logs my-app
 sudo sshdock logs my-app web
-sudo sshdock logs my-app web -f
+sudo sshdock logs my-app web --tail 200 -f
 ```
 
-The Docker runner maps this to `docker compose logs --tail 100` for the app's latest deployed Compose project. `-f` adds Compose `--follow`.
+The Docker runner maps this to `docker compose logs --tail <lines>` for the app's latest deployed Compose project. The default tail is `100`. `-f` adds Compose `--follow`.
 
 ### `sshdock apps restart <name> [service]`
 
@@ -347,6 +357,8 @@ docker compose down --remove-orphans
 ```
 
 It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It then removes only image refs matching `sshdock/<app>/*`, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
+
+Successful output includes a Docker-volume preservation note. Remove app-specific Docker volumes manually only after backing up any data you need.
 
 ### `sshdock releases list <app>`
 
@@ -419,6 +431,22 @@ Output format:
 ```text
 <domain>	<service>	<port>	<https>
 ```
+
+### `sshdock domains check <app>`
+
+Compare stored app domain rows with generated router state when the configured router can report routes.
+
+```bash
+sudo sshdock domains check my-app
+```
+
+Output format:
+
+```text
+<domain>	<service>	<port>	<https>	<status>	<detail>
+```
+
+Statuses are `ok`, `missing`, `mismatch`, or `stored` when router inspection is unavailable.
 
 ### `sshdock domains detach <app> <domain>`
 

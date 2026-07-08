@@ -36,6 +36,10 @@ func (s AppDetailScreen) Events() []EventView {
 	return s.view.Events
 }
 
+func (s AppDetailScreen) Health() HealthSummary {
+	return s.view.Health
+}
+
 func (s AppDetailScreen) Actions() []string {
 	return s.view.Actions
 }

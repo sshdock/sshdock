@@ -92,8 +92,5 @@ func dashboardSSHArgs(paths serverPushPaths, server dashboardSSHServer, tty bool
 		"-o", "UserKnownHostsFile=/dev/null",
 		paths.sshUser+"@127.0.0.1",
 	)
-	if !tty {
-		args = append(args, "dashboard")
-	}
 	return args
 }

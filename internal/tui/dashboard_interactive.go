@@ -1004,7 +1004,7 @@ func (m InteractiveDashboardModel) helpView() string {
 		return "[service domain port] attach  [enter] run  [esc] cancel"
 	}
 	if m.mode == dashboardModeActionConfirm {
-		return "[type app name exactly] confirm  [enter] remove  [esc] cancel"
+		return "[type app name exactly] confirm remove; Docker volumes stay  [enter] remove  [esc] cancel"
 	}
 	if m.mode != dashboardModeNormal {
 		return "[j/k] choose  [enter] run  [esc] cancel"
@@ -1273,18 +1273,25 @@ type dashboardTableColumn struct {
 
 func renderSummaryTable(width int, detail AppDetailScreen) string {
 	metadata := detail.Metadata()
+	health := detail.Health()
 	rows := [][]string{
 		{"App", metadata.Name},
 		{"State", metadata.Status},
 		{"Node", metadata.NodeID},
+		{"Route", valueOrDash(health.RouteStatus)},
+		{"Latest deploy", valueOrDash(health.LatestDeploymentStatus)},
+		{"Service status", valueOrDash(health.ServiceStatus)},
 		{"Services", fmt.Sprintf("%d", len(detail.Services()))},
 		{"Routes", fmt.Sprintf("%d", len(detail.Domains()))},
 		{"Releases", fmt.Sprintf("%d", len(detail.Releases()))},
 		{"Deploys", fmt.Sprintf("%d", len(detail.LatestDeployments(5)))},
 		{"Events", fmt.Sprintf("%d", len(detail.Events()))},
 	}
+	if health.LastFailure != "" {
+		rows = append(rows, []string{"Last failure", health.LastFailure})
+	}
 	return renderDashboardTable(width, []dashboardTableColumn{
-		{Header: "Field", MinWidth: 8, Priority: 0},
+		{Header: "Field", MinWidth: 14, Priority: 0},
 		{Header: "Value", MinWidth: 12, Flex: true, Priority: 0},
 	}, rows)
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/appconfig"
+	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -343,6 +344,7 @@ exit 1
 
 func TestCLIRunnerFromEnvCanSelectFakeForTests(t *testing.T) {
 	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
 
 	runner, err := cliRunnerFromEnv()
 	if err != nil {
@@ -351,10 +353,15 @@ func TestCLIRunnerFromEnvCanSelectFakeForTests(t *testing.T) {
 	if got := fmt.Sprintf("%T", runner); got != "*compose.FakeRunner" {
 		t.Fatalf("runner type = %s, want *compose.FakeRunner", got)
 	}
+	fake := runner.(*compose.FakeRunner)
+	if len(fake.Services) != 2 || fake.Services[0].Name != "web" || fake.Services[0].State != "running" || fake.Services[1].Name != "worker" || fake.Services[1].State != "exited" {
+		t.Fatalf("fake services = %#v", fake.Services)
+	}
 }
 
 func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
 	tests := [][]string{
+		{"apps", "health", "my-app"},
 		{"apps", "restart", "my-app"},
 		{"apps", "restart", "my-app", "web"},
 		{"apps", "redeploy", "my-app"},

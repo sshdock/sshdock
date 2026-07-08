@@ -19,7 +19,7 @@ The default e2e still uses fake runtime adapters for:
 - SSH dashboard sessions
 
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
-The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions and deploy-failure persistence are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`.
+The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions and deploy-failure persistence are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`. Backup archive restore is covered by `make backup-restore-e2e`.
 
 ## Internal Dogfood Readiness
 
@@ -30,6 +30,7 @@ make ci
 make bootstrap-e2e
 make config-e2e
 make hardening-e2e
+make backup-restore-e2e
 ```
 
 The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push representative examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and rollback, verify reboot recovery and final-route cleanup, and complete the documented backup/restore drill. At minimum, a dogfood release should cover static-site, build-service, config-backed, one multi-service dependency example, one stateful volume example, and rollback-lab. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
@@ -230,6 +231,25 @@ The hardening test:
 6. Sets a fake base domain and runs `sshdock diagnostics` with fake Docker, Caddy, SSH, Git, DNS, port, and systemd commands.
 
 This test does not touch host systemd, Docker, Caddy, SSH, or `/var/lib/sshdock`.
+
+## Backup Restore Tier
+
+Run:
+
+```bash
+make backup-restore-e2e
+```
+
+The backup restore test:
+
+1. Creates a real SQLite store with an app and encrypted config value.
+2. Writes app repo/worktree state, Git/dashboard key state, and generated Caddy config under temporary paths.
+3. Creates a backup archive with fake Docker volume inventory.
+4. Restores the archive to a separate temporary config.
+5. Verifies the restored `config.key` can decrypt the restored config value.
+6. Verifies generated Caddy config and Docker volume inventory survived the archive round trip.
+
+This test does not call real Docker, Caddy, SSH, systemd, or host `/var/lib/sshdock`.
 
 ## `sshdockd git-hook`
 

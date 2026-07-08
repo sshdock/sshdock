@@ -4,7 +4,7 @@ APP_NAME := sshdock
 DAEMON_NAME := sshdockd
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e wildcard-domain-e2e config-e2e ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e wildcard-domain-e2e config-e2e backup-restore-e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -66,6 +66,9 @@ wildcard-domain-e2e:
 
 config-e2e:
 	go test -count=1 ./test/harness -run TestConfigImportAndGitPushDeployUsesProcessEnvironment -v
+
+backup-restore-e2e:
+	go test -count=1 ./test/harness -run TestBackupRestoreKeepsEncryptedConfigUsable -v
 
 ci: check-tools fmt lint test smoke build
 

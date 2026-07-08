@@ -2,11 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -178,6 +184,131 @@ func TestRunWithEnvDiagnosticsReportsConfigFailure(t *testing.T) {
 	}
 }
 
+func TestRunWithEnvBackupCreateInspectAndRestore(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	caddyDir := filepath.Join(root, "caddy")
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll data: %v", err)
+	}
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll bin: %v", err)
+	}
+	writeFakeDockerVolumeCommand(t, filepath.Join(binDir, "docker"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_APPS_DIR", filepath.Join(dataDir, "apps"))
+	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", filepath.Join(dataDir, "config.key"))
+	t.Setenv("SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", filepath.Join(dataDir, "git", ".ssh", "authorized_keys"))
+	t.Setenv("SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"))
+	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", filepath.Join(caddyDir, "sshdock.caddyfile"))
+	t.Setenv("SSHDOCK_CADDY_MAIN_CONFIG_PATH", filepath.Join(caddyDir, "Caddyfile"))
+
+	sqlite, err := store.OpenSQLite(ctx, filepath.Join(dataDir, "sshdock.db"))
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	if err := sqlite.CreateApp(ctx, app.App{
+		ID:           "my-app",
+		Name:         "my-app",
+		NodeID:       "local",
+		RepoPath:     filepath.Join(dataDir, "apps", "my-app", "repo.git"),
+		WorktreePath: filepath.Join(dataDir, "apps", "my-app", "worktree"),
+		Status:       app.AppStatusCreated,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	configService := appconfig.NewService(sqlite, filepath.Join(dataDir, "config.key"), appconfig.WithClock(func() time.Time { return now }))
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
+		t.Fatalf("Set config: %v", err)
+	}
+	if err := sqlite.Close(); err != nil {
+		t.Fatalf("Close sqlite: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "git", ".ssh"), 0o755); err != nil {
+		t.Fatalf("MkdirAll git ssh: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "git", ".ssh", "authorized_keys"), []byte("ssh-ed25519 git-key\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile git authorized keys: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "dashboard", ".ssh"), 0o755); err != nil {
+		t.Fatalf("MkdirAll dashboard ssh: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"), []byte("ssh-ed25519 dashboard-key\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile dashboard authorized keys: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "apps", "my-app", "worktree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "apps", "my-app", "worktree", "compose.yml"), []byte("services:\n  web:\n    image: nginx:alpine\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile compose: %v", err)
+	}
+	if err := os.MkdirAll(caddyDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll caddy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(caddyDir, "sshdock.caddyfile"), []byte("# generated\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile generated caddy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(caddyDir, "Caddyfile"), []byte("import "+filepath.Join(caddyDir, "sshdock.caddyfile")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile main caddy: %v", err)
+	}
+
+	archivePath := filepath.Join(root, "backup.tar.gz")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runWithEnv([]string{"backup", "create", "--output", archivePath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("backup create exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "created backup ") || !strings.Contains(stdout.String(), "Docker volume inventory: 1") {
+		t.Fatalf("backup create stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithEnv([]string{"backup", "inspect", archivePath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("backup inspect exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{"format: sshdock-backup/v1", "Docker volumes: 1", "sshdock_my_app_data"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("backup inspect stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+
+	if err := os.RemoveAll(dataDir); err != nil {
+		t.Fatalf("RemoveAll data dir: %v", err)
+	}
+	if err := os.RemoveAll(caddyDir); err != nil {
+		t.Fatalf("RemoveAll caddy dir: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithEnv([]string{"backup", "restore", archivePath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("backup restore exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "restored backup ") {
+		t.Fatalf("backup restore stdout = %q", stdout.String())
+	}
+	restoredStore, err := store.OpenSQLite(ctx, filepath.Join(dataDir, "sshdock.db"))
+	if err != nil {
+		t.Fatalf("OpenSQLite restored: %v", err)
+	}
+	defer restoredStore.Close()
+	restoredConfig := appconfig.NewService(restoredStore, filepath.Join(dataDir, "config.key"))
+	value, err := restoredConfig.Reveal(ctx, appconfig.ConfigRef{AppID: "my-app", Name: "DATABASE_URL"})
+	if err != nil {
+		t.Fatalf("Reveal restored config: %v", err)
+	}
+	if value != "postgres://secret" {
+		t.Fatalf("restored config = %q", value)
+	}
+}
+
 func TestCLIRunnerFromEnvDefaultsToDocker(t *testing.T) {
 	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "")
 
@@ -187,6 +318,26 @@ func TestCLIRunnerFromEnvDefaultsToDocker(t *testing.T) {
 	}
 	if got := fmt.Sprintf("%T", runner); got != "*compose.DockerRunner" {
 		t.Fatalf("runner type = %s, want *compose.DockerRunner", got)
+	}
+}
+
+func writeFakeDockerVolumeCommand(t *testing.T, path string) {
+	t.Helper()
+	script := `#!/bin/sh
+set -eu
+if [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
+  printf 'sshdock_my_app_data\n'
+  exit 0
+fi
+if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then
+  printf '[{"Name":"sshdock_my_app_data","Driver":"local","Mountpoint":"/var/lib/docker/volumes/sshdock_my_app_data/_data"}]\n'
+  exit 0
+fi
+echo "unexpected docker command: $*" >&2
+exit 1
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile fake docker: %v", err)
 	}
 }
 

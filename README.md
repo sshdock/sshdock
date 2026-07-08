@@ -117,6 +117,13 @@ Remove an app without deleting Docker volumes:
 sudo sshdock apps remove my-app
 ```
 
+Create and inspect a host-state backup:
+
+```bash
+sudo sshdock backup create
+sudo sshdock backup inspect /var/lib/sshdock/backups/<archive>.tar.gz
+```
+
 ## App Config
 
 For releases with app config support, apps can commit `.sshdock.yml` to declare required config keys without committing secret values:

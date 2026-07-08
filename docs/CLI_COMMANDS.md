@@ -53,6 +53,56 @@ The diagnostics command checks config, runtime directories, Linux/systemd prereq
 
 Each failed check prints `why <name>: ...` and `fix <name>: ...` lines. A failed check exits non-zero.
 
+### `sshdock backup create [--output <archive>]`
+
+Create a gzip tar archive of SSHDock state.
+
+```bash
+sudo sshdock backup create
+sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+```
+
+The default output path is:
+
+```text
+/var/lib/sshdock/backups/sshdock-backup-<timestamp>.tar.gz
+```
+
+The archive includes:
+
+- `manifest.json` with format, source config paths, entries, and restore guardrails
+- the SSHDock data directory, including SQLite release/deployment/domain metadata, app repos, app worktrees, `config.key`, Git key state, and dashboard key state
+- generated Caddy config from `SSHDOCK_CADDY_CONFIG_PATH`
+- Caddy main config from `SSHDOCK_CADDY_MAIN_CONFIG_PATH`
+- Docker volume inventory at `docker/volumes.json`
+
+The backup command records Docker volume inventory only. It does not silently copy Docker volume contents. `--include-volumes` currently exits non-zero with an explicit unsupported message.
+
+### `sshdock backup inspect <archive>`
+
+Read archive metadata without restoring it.
+
+```bash
+sudo sshdock backup inspect /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz
+```
+
+Output includes the archive format, creation time, file count, Docker volume inventory count, volume names, and restore guardrails.
+
+### `sshdock backup restore <archive>`
+
+Restore an SSHDock backup archive onto the current host config paths.
+
+```bash
+sudo systemctl stop sshdockd
+sudo sshdock backup restore /root/sshdock-backup.tar.gz
+sudo sshdock diagnostics
+sudo systemctl start sshdockd
+```
+
+Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.
+
+Run restore as a user that can preserve SSHDock state ownership and modes. v0 backup archives are intended for compatible single-node SSHDock installs, not cross-host migration guarantees.
+
 ### `sshdock config set <app> <key> [--scope <scope>]`
 
 Read one config value from stdin and store it for an existing app. SSHDock does not create apps from config commands, so typos do not create secret-bearing app rows.

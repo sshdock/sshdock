@@ -449,10 +449,29 @@ Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. Faile
 
 ## Backup And Restore
 
-For v0, backup the complete SSHDock state directory before upgrades or host maintenance:
+Create an SSHDock backup before upgrades or host maintenance:
+
+```bash
+sudo sshdock backup create
+```
+
+To choose a destination:
+
+```bash
+sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+```
+
+Inspect the archive before moving or restoring it:
+
+```bash
+sudo sshdock backup inspect /root/sshdock-backup.tar.gz
+```
+
+The archive contains a manifest, the SSHDock state directory, app repos and worktrees, SQLite release/deployment/domain metadata, Git and dashboard key state, `config.key`, generated Caddy config, Caddy main config, and a Docker volume inventory file.
 
 ```text
-/var/lib/sshdock/
+manifest.json
+data/
   sshdock.db
   config.key
   apps/
@@ -461,20 +480,31 @@ For v0, backup the complete SSHDock state directory before upgrades or host main
       worktree/
   git/
   dashboard/
+docker/volumes.json
+caddy/generated.caddyfile
+caddy/main.Caddyfile
 ```
 
-Also keep a copy of generated Caddy config, normally `/etc/caddy/sshdock/sshdock.caddyfile`, and any systemd unit overrides you add outside the default installer.
+The backup command records Docker volume inventory by default, but it does not copy Docker volume contents. `--include-volumes` currently exits with an explicit unsupported message instead of taking a partial or surprising snapshot. Back up application data volumes with app-specific tooling until a safe SSHDock volume backup flow exists.
 
 `config.key` is the host-local 32-byte encryption key for app config values. Keep it outside SQLite, preserve `0600`-style permissions, and back it up with `sshdock.db`. Losing either the database or this key makes encrypted config values unrecoverable.
 
 Restore order:
 
 1. Stop `sshdockd`.
-2. Restore `/var/lib/sshdock/` with original ownership.
-3. Verify `config.key` is present and not group- or world-readable.
-4. Restore generated Caddy config if needed.
-5. Reinstall or upgrade binaries with `scripts/bootstrap.sh`.
-6. Start `sshdockd` and run `sshdock diagnostics`.
+2. Restore the backup archive.
+3. Reinstall or upgrade binaries with `scripts/bootstrap.sh` if needed.
+4. Run `sshdock diagnostics`.
+5. Start `sshdockd`.
+
+```bash
+sudo systemctl stop sshdockd
+sudo sshdock backup restore /root/sshdock-backup.tar.gz
+sudo sshdock diagnostics
+sudo systemctl start sshdockd
+```
+
+Restore extracts the archive to a temporary directory and validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths. Run restore as a user that can preserve SSHDock state ownership and file modes.
 
 After a reboot or restore, startup recovery may take a short time while `sshdockd` replays Compose deployments for apps that were previously deployed.
 

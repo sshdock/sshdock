@@ -964,6 +964,9 @@ Domains:
   domains detach <app> <domain>
 
 Operations:
+  backup create [--output <archive>]
+  backup inspect <archive>
+  backup restore <archive>
   logs <app> [service] [-f]
   releases list <app>
   events list <app>
@@ -1025,6 +1028,16 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 		}, []string{
 			"sudo sshdock logs my-app",
 			"sudo sshdock logs my-app web -f",
+		})
+	case "backup":
+		printTopicHelp(stdout, "Backup commands create, inspect, and restore SSHDock state archives.", []string{
+			"sshdock backup create [--output <archive>]",
+			"sshdock backup inspect <archive>",
+			"sshdock backup restore <archive>",
+		}, []string{
+			"sudo sshdock backup create",
+			"sudo sshdock backup inspect /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",
+			"sudo systemctl stop sshdockd && sudo sshdock backup restore /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",
 		})
 	case "releases":
 		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{

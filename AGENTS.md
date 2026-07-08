@@ -29,12 +29,14 @@ SSHDock must stay:
 - Single-node-first
 - Small, inspectable, and boring in the good way
 
-Do not introduce:
+Do not introduce as current v0 implementation scope:
 
 - Web dashboard
 - Kubernetes, k3s, Docker Swarm, or multi-node scheduling
 - Teams, RBAC, marketplace, hosted cloud features, or AI assistant features
 - Product pillars that are not reflected in public docs and local planning notes
+
+Docs may discuss future runtime-engine exploration only when clearly non-promissory and reflected in both public docs and local planning notes. Do not implement a Kubernetes or k3s backend unless an approved future milestone explicitly changes the v0 runtime scope.
 
 ## Engineering Rules
 

@@ -1,0 +1,11 @@
+services:
+  web:
+    build: .
+    ports:
+      - "127.0.0.1:18086:8080"
+    volumes:
+      - counter-data:/data
+    restart: unless-stopped
+
+volumes:
+  counter-data:

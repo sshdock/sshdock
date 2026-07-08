@@ -174,6 +174,45 @@ func TestWordPressExampleWaitsForDatabaseReadiness(t *testing.T) {
 	}
 }
 
+func TestRollbackLabDocumentsPostReceiveDeployFailure(t *testing.T) {
+	root := repoRoot(t)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "public examples guide",
+			path: filepath.Join(root, "docs", "EXAMPLES.md"),
+		},
+		{
+			name: "rollback lab readme",
+			path: filepath.Join(root, "examples", "rollback-lab", "README.md"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contents, err := os.ReadFile(tt.path)
+			if err != nil {
+				t.Fatalf("ReadFile(%s): %v", tt.path, err)
+			}
+			text := string(contents)
+			if strings.Contains(text, "The push fails during deploy") {
+				t.Fatalf("%s should describe deploy failure, not a failed git push", tt.path)
+			}
+			for _, want := range []string{
+				"The Git push may complete because SSHDock deploys from a post-receive hook.",
+				"`deploy.failed`",
+			} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("%s missing %q", tt.path, want)
+				}
+			}
+		})
+	}
+}
+
 func TestExamplesDocumentCleanup(t *testing.T) {
 	root := repoRoot(t)
 

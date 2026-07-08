@@ -32,7 +32,7 @@ make config-e2e
 make hardening-e2e
 ```
 
-The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push the static-site, build-service, and config-backed examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and rollback, verify reboot recovery and final-route cleanup, and complete the documented backup/restore drill. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
+The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push representative examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and rollback, verify reboot recovery and final-route cleanup, and complete the documented backup/restore drill. At minimum, a dogfood release should cover static-site, build-service, config-backed, one multi-service dependency example, one stateful volume example, and rollback-lab. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
 
 ## Command
 

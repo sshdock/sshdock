@@ -1,0 +1,22 @@
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:18084:80"
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped

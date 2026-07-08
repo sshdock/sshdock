@@ -128,13 +128,14 @@ sudo sshdock apps redeploy my-app
 
 Config values are encrypted in SQLite with a host-local key outside the database. Back up the SQLite database and config key together.
 
-See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable static-site, build-service, config-backed, and WordPress-lite examples. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
+See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples covering static sites, build services, config-backed apps, workers, Redis, Postgres, stateful volumes, and rollback. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
 
 ## Docs
 
 - [`docs/INSTALL.md`](docs/INSTALL.md): install, upgrade, firewall, backup, and restore notes.
 - [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md): complete `sshdock` and `sshdockd` command reference.
-- [`docs/EXAMPLES.md`](docs/EXAMPLES.md): static site, config app, and WordPress-lite examples.
+- [`docs/EXAMPLES.md`](docs/EXAMPLES.md): runnable user-story examples.
+- [`docs/RUNTIME_ENGINES.md`](docs/RUNTIME_ENGINES.md): current Compose runtime and future engine boundary.
 - [`docs/TESTING.md`](docs/TESTING.md): test tiers, e2e harnesses, and contributor verification.
 - [`AGENTS.md`](AGENTS.md): contributor and agent operating contract.
 
@@ -164,7 +165,3 @@ make bootstrap-e2e
 ```
 
 Unit tests use fake adapters for Docker Compose, Caddy, Git, SSH, and TUI state. Integration tests are tiered so normal development does not require a real server.
-
-## Product Rule
-
-SSHDock should stay SSH-native, Compose-first, single-node-first, and boring in the good way. Features that turn it into a generic web control panel or hidden cluster platform do not belong in v0.

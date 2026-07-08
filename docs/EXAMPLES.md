@@ -1,14 +1,33 @@
 # SSHDock Examples
 
-These examples are small public confidence checks for the v0 happy path:
+These examples are public confidence checks for SSHDock user stories:
 
 ```text
-git push -> first app creation -> Compose deploy -> default route -> HTTPS -> SSH dashboard visibility
+git push -> first app creation -> Compose deploy -> optional route -> SSH dashboard visibility
 ```
 
-The build-service example proves Compose builds, and the config example proves the required-config guard before Compose starts.
+Some examples prove the routed web happy path. Others prove background workers, private service dependencies, stateful volumes, config, and rollback.
 
 They are meant to be copied into a new local directory and pushed to a real SSHDock server. The deploy commands below fetch the example files from GitHub without cloning this repository. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`.
+
+Examples already included in the latest stable release use release-tagged raw URLs. New scenario examples use `main` until the next release includes them.
+
+## User-Story Matrix
+
+| User story | Example | What it proves |
+| --- | --- | --- |
+| Minimal public app | `examples/static-site` | image service, loopback port, automatic default HTTPS route |
+| Build-based service | `examples/build-service` | Dockerfile build path and app logs |
+| Config-backed app | `examples/config-app` | missing required config failure, SSH config set/list/get, redaction |
+| Worker-only app | `examples/worker-only` | background service with no public route |
+| Web + worker + Redis | `examples/web-worker-redis` | public web service with private worker and Redis services |
+| API + Postgres | `examples/api-postgres` | routed API, private database, database healthcheck, named volume |
+| Stateful volume app | `examples/stateful-counter` | built service with persistent named-volume state across redeploy |
+| Bad deploy and rollback | `examples/rollback-lab` | failed deploy evidence and rollback recovery |
+| WordPress-style app | `examples/wordpress-lite` | common stateful web + database Compose shape |
+| Custom domain/manual route | use any routed example | explicit `sshdock domains attach` when auto-routing is not enough |
+
+Docker Compose is the current runtime engine for these examples. SSHDock may explore k3s later as an advanced runtime engine, but that is a direction, not a promise. The examples are written to keep the user-facing contract Compose-first and SSH-native. See [`RUNTIME_ENGINES.md`](RUNTIME_ENGINES.md).
 
 ## Minimal Static Site
 
@@ -265,6 +284,309 @@ Expected cleanup evidence:
 - `apps list` no longer shows `config-app`.
 - No Docker containers named `sshdock_config-app-*` remain.
 - The local `config-app` directory is removed from your machine.
+
+## Worker Only
+
+Path:
+
+```text
+examples/worker-only
+```
+
+This example proves a background app with no public route.
+
+Deploy:
+
+```bash
+mkdir worker-only
+cd worker-only
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/worker-only/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/worker-only/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/worker-only/worker.sh
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/worker-only/README.md
+git init -b main
+git add .
+git commit -m "Deploy worker only"
+git remote add sshdock git@sshdock.example.com:worker-only.git
+git push sshdock main
+```
+
+Verify:
+
+```bash
+sudo sshdock apps list
+sudo sshdock domains list worker-only
+sudo sshdock logs worker-only worker
+ssh -T dashboard@sshdock.example.com
+```
+
+Expected evidence:
+
+- `apps list` shows `worker-only healthy local`.
+- `domains list worker-only` has no public route.
+- `logs worker-only worker` includes `SSHDock worker-only example tick`.
+- The dashboard shows the worker service.
+
+Clean up:
+
+```bash
+sudo sshdock apps remove worker-only --force
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_worker-only-' || true
+```
+
+No Docker volumes need to be removed.
+
+## Web Worker Redis
+
+Path:
+
+```text
+examples/web-worker-redis
+```
+
+This example proves a common app topology: public web service, background worker, and private Redis service.
+
+Deploy:
+
+```bash
+mkdir web-worker-redis
+cd web-worker-redis
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/web-worker-redis/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/web-worker-redis/Dockerfile.worker
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/web-worker-redis/worker.sh
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/web-worker-redis/README.md
+mkdir public
+curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/main/examples/web-worker-redis/public/index.html
+git init -b main
+git add .
+git commit -m "Deploy web worker redis"
+git remote add sshdock git@sshdock.example.com:web-worker-redis.git
+git push sshdock main
+```
+
+Verify:
+
+```bash
+sudo sshdock apps list
+sudo sshdock domains list web-worker-redis
+sudo sshdock logs web-worker-redis worker
+curl -I http://web-worker-redis.example.com
+curl -fsS https://web-worker-redis.example.com
+ssh -T dashboard@sshdock.example.com
+```
+
+Expected evidence:
+
+- `apps list` shows `web-worker-redis healthy local`.
+- `domains list web-worker-redis` includes `web-worker-redis.example.com`, service `web`, and port `18084`.
+- HTTP redirects to HTTPS.
+- HTTPS returns `SSHDock web worker Redis OK`.
+- Worker logs show Redis `PONG`.
+- Redis has no public route.
+
+Clean up:
+
+```bash
+sudo sshdock apps remove web-worker-redis --force
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_web-worker-redis-' || true
+```
+
+No Docker volumes need to be removed.
+
+## API Postgres
+
+Path:
+
+```text
+examples/api-postgres
+```
+
+This example proves a routed API service with a private Postgres database and a named data volume. It uses demo credentials only.
+
+Deploy:
+
+```bash
+mkdir api-postgres
+cd api-postgres
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/api-postgres/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/api-postgres/README.md
+mkdir db
+curl -fsSLo db/init.sql https://raw.githubusercontent.com/sshdock/sshdock/main/examples/api-postgres/db/init.sql
+git init -b main
+git add .
+git commit -m "Deploy API Postgres"
+git remote add sshdock git@sshdock.example.com:api-postgres.git
+git push sshdock main
+```
+
+Verify:
+
+```bash
+sudo sshdock apps list
+sudo sshdock domains list api-postgres
+sudo sshdock logs api-postgres api
+sudo sshdock logs api-postgres db
+curl -fsS https://api-postgres.example.com/messages
+ssh -T dashboard@sshdock.example.com
+```
+
+Expected evidence:
+
+- `apps list` shows `api-postgres healthy local`.
+- `domains list api-postgres` includes `api-postgres.example.com`, service `api`, and port `18085`.
+- HTTPS `/messages` returns JSON containing `SSHDock API Postgres OK`.
+- The database service has no public route.
+- The Postgres data lives in a named volume.
+
+Clean up:
+
+```bash
+sudo sshdock apps remove api-postgres --force
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_api-postgres-' || true
+sudo docker volume ls --format '{{.Name}}' | grep '^sshdock_api-postgres_'
+```
+
+The named volume remains because SSHDock preserves app data on removal. To delete the demo database too:
+
+```bash
+sudo docker volume rm sshdock_api-postgres_postgres-data
+```
+
+## Stateful Counter
+
+Path:
+
+```text
+examples/stateful-counter
+```
+
+This example proves simple persistent state. Each HTTPS request increments a counter stored in a named Docker volume. It is the preferred future backup/restore demo candidate.
+
+Deploy:
+
+```bash
+mkdir stateful-counter
+cd stateful-counter
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/stateful-counter/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/stateful-counter/Dockerfile
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/stateful-counter/server.py
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/stateful-counter/README.md
+git init -b main
+git add .
+git commit -m "Deploy stateful counter"
+git remote add sshdock git@sshdock.example.com:stateful-counter.git
+git push sshdock main
+```
+
+Verify:
+
+```bash
+curl -fsS https://stateful-counter.example.com
+curl -fsS https://stateful-counter.example.com
+sudo sshdock apps redeploy stateful-counter
+curl -fsS https://stateful-counter.example.com
+sudo sshdock domains list stateful-counter
+sudo sshdock logs stateful-counter web
+ssh -T dashboard@sshdock.example.com
+```
+
+Expected evidence:
+
+- The counter increases across requests.
+- The counter still increases after redeploy because the named volume is preserved.
+- `domains list stateful-counter` includes `stateful-counter.example.com`, service `web`, and port `18086`.
+
+Clean up:
+
+```bash
+sudo sshdock apps remove stateful-counter --force
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_stateful-counter-' || true
+sudo docker volume ls --format '{{.Name}}' | grep '^sshdock_stateful-counter_'
+```
+
+To delete the demo counter data too:
+
+```bash
+sudo docker volume rm sshdock_stateful-counter_counter-data
+```
+
+## Rollback Lab
+
+Path:
+
+```text
+examples/rollback-lab
+```
+
+This example proves a bad deploy and rollback flow.
+
+Deploy the good release:
+
+```bash
+mkdir rollback-lab
+cd rollback-lab
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/rollback-lab/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/main/examples/rollback-lab/README.md
+mkdir public
+curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/main/examples/rollback-lab/public/index.html
+git init -b main
+git add .
+git commit -m "Deploy rollback lab"
+git remote add sshdock git@sshdock.example.com:rollback-lab.git
+git push sshdock main
+curl -fsS https://rollback-lab.example.com
+```
+
+Create a bad deploy:
+
+```bash
+perl -0pi -e 's/image: nginx:alpine/image: nginx:no-such-tag-for-rollback-lab/' compose.yml
+git add compose.yml
+git commit -m "Break rollback lab image"
+git push sshdock main
+```
+
+Rollback:
+
+```bash
+sudo sshdock releases list rollback-lab
+sudo sshdock apps rollback rollback-lab <successful-release-id>
+curl -fsS https://rollback-lab.example.com
+sudo sshdock events list rollback-lab
+```
+
+Expected evidence:
+
+- The Git push may complete because SSHDock deploys from a post-receive hook.
+- The bad deploy fails and records `deploy.failed`.
+- The previous successful release remains available.
+- Rollback records `rollback.triggered` and `rollback.succeeded`.
+- HTTPS returns `SSHDock rollback lab OK` after rollback.
+
+Clean up:
+
+```bash
+sudo sshdock apps remove rollback-lab --force
+sudo docker ps -a --format '{{.Names}}' | grep '^sshdock_rollback-lab-' || true
+```
+
+No Docker volumes need to be removed.
+
+## Custom Domain Or Manual Route
+
+Use any routed example when the default `<app>.<base-domain>` route is not enough:
+
+```bash
+sudo sshdock domains attach static-site web app.example.com --port 18080
+sudo sshdock domains list static-site
+curl -fsS https://app.example.com
+```
+
+Expected evidence:
+
+- `domains list static-site` includes the manually attached domain.
+- Caddy serves HTTPS for the manual domain after DNS points at the server.
+- The dashboard shows the added route.
 
 ## WordPress Lite
 

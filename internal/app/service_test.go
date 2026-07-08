@@ -371,15 +371,16 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	failure := errors.New("compose failed")
+	deployFailure := errors.New("compose failed")
+	failure := compose.NewDeployError(compose.DeployStageBuildServices, deployFailure)
 	runner := &fakeRecoveryRunner{deployErr: failure}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
 	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
-	if !errors.Is(err, failure) {
-		t.Fatalf("RedeployLatest error = %v, want %v", err, failure)
+	if !errors.Is(err, deployFailure) {
+		t.Fatalf("RedeployLatest error = %v, want wrapped %v", err, deployFailure)
 	}
 	if store.appStatuses["app_1"] != AppStatusFailed {
 		t.Fatalf("app status = %q", store.appStatuses["app_1"])
@@ -387,8 +388,16 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	if store.deploymentStatuses["dep_redeploy_1"] != DeploymentStatusFailed {
 		t.Fatalf("deployment status = %q", store.deploymentStatuses["dep_redeploy_1"])
 	}
-	if store.deploymentErrors["dep_redeploy_1"] != "compose failed" {
-		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
+	for _, want := range []string{
+		"stage=build services",
+		"detail=build services failed: compose failed",
+		"changed=redeploy deployment dep_redeploy_1 marked failed; the previously running release may still be serving",
+		"fix=fix Dockerfile or build context errors",
+		"retry=sudo sshdock apps redeploy app_1",
+	} {
+		if !strings.Contains(store.deploymentErrors["dep_redeploy_1"], want) {
+			t.Fatalf("deployment error missing %q:\n%s", want, store.deploymentErrors["dep_redeploy_1"])
+		}
 	}
 	assertEventTypes(t, store.events["app_1"], []string{"redeploy.started", "redeploy.failed"})
 }
@@ -411,8 +420,11 @@ func TestServiceRedeployFailureRedactsResolvedConfigValues(t *testing.T) {
 	if strings.Contains(err.Error(), "postgres://secret") {
 		t.Fatalf("returned error leaked secret: %v", err)
 	}
-	if store.deploymentErrors["dep_redeploy_1"] != "docker output included <redacted>" {
+	if !strings.Contains(store.deploymentErrors["dep_redeploy_1"], "detail=docker output included <redacted>") {
 		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
+	}
+	if strings.Contains(store.deploymentErrors["dep_redeploy_1"], "postgres://secret") {
+		t.Fatalf("deployment error leaked secret: %q", store.deploymentErrors["dep_redeploy_1"])
 	}
 	if strings.Contains(store.events["app_1"][1].Message, "postgres://secret") {
 		t.Fatalf("event leaked secret: %#v", store.events["app_1"][1])

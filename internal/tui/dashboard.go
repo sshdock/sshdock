@@ -96,6 +96,13 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 			return DashboardSnapshot{}, fmt.Errorf("list events for %s: %w", model.ID, err)
 		}
 
+		redactionValues, err := h.redactionEnv(ctx, model, releases)
+		if err != nil {
+			return DashboardSnapshot{}, err
+		}
+		deployments = redactDeployments(deployments, redactionValues)
+		events = redactEvents(events, redactionValues)
+
 		services, logsByService, err := h.serviceStatusAndLogs(ctx, model, releases)
 		if err != nil {
 			return DashboardSnapshot{}, err
@@ -180,6 +187,43 @@ func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, p
 		return nil, nil
 	}
 	return h.configResolver.ResolveAppConfig(ctx, appID, projectDir)
+}
+
+func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App, releases []app.Release) (map[string]string, error) {
+	if h.configResolver == nil {
+		return nil, nil
+	}
+	latest, ok := latestRelease(releases)
+	if !ok || latest.ComposePath == "" {
+		return nil, nil
+	}
+	env, err := h.resolveConfigEnv(ctx, model.ID, filepath.Dir(latest.ComposePath))
+	if err != nil {
+		return nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
+	}
+	return env, nil
+}
+
+func redactDeployments(deployments []app.Deployment, values map[string]string) []app.Deployment {
+	if len(values) == 0 {
+		return deployments
+	}
+	redacted := append([]app.Deployment(nil), deployments...)
+	for i := range redacted {
+		redacted[i].ErrorMessage = compose.RedactValues(redacted[i].ErrorMessage, values)
+	}
+	return redacted
+}
+
+func redactEvents(events []app.Event, values map[string]string) []app.Event {
+	if len(values) == 0 {
+		return events
+	}
+	redacted := append([]app.Event(nil), events...)
+	for i := range redacted {
+		redacted[i].Message = compose.RedactValues(redacted[i].Message, values)
+	}
+	return redacted
 }
 
 func renderAppList(writer io.Writer, screen AppListScreen) error {
@@ -286,7 +330,15 @@ func renderDeployments(writer io.Writer, deployments []DeploymentView) error {
 		return err
 	}
 	for _, deployment := range deployments {
-		if _, err := fmt.Fprintf(writer, "- %s %s %s\n", deployment.ID, deployment.Status, deployment.ReleaseID); err != nil {
+		if _, err := fmt.Fprintf(writer, "- %s %s %s", deployment.ID, deployment.Status, deployment.ReleaseID); err != nil {
+			return err
+		}
+		if deployment.ErrorMessage != "" {
+			if _, err := fmt.Fprintf(writer, " %s", deployment.ErrorMessage); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(writer); err != nil {
 			return err
 		}
 	}

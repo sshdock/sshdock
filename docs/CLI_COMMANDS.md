@@ -155,6 +155,8 @@ git@sshdock.example.com:<app>.git
 
 Successful deploys also try to create `<app>.example.com` automatically when the Compose file exposes one safely inferred TCP host-published port. Existing legacy stored values that are already Git hosts continue to work for remote output.
 
+Failed deploys print and persist a one-line recovery summary with `stage`, `detail`, `changed`, `fix`, and `retry` fields. Missing config, Compose validation, image pull, build, container start, redeploy, and rollback failures use the same field names in push output, event records, release inspection, and dashboard views. Route inference skips and Caddy reload failures use the same fields in event and dashboard views. Stored config values are redacted from these normal inspection paths.
+
 ### `sshdock ssh-keys add <name>`
 
 Read one SSH public key from stdin, store it, and rewrite Git receive and dashboard `authorized_keys` files.
@@ -307,8 +309,10 @@ sudo sshdock releases list my-app
 Output format:
 
 ```text
-<release-id>	<status>	<commit-sha>	<created-at>	<compose-path>
+<release-id>	<status>	<commit-sha>	<created-at>	<compose-path>	[failure-detail]
 ```
+
+`failure-detail` is present when a failed deployment for that release has a persisted error. It uses the same `stage`, `detail`, `changed`, `fix`, and `retry` fields shown by failed push output.
 
 ### `sshdock events list <app>`
 

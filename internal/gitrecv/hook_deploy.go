@@ -11,6 +11,7 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployfailure"
 	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
@@ -171,18 +172,25 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 
 	env, err := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
 	if err != nil {
+		failure := deployfailure.New(
+			"config",
+			err,
+			"release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed",
+			"set the missing config value(s) with the command(s) in detail",
+			"push the same commit again after fixing config",
+		)
 		finishedAt := h.now()
-		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, err.Error())
+		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, failure.Error())
 		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
 		_ = h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusFailed, finishedAt)
 		_ = h.store.CreateEvent(ctx, app.Event{
 			ID:        EventID(deploymentID, "failed"),
 			AppID:     event.AppName,
 			Type:      "deploy.failed",
-			Message:   "Deploy failed for release " + releaseID + ": " + err.Error(),
+			Message:   "Deploy failed for release " + releaseID + ": " + failure.Error(),
 			CreatedAt: finishedAt,
 		})
-		return err
+		return failure
 	}
 
 	err = h.runner.Deploy(ctx, compose.DeployRequest{
@@ -204,18 +212,26 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	})
 	if err != nil {
 		err = compose.RedactError(err, env)
+		stage := deployfailure.Stage(err)
+		failure := deployfailure.New(
+			stage,
+			err,
+			gitPushChangedState(releaseID, deploymentID, stage),
+			deployfailure.FixForStage(stage),
+			"push the same commit again after fixing the deploy failure",
+		)
 		finishedAt := h.now()
-		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, err.Error())
+		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, failure.Error())
 		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
 		_ = h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusFailed, finishedAt)
 		_ = h.store.CreateEvent(ctx, app.Event{
 			ID:        EventID(deploymentID, "failed"),
 			AppID:     event.AppName,
 			Type:      "deploy.failed",
-			Message:   "Deploy failed for release " + releaseID + ": " + err.Error(),
+			Message:   "Deploy failed for release " + releaseID + ": " + failure.Error(),
 			CreatedAt: finishedAt,
 		})
-		return err
+		return failure
 	}
 
 	finishedAt := h.now()
@@ -300,10 +316,16 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, comp
 	}
 	if err := h.syncRoutesFromStore(ctx); err != nil {
 		_ = h.store.CreateEvent(ctx, app.Event{
-			ID:        EventID(deploymentID, "router_reload_failed"),
-			AppID:     appName,
-			Type:      "router.reload_failed",
-			Message:   "Caddy reload failed for auto route " + appHost + ": " + err.Error(),
+			ID:    EventID(deploymentID, "router_reload_failed"),
+			AppID: appName,
+			Type:  "router.reload_failed",
+			Message: deployfailure.Message(
+				"caddy reload",
+				err.Error(),
+				"domain was stored, but generated Caddy routes may not be active",
+				"run sudo sshdock diagnostics and inspect Caddy",
+				"sudo sshdock apps redeploy "+appName,
+			),
 			CreatedAt: createdAt.Add(2 * time.Second),
 		})
 		return nil
@@ -318,10 +340,13 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, comp
 }
 
 func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName string, deploymentID string, reason string, createdAt time.Time) error {
-	message := "Skipped automatic route: " + reason
-	if !strings.Contains(message, "domains attach") {
-		message += "; attach manually with sshdock domains attach"
-	}
+	message := deployfailure.Message(
+		"route inference",
+		reason,
+		"containers deployed, routes unchanged",
+		"attach manually with sshdock domains attach",
+		"sudo sshdock domains attach "+appName+" <service> <domain> --port <port>",
+	)
 	return h.store.CreateEvent(ctx, app.Event{
 		ID:        EventID(deploymentID, "route_auto_skipped"),
 		AppID:     appName,
@@ -329,6 +354,17 @@ func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName
 		Message:   message,
 		CreatedAt: createdAt.Add(time.Second),
 	})
+}
+
+func gitPushChangedState(releaseID string, deploymentID string, stage string) string {
+	switch compose.DeployStage(stage) {
+	case compose.DeployStageComposeConfig, compose.DeployStageValidateCompose, compose.DeployStagePullImages, compose.DeployStageBuildServices:
+		return "release " + releaseID + " and deployment " + deploymentID + " marked failed before containers started; routes were not changed"
+	case compose.DeployStageStartContainers:
+		return "release " + releaseID + " and deployment " + deploymentID + " marked failed while starting containers; routes were not changed"
+	default:
+		return "release " + releaseID + " and deployment " + deploymentID + " marked failed; inspect the detail before assuming container or route state"
+	}
 }
 
 func (h *PostReceiveHandler) syncRoutesFromStore(ctx context.Context) error {

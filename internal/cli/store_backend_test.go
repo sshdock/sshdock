@@ -482,6 +482,37 @@ func TestStoreBackendLifecycleInspectionCommands(t *testing.T) {
 	}
 }
 
+func TestStoreBackendListReleasesIncludesFailedDeploymentDetail(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	failure := "stage=pull images; detail=pull images failed: denied; retry=push the same commit again after fixing the deploy failure"
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{
+		ID:           "dep_failed",
+		AppID:        "my-app",
+		ReleaseID:    "rel_new",
+		Status:       app.DeploymentStatusFailed,
+		StartedAt:    now.Add(time.Minute),
+		FinishedAt:   now.Add(2 * time.Minute),
+		ErrorMessage: failure,
+	}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir})
+	releases, err := backend.ListReleases("my-app")
+	if err != nil {
+		t.Fatalf("ListReleases: %v", err)
+	}
+	for _, release := range releases {
+		if release.ID == "rel_new" && release.Failure != failure {
+			t.Fatalf("release failure = %q, want %q", release.Failure, failure)
+		}
+	}
+}
+
 func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)

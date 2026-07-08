@@ -46,7 +46,7 @@ func TestValidateFileRejectsUnsupportedServiceFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidateFile error = nil, want error")
 	}
-	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "web.command") {
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "services.web.command") {
 		t.Fatalf("ValidateFile error = %q, want unsupported service field path", err)
 	}
 	if !strings.Contains(err.Error(), "docs/COMPOSE_SUPPORT.md") {

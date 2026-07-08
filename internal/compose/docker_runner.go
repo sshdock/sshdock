@@ -48,38 +48,38 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 	baseArgs := composeArgs(baseFiles, projectName)
 
 	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "config"))); err != nil {
-		return err
+		return NewDeployError(DeployStageComposeConfig, err)
 	}
 	if _, err := ValidateFile(request.ComposePath); err != nil {
-		return err
+		return NewDeployError(DeployStageValidateCompose, err)
 	}
 	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable"))); err != nil {
-		return err
+		return NewDeployError(DeployStagePullImages, err)
 	}
 
 	buildServices, err := detectBuildServices(request.ComposePath)
 	if err != nil {
-		return err
+		return NewDeployError(DeployStageBuildServices, err)
 	}
 
 	deployFiles := baseFiles
 	if len(buildServices) > 0 {
 		overridePath, err := writeReleaseOverride(request.ProjectDir, request.AppName, request.CommitSHA, buildServices)
 		if err != nil {
-			return err
+			return NewDeployError(DeployStageBuildServices, err)
 		}
 		deployFiles = append(deployFiles, overridePath)
 
 		buildArgs := commandArgs(composeArgs(deployFiles, projectName), "build")
 		buildArgs = append(buildArgs, buildServices...)
 		if _, err := r.executor.Run(ctx, deployCommand(request, buildArgs)); err != nil {
-			return err
+			return NewDeployError(DeployStageBuildServices, err)
 		}
 	}
 
 	upArgs := commandArgs(composeArgs(deployFiles, projectName), "up", "-d")
 	if _, err := r.executor.Run(ctx, deployCommand(request, upArgs)); err != nil {
-		return err
+		return NewDeployError(DeployStageStartContainers, err)
 	}
 
 	for _, service := range buildServices {
@@ -88,7 +88,7 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error 
 			Dir:  request.ProjectDir,
 			Args: []string{"image", "tag", releaseImage(request.AppName, service, request.CommitSHA), latestImage(request.AppName, service)},
 		}); err != nil {
-			return err
+			return NewDeployError(DeployStageTagImages, err)
 		}
 	}
 

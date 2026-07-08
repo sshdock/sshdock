@@ -387,7 +387,8 @@ func TestLifecycleInspectionCommands(t *testing.T) {
 		ID:        "rel_1",
 		AppName:   "my-app",
 		CommitSHA: "abc123",
-		Status:    "succeeded",
+		Status:    "failed",
+		Failure:   "stage=build services; detail=build services failed: docker output included <redacted>",
 		CreatedAt: time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC),
 	}}
 	backend.events = []Event{{
@@ -417,7 +418,7 @@ func TestLifecycleInspectionCommands(t *testing.T) {
 		want []string
 	}{
 		{name: "logs", args: []string{"logs", "my-app", "web", "-f"}, want: []string{"web log\n"}},
-		{name: "releases list", args: []string{"releases", "list", "my-app"}, want: []string{"rel_1\tsucceeded\tabc123\t2026-07-04T10:00:00Z"}},
+		{name: "releases list", args: []string{"releases", "list", "my-app"}, want: []string{"rel_1\tfailed\tabc123\t2026-07-04T10:00:00Z", "stage=build services", "<redacted>"}},
 		{name: "events list", args: []string{"events", "list", "my-app"}, want: []string{"2026-07-04T10:01:00Z\tdeploy.succeeded\tDeploy succeeded"}},
 		{name: "domains list", args: []string{"domains", "list", "my-app"}, want: []string{"example.com\tweb\t3000\ttrue"}},
 		{name: "ssh-keys list", args: []string{"ssh-keys", "list"}, want: []string{"admin\t", "\t2026-07-04T10:02:00Z"}},

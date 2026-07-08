@@ -560,8 +560,8 @@ sudo sshdock events list rollback-lab
 Expected evidence:
 
 - The Git push may complete because SSHDock deploys from a post-receive hook.
-- The bad deploy fails and records `deploy.failed`.
-- The previous successful release remains available.
+- The bad deploy fails and records `deploy.failed` with `stage`, `detail`, `changed`, `fix`, and `retry` fields.
+- `releases list rollback-lab` shows the previous successful release, the failed release, and the persisted failure detail.
 - Rollback records `rollback.triggered` and `rollback.succeeded`.
 - HTTPS returns `SSHDock rollback lab OK` after rollback.
 

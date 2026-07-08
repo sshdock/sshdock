@@ -333,6 +333,16 @@ func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list releases for app %q: %w", appName, err)
 	}
+	deployments, err := b.store.ListDeploymentsByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list deployments for app %q: %w", appName, err)
+	}
+	failuresByRelease := map[string]string{}
+	for _, deployment := range deployments {
+		if deployment.Status == appmodel.DeploymentStatusFailed && deployment.ErrorMessage != "" {
+			failuresByRelease[deployment.ReleaseID] = deployment.ErrorMessage
+		}
+	}
 
 	releases := make([]Release, 0, len(models))
 	for _, model := range models {
@@ -342,6 +352,7 @@ func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 			CommitSHA:   model.CommitSHA,
 			ComposePath: model.ComposePath,
 			Status:      string(model.Status),
+			Failure:     failuresByRelease[model.ID],
 			CreatedAt:   model.CreatedAt,
 			UpdatedAt:   model.UpdatedAt,
 		})

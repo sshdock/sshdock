@@ -100,6 +100,50 @@ func TestDockerRunnerUpdatesLatestOnlyAfterUpSucceeds(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, `services:
+  web:
+    build: .
+`)
+
+	tests := []struct {
+		name   string
+		failAt int
+		stage  DeployStage
+	}{
+		{name: "pull", failAt: 1, stage: DeployStagePullImages},
+		{name: "build", failAt: 2, stage: DeployStageBuildServices},
+		{name: "start", failAt: 3, stage: DeployStageStartContainers},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			failure := errors.New(test.name + " failed")
+			executor := &recordingExecutor{FailAt: test.failAt, Err: failure}
+			runner := NewDockerRunner(executor)
+
+			err := runner.Deploy(ctx, DeployRequest{
+				AppName:     "my-app",
+				ProjectDir:  projectDir,
+				ComposePath: composePath,
+				CommitSHA:   "abc123",
+			})
+			if !errors.Is(err, failure) {
+				t.Fatalf("Deploy error = %v, want wrapped %v", err, failure)
+			}
+			var deployErr *DeployError
+			if !errors.As(err, &deployErr) {
+				t.Fatalf("Deploy error = %T %[1]v, want DeployError", err)
+			}
+			if deployErr.Stage != test.stage {
+				t.Fatalf("DeployError stage = %q, want %q", deployErr.Stage, test.stage)
+			}
+		})
+	}
+}
+
 func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()

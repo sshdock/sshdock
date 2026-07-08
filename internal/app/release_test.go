@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,7 +74,8 @@ func TestServiceRollbackReleaseDeploysAndMarksSucceeded(t *testing.T) {
 func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
-	failure := errors.New("deploy failed")
+	deployFailure := errors.New("deploy failed")
+	failure := compose.NewDeployError(compose.DeployStageStartContainers, deployFailure)
 	runner := &compose.FakeRunner{DeployErr: failure}
 	service := NewService(store, WithDeployRunner(runner))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
@@ -86,14 +88,22 @@ func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 	}
 
 	_, err := service.RollbackRelease(ctx, "app_1", "rel_1", "dep_rollback_1")
-	if !errors.Is(err, failure) {
-		t.Fatalf("RollbackRelease error = %v, want %v", err, failure)
+	if !errors.Is(err, deployFailure) {
+		t.Fatalf("RollbackRelease error = %v, want wrapped %v", err, deployFailure)
 	}
 	if store.deploymentStatuses["dep_rollback_1"] != DeploymentStatusFailed {
 		t.Fatalf("stored deployment status = %q", store.deploymentStatuses["dep_rollback_1"])
 	}
-	if store.deploymentErrors["dep_rollback_1"] != "deploy failed" {
-		t.Fatalf("stored deployment error = %q", store.deploymentErrors["dep_rollback_1"])
+	for _, want := range []string{
+		"stage=start containers",
+		"detail=start containers failed: deploy failed",
+		"changed=rollback deployment dep_rollback_1 marked failed; the previously running release may still be serving",
+		"fix=inspect docker compose logs on the server and fix the app",
+		"retry=sudo sshdock apps rollback app_1 rel_1",
+	} {
+		if !strings.Contains(store.deploymentErrors["dep_rollback_1"], want) {
+			t.Fatalf("stored deployment error missing %q:\n%s", want, store.deploymentErrors["dep_rollback_1"])
+		}
 	}
 	assertEventTypes(t, store.events["app_1"], []string{"rollback.triggered", "rollback.failed"})
 }

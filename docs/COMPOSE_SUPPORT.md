@@ -2,7 +2,7 @@
 
 SSHDock v0 deploys Docker Compose apps on one node. The supported contract is intentionally small: enough for solo-developer web apps, workers, private dependencies, config interpolation, health checks, and named volumes.
 
-This is not a promise of full Docker Compose compatibility. Unsupported fields fail during deploy validation before SSHDock starts Compose.
+This is not a promise of full Docker Compose compatibility. Unsupported fields fail during deploy validation before SSHDock starts Compose. Validation errors include the unsupported field path, such as `networks` or `services.web.command`, and point back to this support boundary.
 
 ## File Detection
 

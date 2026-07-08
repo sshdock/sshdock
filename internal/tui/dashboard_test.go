@@ -38,6 +38,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		deploymentsByApp: map[string][]app.Deployment{
 			"my-app": {
 				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
+				{ID: "dep_2", AppID: "my-app", ReleaseID: "rel_old", Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), ErrorMessage: "stage=build services; detail=build services failed: docker output included postgres://secret"},
 			},
 		},
 		eventsByApp: map[string][]app.Event{
@@ -75,6 +76,8 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"rel_new succeeded abc123",
 		"Deployments",
 		"dep_1 succeeded rel_new",
+		"dep_2 failed rel_old",
+		"stage=build services; detail=build services failed: docker output included <redacted>",
 		"Events",
 		"deploy.succeeded Deploy succeeded",
 		"Logs web",

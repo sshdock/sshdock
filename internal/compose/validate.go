@@ -92,7 +92,7 @@ func validateServices(servicesNode *yaml.Node) ([]string, error) {
 		for j := 0; j < len(serviceNode.Content); j += 2 {
 			field := serviceNode.Content[j].Value
 			if !supported[field] {
-				return nil, fmt.Errorf("unsupported field %q in service %s.%s; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", field, serviceName, field)
+				return nil, fmt.Errorf("unsupported field %q at services.%s.%s; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", field, serviceName, field)
 			}
 		}
 	}

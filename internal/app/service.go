@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployfailure"
 )
 
 var ErrNoSuccessfulRelease = errors.New("no successful release")
@@ -246,11 +247,19 @@ func (s *Service) RollbackRelease(ctx context.Context, appID string, releaseID s
 		Env:         env,
 	}); err != nil {
 		err = compose.RedactError(err, env)
-		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "rollback.failed", "Rollback failed for release "+releaseID+": "+err.Error(), err.Error())
+		stage := deployfailure.Stage(err)
+		failure := deployfailure.New(
+			stage,
+			err,
+			"rollback deployment "+deployment.ID+" marked failed; the previously running release may still be serving",
+			deployfailure.FixForStage(stage),
+			"sudo sshdock apps rollback "+appID+" "+releaseID,
+		)
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "rollback.failed", "Rollback failed for release "+releaseID+": "+failure.Error(), failure.Error())
 		deployment.Status = DeploymentStatusFailed
 		deployment.FinishedAt = s.now()
-		deployment.ErrorMessage = err.Error()
-		return deployment, err
+		deployment.ErrorMessage = failure.Error()
+		return deployment, failure
 	}
 
 	if err := s.MarkDeploymentSucceeded(ctx, deployment.ID); err != nil {
@@ -328,11 +337,19 @@ func (s *Service) RedeployLatest(ctx context.Context, appID string, deploymentID
 		Env:         env,
 	}); err != nil {
 		err = compose.RedactError(err, env)
-		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "redeploy.failed", "Redeploy failed for release "+release.ID+": "+err.Error(), err.Error())
+		stage := deployfailure.Stage(err)
+		failure := deployfailure.New(
+			stage,
+			err,
+			"redeploy deployment "+deployment.ID+" marked failed; the previously running release may still be serving",
+			deployfailure.FixForStage(stage),
+			"sudo sshdock apps redeploy "+appID,
+		)
+		_ = s.failRecoveryDeployment(ctx, deployment.ID, appID, "redeploy.failed", "Redeploy failed for release "+release.ID+": "+failure.Error(), failure.Error())
 		deployment.Status = DeploymentStatusFailed
 		deployment.FinishedAt = s.now()
-		deployment.ErrorMessage = err.Error()
-		return deployment, err
+		deployment.ErrorMessage = failure.Error()
+		return deployment, failure
 	}
 
 	finishedAt := s.now()

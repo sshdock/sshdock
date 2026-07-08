@@ -94,6 +94,8 @@ sudo sshdock releases list my-app
 sudo sshdock events list my-app
 ```
 
+Failed deploys print and persist `stage`, `detail`, `changed`, `fix`, and `retry` fields. The same failure detail is visible through `releases list`, `events list`, and the SSH dashboard, with stored config values redacted.
+
 Operate an app:
 
 ```bash

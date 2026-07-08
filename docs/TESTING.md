@@ -19,7 +19,7 @@ The default e2e still uses fake runtime adapters for:
 - SSH dashboard sessions
 
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
-The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`.
+The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions and deploy-failure persistence are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`.
 
 ## Internal Dogfood Readiness
 
@@ -202,9 +202,15 @@ The recovery test:
 2. Creates an app and pushes a good Compose release through a local bare repository hook.
 3. Pushes a second release with `SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR` to force a failed deploy.
 4. Runs `sshdock apps rollback <app> <release-id>`.
-5. Verifies app, release, deployment, and event state reflect the failed deploy followed by a successful rollback.
+5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful rollback.
 
 This test uses the fake Compose runner so it does not mutate Docker, Caddy, or host SSH state.
+
+Focused unit tests for deploy failure classification, redaction, route inference, Caddy reload failure, release-list failure detail, and dashboard failure rendering live in:
+
+```bash
+go test ./internal/compose ./internal/gitrecv ./internal/app ./internal/cli ./internal/tui
+```
 
 ## Hardening Tier
 

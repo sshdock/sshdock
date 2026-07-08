@@ -31,8 +31,8 @@ git push sshdock main
 Expected bad-deploy evidence:
 
 - The Git push may complete because SSHDock deploys from a post-receive hook.
-- The deploy fails and records `deploy.failed`.
-- `sudo sshdock releases list rollback-lab` shows the original successful release and the failed release.
+- The deploy fails and records `deploy.failed` with `stage`, `detail`, `changed`, `fix`, and `retry` fields.
+- `sudo sshdock releases list rollback-lab` shows the original successful release, the failed release, and the persisted failure detail.
 - `sudo sshdock events list rollback-lab` includes `deploy.failed`.
 - The previous good app remains recoverable through rollback.
 

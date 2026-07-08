@@ -43,6 +43,7 @@ type Release struct {
 	CommitSHA   string
 	ComposePath string
 	Status      string
+	Failure     string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -844,7 +845,11 @@ func (r *Runner) runReleases(args []string, stdout io.Writer, stderr io.Writer) 
 			return 0
 		}
 		for _, release := range releases {
-			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\n", release.ID, release.Status, release.CommitSHA, formatCLITime(release.CreatedAt), release.ComposePath)
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s", release.ID, release.Status, release.CommitSHA, formatCLITime(release.CreatedAt), release.ComposePath)
+			if release.Failure != "" {
+				fmt.Fprintf(stdout, "\t%s", release.Failure)
+			}
+			fmt.Fprintln(stdout)
 		}
 		return 0
 	}

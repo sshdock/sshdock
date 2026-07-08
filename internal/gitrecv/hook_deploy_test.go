@@ -256,7 +256,8 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	runner := &compose.FakeRunner{}
-	resolver := &fakeHookConfigResolver{err: errors.New("missing required config for my-app: SECRET")}
+	missingConfig := errors.New("missing required config for my-app: SECRET\nssh dashboard@<host> config set my-app SECRET")
+	resolver := &fakeHookConfigResolver{err: missingConfig}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:          sqlite,
 		Runner:         runner,
@@ -268,8 +269,19 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	})
 
 	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
-	if err == nil || err.Error() != "missing required config for my-app: SECRET" {
-		t.Fatalf("Handle error = %v", err)
+	if !errors.Is(err, missingConfig) {
+		t.Fatalf("Handle error = %v, want wrapped %v", err, missingConfig)
+	}
+	assertFailureDetail(t, err.Error(),
+		"stage=config",
+		"detail=missing required config for my-app: SECRET",
+		"ssh dashboard@<host> config set my-app SECRET",
+		"changed=release rel_abc123 and deployment dep_abc123 marked failed before Compose started; containers and routes were not changed",
+		"fix=set the missing config value(s) with the command(s) in detail",
+		"retry=push the same commit again after fixing config",
+	)
+	if strings.Contains(err.Error(), "secret-value") {
+		t.Fatalf("Handle error leaked config value: %v", err)
 	}
 	if len(runner.DeployRequests) != 0 {
 		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
@@ -277,8 +289,14 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusFailed) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	if errorMessage := queryDeploymentError(t, dbPath, "dep_abc123"); errorMessage != "missing required config for my-app: SECRET" {
-		t.Fatalf("deployment error = %q", errorMessage)
+	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
+	assertFailureDetail(t, errorMessage, "stage=config", "changed=release rel_abc123", "retry=push the same commit again")
+	events, eventErr := sqlite.ListEventsByApp(ctx, "my-app")
+	if eventErr != nil {
+		t.Fatalf("ListEventsByApp: %v", eventErr)
+	}
+	if !strings.Contains(events[1].Message, errorMessage) {
+		t.Fatalf("failed event = %#v, want deployment failure detail %q", events[1], errorMessage)
 	}
 }
 
@@ -339,9 +357,58 @@ services:
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	if !strings.Contains(events[2].Message, "ambiguous") || !strings.Contains(events[2].Message, "domains attach") {
-		t.Fatalf("skip event = %#v, want actionable ambiguous-route message", events[2])
+	assertFailureDetail(t, events[2].Message, "stage=route inference", "ambiguous", "changed=containers deployed, routes unchanged", "domains attach")
+}
+
+func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
+		BaseDomain: "example.com",
+		GitHost:    "sshdock.example.com",
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
 	}
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	routeSyncer := &fakeHookRouteSyncer{Err: errors.New("caddy reload failed")}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Router: routeSyncer,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  web:
+    image: example/web:latest
+    ports:
+      - "127.0.0.1:3100:80"
+`)
+			return nil
+		}),
+		Now: func() time.Time { return now },
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_attached", "router.reload_failed"}
+	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+	assertFailureDetail(t, events[3].Message,
+		"stage=caddy reload",
+		"detail=caddy reload failed",
+		"changed=domain was stored, but generated Caddy routes may not be active",
+		"fix=run sudo sshdock diagnostics",
+		"retry=sudo sshdock apps redeploy my-app",
+	)
 }
 
 func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing.T) {
@@ -457,7 +524,8 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	failure := errors.New("fake deploy failed")
+	deployFailure := errors.New("pull access denied")
+	failure := compose.NewDeployError(compose.DeployStagePullImages, deployFailure)
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: &compose.FakeRunner{DeployErr: failure},
@@ -468,8 +536,8 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	})
 
 	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
-	if !errors.Is(err, failure) {
-		t.Fatalf("Handle error = %v, want %v", err, failure)
+	if !errors.Is(err, deployFailure) {
+		t.Fatalf("Handle error = %v, want wrapped %v", err, deployFailure)
 	}
 
 	status := queryDeploymentStatus(t, dbPath, "dep_abc123")
@@ -477,9 +545,13 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 		t.Fatalf("deployment status = %q", status)
 	}
 	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
-	if !strings.Contains(errorMessage, "fake deploy failed") {
-		t.Fatalf("deployment error = %q", errorMessage)
-	}
+	assertFailureDetail(t, errorMessage,
+		"stage=pull images",
+		"detail=pull images failed: pull access denied",
+		"changed=release rel_abc123 and deployment dep_abc123 marked failed before containers started; routes were not changed",
+		"fix=check image names, registry credentials, and network access",
+		"retry=push the same commit again after fixing the deploy failure",
+	)
 
 	model, getErr := sqlite.GetApp(ctx, "my-app")
 	if getErr != nil {
@@ -531,8 +603,14 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 		t.Fatalf("Handle error leaked secret: %v", err)
 	}
 	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
-	if errorMessage != "docker output included <redacted>" {
-		t.Fatalf("deployment error = %q", errorMessage)
+	assertFailureDetail(t, errorMessage,
+		"stage=deploy",
+		"detail=docker output included <redacted>",
+		"changed=release rel_abc123 and deployment dep_abc123 marked failed; inspect the detail before assuming container or route state",
+		"retry=push the same commit again after fixing the deploy failure",
+	)
+	if strings.Contains(errorMessage, "api-secret") {
+		t.Fatalf("deployment error leaked secret: %q", errorMessage)
 	}
 	events, err := sqlite.ListEventsByApp(ctx, "my-app")
 	if err != nil {
@@ -735,6 +813,15 @@ func queryDeploymentError(t *testing.T, dbPath string, deploymentID string) stri
 		t.Fatalf("query deployment error: %v", err)
 	}
 	return errorMessage
+}
+
+func assertFailureDetail(t *testing.T, message string, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(message, want) {
+			t.Fatalf("failure detail missing %q:\n%s", want, message)
+		}
+	}
 }
 
 func eventTypes(events []app.Event) []string {

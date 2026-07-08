@@ -154,6 +154,12 @@ Focused CLI tests cover `sshdock apps health <app>`, `sshdock domains check <app
 go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendAppsHealth|StoreBackendDomainsCheck)'
 ```
 
+Focused adoption and example docs checks cover the comparison, migration, troubleshooting, and runnable example contracts:
+
+```bash
+go test ./test/harness -run 'Test(AdoptionDocs|Examples|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+```
+
 ### Real SSH Dashboard Screenshot Capture
 
 Run:

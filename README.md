@@ -153,6 +153,7 @@ See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples covering static
 - [`docs/INSTALL.md`](docs/INSTALL.md): install, upgrade, firewall, backup, and restore notes.
 - [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md): complete `sshdock` and `sshdockd` command reference.
 - [`docs/EXAMPLES.md`](docs/EXAMPLES.md): runnable user-story examples.
+- Adoption docs: [`docs/COMPARE_DOKKU.md`](docs/COMPARE_DOKKU.md), [`docs/COMPARE_DOKPLOY.md`](docs/COMPARE_DOKPLOY.md), [`docs/MIGRATE_FROM_DOKKU.md`](docs/MIGRATE_FROM_DOKKU.md), [`docs/MIGRATE_FROM_DOKPLOY.md`](docs/MIGRATE_FROM_DOKPLOY.md), and [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 - [`docs/RUNTIME_ENGINES.md`](docs/RUNTIME_ENGINES.md): current Compose runtime and future engine boundary.
 - [`docs/TESTING.md`](docs/TESTING.md): test tiers, e2e harnesses, and contributor verification.
 - [`AGENTS.md`](AGENTS.md): contributor and agent operating contract.

@@ -56,7 +56,7 @@ func validateTopLevel(root *yaml.Node) (*yaml.Node, error) {
 		key := root.Content[i].Value
 		value := root.Content[i+1]
 		if !supported[key] {
-			return nil, fmt.Errorf("unsupported top-level field %q", key)
+			return nil, fmt.Errorf("unsupported top-level field %q; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", key)
 		}
 		if key == "services" {
 			servicesNode = value
@@ -92,7 +92,7 @@ func validateServices(servicesNode *yaml.Node) ([]string, error) {
 		for j := 0; j < len(serviceNode.Content); j += 2 {
 			field := serviceNode.Content[j].Value
 			if !supported[field] {
-				return nil, fmt.Errorf("unsupported field %q in service %s.%s", field, serviceName, field)
+				return nil, fmt.Errorf("unsupported field %q in service %s.%s; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", field, serviceName, field)
 			}
 		}
 	}

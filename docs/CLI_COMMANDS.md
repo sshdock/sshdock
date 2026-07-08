@@ -49,7 +49,9 @@ Check SSHDock runtime readiness.
 sudo sshdock diagnostics
 ```
 
-The diagnostics command checks config, runtime directories, Docker, Docker Compose, Caddy, SSH, Git, and SQLite migrations. A failed check exits non-zero and prints actionable failure text.
+The diagnostics command checks config, runtime directories, Linux/systemd prerequisites, Docker, Docker Compose, Caddy, SSH, Git, `sshdockd.service`, ports `22`/`80`/`443`, configured DNS, Caddy import wiring, forced-command `authorized_keys`, config-key permissions when present, and SQLite migrations.
+
+Each failed check prints `why <name>: ...` and `fix <name>: ...` lines. A failed check exits non-zero.
 
 ### `sshdock config set <app> <key> [--scope <scope>]`
 
@@ -474,6 +476,7 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH`: dashboard `authorized_keys` path.
 - `SSHDOCK_DASHBOARD_COMMAND`: forced command for dashboard keys.
 - `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
+- `SSHDOCK_CADDY_MAIN_CONFIG_PATH`: Caddy main config file that imports the generated route file. Default: `/etc/caddy/Caddyfile`.
 - `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
 - `SSHDOCK_COMPOSE_RUNNER`: set `docker` for real `sshdockd` runtime hooks and dashboards; set `fake` only for tests. `sshdock` CLI recovery commands default to Docker when this variable is unset.
 

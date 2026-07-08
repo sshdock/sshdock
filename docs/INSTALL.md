@@ -9,18 +9,19 @@ Run this on a fresh Ubuntu LTS or Debian stable VPS:
 ```bash
 wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
 sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
-sudo sshdock diagnostics
 
 cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
 sudo sshdock server domain set example.com
+
+sudo sshdock diagnostics
 
 git remote add sshdock git@sshdock.example.com:my-app.git
 git push sshdock main
 ```
 
-Replace `v0.3.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before expecting public Git, HTTP, or HTTPS traffic to work.
+Replace `v0.3.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
 
-For runnable confidence checks after installation, see [`EXAMPLES.md`](EXAMPLES.md). It includes static-site, build-service, config-backed, worker-only, web-worker-Redis, API-Postgres, stateful volume, rollback, and lite WordPress examples that can be fetched into a new local Git repository and pushed through SSHDock.
+For runnable confidence checks after installation, see [`EXAMPLES.md`](EXAMPLES.md). It includes static-site, build-service, config-backed, worker-only, web-worker-Redis, API-Postgres, stateful volume, rollback, and lite WordPress examples that can be fetched into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for the supported Compose subset and known unsupported fields.
 
 ## OS Assumptions
 
@@ -187,6 +188,7 @@ Local tests may set:
 
 ```bash
 SSHDOCK_CADDY_CONFIG_PATH=/tmp/sshdock.Caddyfile
+SSHDOCK_CADDY_MAIN_CONFIG_PATH=/tmp/Caddyfile
 SSHDOCK_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
 ```
 
@@ -431,13 +433,19 @@ The command checks:
 
 - required SSHDock config values
 - data, app, config key, Git, dashboard, SQLite, and Caddy config directories
+- Linux OS, systemd, `sshdockd.service`, and runtime command availability
+- listening ports `22`, `80`, and `443`
+- base-domain DNS and wildcard app DNS after `sshdock server domain set <domain>`
+- Caddy main-file import wiring and generated config validation
+- Git and dashboard `authorized_keys` forced-command wiring
+- runtime directory permissions and `config.key` permissions when the key exists
 - Docker and Docker Compose
 - Caddy
 - SSH client and server commands
 - Git
 - SQLite open and migration execution
 
-Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. A failed check exits non-zero.
+Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. Failed checks also print `why <name>: ...` and `fix <name>: ...` lines. A failed check exits non-zero.
 
 ## Backup And Restore
 

@@ -57,6 +57,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.CaddyConfigPath != "/etc/caddy/sshdock/sshdock.caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
 	}
+	if cfg.CaddyMainConfigPath != "/etc/caddy/Caddyfile" {
+		t.Fatalf("CaddyMainConfigPath = %q", cfg.CaddyMainConfigPath)
+	}
 	if cfg.CaddyAdminAddress != "" {
 		t.Fatalf("CaddyAdminAddress = %q, want empty default", cfg.CaddyAdminAddress)
 	}
@@ -82,6 +85,7 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", "/tmp/dashboard_authorized_keys")
 	t.Setenv("SSHDOCK_DASHBOARD_COMMAND", "/opt/sshdock/bin/sshdockd dashboard")
 	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
+	t.Setenv("SSHDOCK_CADDY_MAIN_CONFIG_PATH", "/tmp/main-Caddyfile")
 	t.Setenv("SSHDOCK_CADDY_ADMIN_ADDRESS", "127.0.0.1:22019")
 
 	cfg := LoadFromEnv()
@@ -133,6 +137,9 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
+	}
+	if cfg.CaddyMainConfigPath != "/tmp/main-Caddyfile" {
+		t.Fatalf("CaddyMainConfigPath = %q", cfg.CaddyMainConfigPath)
 	}
 	if cfg.CaddyAdminAddress != "127.0.0.1:22019" {
 		t.Fatalf("CaddyAdminAddress = %q", cfg.CaddyAdminAddress)

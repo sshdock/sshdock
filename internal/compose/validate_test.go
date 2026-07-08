@@ -36,6 +36,9 @@ func TestValidateFileRejectsUnsupportedTopLevelFields(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported top-level field") || !strings.Contains(err.Error(), "networks") {
 		t.Fatalf("ValidateFile error = %q, want unsupported top-level field name", err)
 	}
+	if !strings.Contains(err.Error(), "docs/COMPOSE_SUPPORT.md") {
+		t.Fatalf("ValidateFile error = %q, want Compose support doc reference", err)
+	}
 }
 
 func TestValidateFileRejectsUnsupportedServiceFields(t *testing.T) {
@@ -45,6 +48,9 @@ func TestValidateFileRejectsUnsupportedServiceFields(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "web.command") {
 		t.Fatalf("ValidateFile error = %q, want unsupported service field path", err)
+	}
+	if !strings.Contains(err.Error(), "docs/COMPOSE_SUPPORT.md") {
+		t.Fatalf("ValidateFile error = %q, want Compose support doc reference", err)
 	}
 }
 

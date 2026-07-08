@@ -24,6 +24,7 @@ type Config struct {
 	GitAuthorizedKeysPath       string
 	GitReceiveCommand           string
 	CaddyConfigPath             string
+	CaddyMainConfigPath         string
 	CaddyAdminAddress           string
 }
 
@@ -47,6 +48,7 @@ func Default() Config {
 		GitAuthorizedKeysPath:       filepath.Join(dataDir, "git", ".ssh", "authorized_keys"),
 		GitReceiveCommand:           "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive",
 		CaddyConfigPath:             "/etc/caddy/sshdock/sshdock.caddyfile",
+		CaddyMainConfigPath:         "/etc/caddy/Caddyfile",
 	}
 }
 
@@ -69,6 +71,7 @@ func LoadFromEnv() Config {
 	cfg.GitAuthorizedKeysPath = envOrDefault("SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.GitHomeDir, ".ssh", "authorized_keys"))
 	cfg.GitReceiveCommand = envOrDefault("SSHDOCK_GIT_RECEIVE_COMMAND", cfg.GitReceiveCommand)
 	cfg.CaddyConfigPath = envOrDefault("SSHDOCK_CADDY_CONFIG_PATH", cfg.CaddyConfigPath)
+	cfg.CaddyMainConfigPath = envOrDefault("SSHDOCK_CADDY_MAIN_CONFIG_PATH", cfg.CaddyMainConfigPath)
 	cfg.CaddyAdminAddress = envOrDefault("SSHDOCK_CADDY_ADMIN_ADDRESS", cfg.CaddyAdminAddress)
 
 	return cfg
@@ -107,6 +110,7 @@ func (c Config) Validate() error {
 		{env: "SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", value: c.GitAuthorizedKeysPath},
 		{env: "SSHDOCK_GIT_RECEIVE_COMMAND", value: c.GitReceiveCommand},
 		{env: "SSHDOCK_CADDY_CONFIG_PATH", value: c.CaddyConfigPath},
+		{env: "SSHDOCK_CADDY_MAIN_CONFIG_PATH", value: c.CaddyMainConfigPath},
 	}
 
 	var problems []string

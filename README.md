@@ -24,7 +24,6 @@ Install SSHDock on a fresh Ubuntu/Debian server:
 ```bash
 wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
 sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
-sudo sshdock diagnostics
 ```
 
 Set the base domain and authorize your deploy/dashboard key:
@@ -39,6 +38,12 @@ Point DNS at the server before deploying:
 ```text
 sshdock.example.com  A/AAAA  <server-ip>
 *.example.com        A/AAAA  <server-ip>
+```
+
+Check the install:
+
+```bash
+sudo sshdock diagnostics
 ```
 
 Add the Git remote from your app repo:
@@ -56,6 +61,8 @@ services:
     ports:
       - "127.0.0.1:3000:80"
 ```
+
+See [`docs/COMPOSE_SUPPORT.md`](docs/COMPOSE_SUPPORT.md) for the supported Compose subset and known unsupported fields.
 
 Deploy:
 

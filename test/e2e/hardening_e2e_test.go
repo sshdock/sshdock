@@ -55,6 +55,18 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 	}
 
 	dataDir := filepath.Join(installRoot, "var/lib/sshdock")
+	for _, path := range []string{
+		filepath.Join(dataDir, "git/.ssh/authorized_keys"),
+		filepath.Join(dataDir, "dashboard/.ssh/authorized_keys"),
+	} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("WriteFile authorized_keys: %v", err)
+		}
+	}
+	diagnosticsCaddyMainPath := filepath.Join(tmp, "diagnostics-Caddyfile")
+	if err := os.WriteFile(diagnosticsCaddyMainPath, []byte("import "+filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile diagnostics caddy main: %v", err)
+	}
 	diagnosticsEnv := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
@@ -66,16 +78,30 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 		"SSHDOCK_DASHBOARD_HOST_KEY_PATH="+filepath.Join(dataDir, "dashboard/ssh_host_rsa_key"),
 		"SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "dashboard/.ssh/authorized_keys"),
 		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile"),
+		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+diagnosticsCaddyMainPath,
 	)
+	runCommand(t, root, diagnosticsEnv, filepath.Join(installRoot, "usr/local/bin/sshdock"), "server", "domain", "set", "example.com")
 	diagnosticsOutput := runCommand(t, root, diagnosticsEnv, filepath.Join(installRoot, "usr/local/bin/sshdock"), "diagnostics")
 	for _, want := range []string{
 		"ok config",
+		"ok operating system",
 		"ok docker",
 		"ok docker compose",
 		"ok caddy",
 		"ok ssh",
 		"ok sshd",
 		"ok git",
+		"ok systemd",
+		"ok sshdockd service",
+		"ok port 22",
+		"ok port 80",
+		"ok port 443",
+		"ok base-domain DNS",
+		"ok wildcard DNS",
+		"ok caddy import",
+		"ok caddy config",
+		"ok git authorized_keys",
+		"ok dashboard authorized_keys",
 		"ok sqlite migrations",
 		"diagnostics ok",
 	} {
@@ -134,5 +160,22 @@ exit 0
 	writeFakeCommand(t, fakeBinDir, "git", `#!/bin/sh
 echo git version fake
 exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "ss", `#!/bin/sh
+echo 'LISTEN 0 4096 *:22 *:*'
+echo 'LISTEN 0 4096 *:80 *:*'
+echo 'LISTEN 0 4096 *:443 *:*'
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "getent", `#!/bin/sh
+echo '203.0.113.10 STREAM '"$2"
+exit 0
+`)
+	writeFakeCommand(t, fakeBinDir, "uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+	echo Linux
+	exit 0
+fi
+/usr/bin/uname "$@"
 `)
 }

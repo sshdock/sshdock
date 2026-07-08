@@ -221,7 +221,7 @@ The hardening test:
 3. Re-runs bootstrap to verify the install is idempotent.
 4. Verifies existing `/var/lib/sshdock` state survives the second run.
 5. Verifies stale installed binaries are replaced.
-6. Runs `sshdock diagnostics` with fake Docker, Caddy, SSH, and Git commands.
+6. Sets a fake base domain and runs `sshdock diagnostics` with fake Docker, Caddy, SSH, Git, DNS, port, and systemd commands.
 
 This test does not touch host systemd, Docker, Caddy, SSH, or `/var/lib/sshdock`.
 

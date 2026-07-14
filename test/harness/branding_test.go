@@ -43,6 +43,25 @@ func TestProjectBrandingIsSSHDock(t *testing.T) {
 	}
 }
 
+func TestRepositoryFilesReturnsRegularFilesOnly(t *testing.T) {
+	// Given a repository containing a regular file and a symlink to a directory.
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("sshdock"), 0o600); err != nil {
+		t.Fatalf("write regular file: %v", err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(root, "external")); err != nil {
+		t.Skipf("create directory symlink: %v", err)
+	}
+
+	// When repository files are discovered.
+	files := repositoryFiles(t, root)
+
+	// Then only the regular file is returned.
+	if len(files) != 1 || files[0] != "tracked.txt" {
+		t.Fatalf("repositoryFiles() = %v, want [tracked.txt]", files)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -64,6 +83,9 @@ func repositoryFiles(t *testing.T, root string) []string {
 			case ".git", "bin", ".tmp", "_artifacts":
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if !entry.Type().IsRegular() {
 			return nil
 		}
 		relative, err := filepath.Rel(root, path)

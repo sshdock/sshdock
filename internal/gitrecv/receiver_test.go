@@ -43,6 +43,19 @@ func TestParsePostReceiveLineRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestParsePostReceiveLineRejectsNonMainDestination(t *testing.T) {
+	// Given
+	line := "oldsha abc123 refs/heads/feature"
+
+	// When
+	_, err := ParsePostReceiveLine("my-app", "/repo.git", line)
+
+	// Then
+	if err == nil {
+		t.Fatal("ParsePostReceiveLine error = nil, want rejection")
+	}
+}
+
 func TestReceiverTriggersDeployCallback(t *testing.T) {
 	ctx := context.Background()
 	var got PushEvent

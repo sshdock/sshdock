@@ -31,7 +31,7 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		return err
 	}
 
-	retryGuidance := "push the same commit again after fixing the deploy failure"
+	retryGuidance := "sudo sshdock apps redeploy " + event.AppName
 	if err := h.checkout.Checkout(ctx, event.RepoPath, worktreePath, event.CommitSHA); err != nil {
 		failure := deployfailure.New("checkout", err, "deployment "+attempt.deployment.ID+" marked failed before Compose started; containers and routes were not changed", "inspect the Git repository and pushed commit", retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "checkout", cause: failure, retryGuidance: retryGuidance})
@@ -39,6 +39,7 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 
 	composePath, err := compose.DetectFile(worktreePath)
 	if err != nil {
+		retryGuidance = "commit a supported Compose file and push it to remote main"
 		failure := deployfailure.New("detect compose", err, "deployment "+attempt.deployment.ID+" marked failed before Compose started; containers and routes were not changed", "add compose.yml or docker-compose.yml to the pushed commit", retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "detect compose", cause: failure, retryGuidance: retryGuidance})
 	}
@@ -51,14 +52,14 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	env, envErr := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
 
 	if envErr != nil {
-		retryGuidance := "push the same commit again after fixing config"
+		retryGuidance := "sudo sshdock apps redeploy " + event.AppName
 		failure := deployfailure.New("config", envErr, "release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed", "set the missing config value(s) with the command(s) in detail", retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "config", cause: failure, retryGuidance: retryGuidance})
 	}
 	if _, err := compose.ValidateFileWithEnv(composePath, env); err != nil {
 		err = compose.RedactError(err, env)
 		stage := string(compose.DeployStageValidateCompose)
-		retryGuidance := "push the same commit again after fixing the deploy failure"
+		retryGuidance := "commit a Compose fix and push it to remote main"
 		failure := deployfailure.New(stage, err, gitPushChangedState(releaseID, deploymentID, stage), deployfailure.FixForStage(stage), retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: stage, cause: failure, retryGuidance: retryGuidance})
 	}
@@ -68,7 +69,7 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err != nil {
 		err = compose.RedactError(err, env)
 		stage := deployfailure.Stage(err)
-		retryGuidance := "push the same commit again after fixing the deploy failure"
+		retryGuidance := "push a fixed commit to remote main, or run sudo sshdock apps redeploy " + event.AppName + " after a transient fix"
 		failure := deployfailure.New(stage, err, gitPushChangedState(releaseID, deploymentID, stage), deployfailure.FixForStage(stage), retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: stage, cause: failure, retryGuidance: retryGuidance})
 	}
@@ -124,6 +125,9 @@ func (h *PostReceiveHandler) beginPushAttempt(ctx context.Context, event PushEve
 	}
 	deployment := app.Deployment{ID: deploymentID, AppID: event.AppName, ReleaseID: release.ID, CommitSHA: event.CommitSHA, Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusDeploying, StartedAt: now}
 	if err := h.store.CreateDeployment(ctx, deployment); err != nil {
+		return pushAttempt{}, err
+	}
+	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "git_ref_accepted"), AppID: event.AppName, Type: "git.ref_accepted", Message: "Remote main accepted at " + event.CommitSHA, CreatedAt: now}); err != nil {
 		return pushAttempt{}, err
 	}
 	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "started"), AppID: event.AppName, Type: "deploy.started", Message: "Deploy started for release " + release.ID, CreatedAt: now}); err != nil {

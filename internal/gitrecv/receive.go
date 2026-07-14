@@ -147,6 +147,9 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	if err != nil {
 		return err
 	}
+	if err := s.repoManager.InstallHooks(model.Name, model.RepoPath); err != nil {
+		return fmt.Errorf("install receive hooks for %q: %w", model.Name, err)
+	}
 
 	return s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr)
 }

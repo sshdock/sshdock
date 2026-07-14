@@ -31,6 +31,8 @@ Check:
 
 If the push reaches SSHDock but deploy fails, use the deploy-failure section below.
 
+SSHDock deploys in `post-receive`, so a deployment failure does not undo an accepted Git update. The output labels `git: remote main updated ...` separately from `deploy: ... succeeded` or `deploy: failed ...`.
+
 ## Deploy Fails
 
 Failed deploys print and persist:
@@ -163,12 +165,15 @@ sudo sshdock events list <app>
 sudo sshdock logs <app> --tail 200
 ```
 
-If a previous release is known-good:
+If a previous commit or tag is known-good, select it as remote `main`:
 
 ```bash
-sudo sshdock apps rollback <app> <release-id>
+git push --force sshdock <known-good-commit-or-lightweight-tag>:main
+git push --force sshdock '<known-good-annotated-tag>^{}:refs/heads/main'
 sudo sshdock apps health <app>
 ```
+
+This Git push records a normal deployment attempt for the selected commit. Use `apps redeploy` only when you want to retry the commit already at remote `main`, such as after fixing server-side config or a transient runtime failure.
 
 `apps health` reports the newest failed release/deployment and failure detail while checking Compose service status against the latest runnable release when one exists.
 

@@ -95,6 +95,7 @@ func TestReceivePackServiceCreatesMissingAppAndRunsReceivePack(t *testing.T) {
 }
 
 func TestReceivePackServiceReusesExistingAppRepo(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	sqlite := newReceiveTestStore(t, ctx)
 	appsDir := filepath.Join(t.TempDir(), "apps")
@@ -122,7 +123,10 @@ func TestReceivePackServiceReusesExistingAppRepo(t *testing.T) {
 		ReceivePackRunner: receivePack,
 	})
 
+	// When
 	err := service.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'test-app.git'"})
+
+	// Then
 	if err != nil {
 		t.Fatalf("Receive: %v", err)
 	}
@@ -132,6 +136,8 @@ func TestReceivePackServiceReusesExistingAppRepo(t *testing.T) {
 	if receivePack.repoPath != repoPath {
 		t.Fatalf("receive-pack repoPath = %q, want %q", receivePack.repoPath, repoPath)
 	}
+	assertReceiveHook(t, filepath.Join(repoPath, "hooks", "pre-receive"), "sshdockd git-pre-receive")
+	assertReceiveHook(t, filepath.Join(repoPath, "hooks", "post-receive"), "sshdockd git-hook", "test-app", repoPath)
 }
 
 func TestReceivePackServiceReturnsReceivePackError(t *testing.T) {

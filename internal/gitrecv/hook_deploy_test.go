@@ -1,6 +1,7 @@
 package gitrecv
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -16,6 +17,81 @@ import (
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 )
+
+func TestPostReceiveHandlerReportsGitUpdateAndDeploySuccessSeparately(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	var output bytes.Buffer
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+		NewDeploymentID: func() (string, error) { return "dep_output", nil },
+		Output:          &output,
+	})
+
+	// When
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("old abc123 refs/heads/main\n"))
+
+	// Then
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	gitLine := "git: remote main updated to abc123"
+	deployLine := "deploy: current main abc123 succeeded"
+	if !strings.Contains(output.String(), gitLine) || !strings.Contains(output.String(), deployLine) {
+		t.Fatalf("output = %q, want separate %q and %q", output.String(), gitLine, deployLine)
+	}
+	events, listErr := sqlite.ListEventsByApp(ctx, "my-app")
+	if listErr != nil {
+		t.Fatalf("ListEventsByApp: %v", listErr)
+	}
+	if len(events) == 0 || events[0].Type != "git.ref_accepted" || !strings.Contains(events[0].Message, "abc123") {
+		t.Fatalf("events = %#v, want accepted-ref audit event", events)
+	}
+}
+
+func TestPostReceiveHandlerReportsOutputFailureAfterSuccessfulDeploy(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	outputFailure := errors.New("remote output closed")
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+		NewDeploymentID: func() (string, error) { return "dep_output_failure", nil },
+		Output:          failingWriter{err: outputFailure},
+	})
+
+	// When
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("old abc123 refs/heads/main\n"))
+
+	// Then
+	if !errors.Is(err, outputFailure) {
+		t.Fatalf("Handle error = %v, want output failure", err)
+	}
+	var statusOutputErr *StatusOutputError
+	if !errors.As(err, &statusOutputErr) {
+		t.Fatalf("Handle error type = %T, want *StatusOutputError", err)
+	}
+	deployments, listErr := sqlite.ListDeploymentsByApp(ctx, "my-app")
+	if listErr != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", listErr)
+	}
+	if len(deployments) != 1 || deployments[0].Status != app.DeploymentStatusSucceeded {
+		t.Fatalf("deployments = %#v, want successful deploy despite output failure", deployments)
+	}
+}
 
 func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	ctx := context.Background()
@@ -97,7 +173,7 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -160,8 +236,8 @@ func TestPostReceiveHandlerCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if len(events) != 4 {
-		t.Fatalf("events = %#v, want two events per attempt", events)
+	if len(events) != 6 {
+		t.Fatalf("events = %#v, want three events per attempt", events)
 	}
 }
 
@@ -278,7 +354,7 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_attached", "router.reloaded"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reloaded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -333,7 +409,7 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.failed"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -417,7 +493,7 @@ services:
 	if listErr != nil {
 		t.Fatalf("ListEventsByApp: %v", listErr)
 	}
-	if got, want := eventTypes(events), []string{"deploy.started", "deploy.failed"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventTypes(events), []string{"git.ref_accepted", "deploy.started", "deploy.failed"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
 }
@@ -453,7 +529,7 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 		"ssh dashboard@<host> config set my-app SECRET",
 		"changed=release rel_my-app_abc123 and deployment dep_config_attempt marked failed before Compose started; containers and routes were not changed",
 		"fix=set the missing config value(s) with the command(s) in detail",
-		"retry=push the same commit again after fixing config",
+		"retry=sudo sshdock apps redeploy my-app",
 	)
 	if strings.Contains(err.Error(), "secret-value") {
 		t.Fatalf("Handle error leaked config value: %v", err)
@@ -465,20 +541,20 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 		t.Fatalf("deployment status = %q", status)
 	}
 	errorMessage := queryDeploymentError(t, dbPath, "dep_config_attempt")
-	assertFailureDetail(t, errorMessage, "stage=config", "changed=release rel_my-app_abc123", "retry=push the same commit again")
+	assertFailureDetail(t, errorMessage, "stage=config", "changed=release rel_my-app_abc123", "retry=sudo sshdock apps redeploy my-app")
 	deployments, deploymentErr := sqlite.ListDeploymentsByApp(ctx, "my-app")
 	if deploymentErr != nil {
 		t.Fatalf("ListDeploymentsByApp: %v", deploymentErr)
 	}
-	if len(deployments) != 1 || deployments[0].FailureStage != "config" || deployments[0].FailureDetail == "" || deployments[0].RetryGuidance != "push the same commit again after fixing config" {
+	if len(deployments) != 1 || deployments[0].FailureStage != "config" || deployments[0].FailureDetail == "" || deployments[0].RetryGuidance != "sudo sshdock apps redeploy my-app" {
 		t.Fatalf("deployment metadata = %#v", deployments)
 	}
 	events, eventErr := sqlite.ListEventsByApp(ctx, "my-app")
 	if eventErr != nil {
 		t.Fatalf("ListEventsByApp: %v", eventErr)
 	}
-	if !strings.Contains(events[1].Message, errorMessage) {
-		t.Fatalf("failed event = %#v, want deployment failure detail %q", events[1], errorMessage)
+	if !strings.Contains(events[2].Message, errorMessage) {
+		t.Fatalf("failed event = %#v, want deployment failure detail %q", events[2], errorMessage)
 	}
 }
 
@@ -535,11 +611,11 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	assertFailureDetail(t, events[2].Message, "stage=route inference", "ambiguous", "changed=containers deployed, routes unchanged", "domains attach")
+	assertFailureDetail(t, events[3].Message, "stage=route inference", "ambiguous", "changed=containers deployed, routes unchanged", "domains attach")
 }
 
 func TestPostReceiveHandlerPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) {
@@ -573,7 +649,7 @@ func TestPostReceiveHandlerPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -623,11 +699,11 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_attached", "router.reload_failed"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reload_failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	assertFailureDetail(t, events[3].Message,
+	assertFailureDetail(t, events[4].Message,
 		"stage=caddy reload",
 		"detail=caddy reload failed",
 		"changed=domain was stored, but generated Caddy routes may not be active",
@@ -684,12 +760,12 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	if !strings.Contains(events[2].Message, "DNS label") {
-		t.Fatalf("skip event = %#v, want DNS label guidance", events[2])
+	if !strings.Contains(events[3].Message, "DNS label") {
+		t.Fatalf("skip event = %#v, want DNS label guidance", events[3])
 	}
 }
 
@@ -729,12 +805,12 @@ func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "deploy.warning", "deploy.succeeded"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.warning", "deploy.succeeded"}
 	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
-	if events[1].Message != warning {
-		t.Fatalf("warning event = %#v, want %q", events[1], warning)
+	if events[2].Message != warning {
+		t.Fatalf("warning event = %#v, want %q", events[2], warning)
 	}
 }
 
@@ -767,8 +843,8 @@ func TestPostReceiveHandlerRedactsConfigValuesFromTrustedComposeWarnings(t *test
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if strings.Contains(events[1].Message, secretPath) || !strings.Contains(events[1].Message, "<redacted>") {
-		t.Fatalf("warning event = %#v, want redacted value", events[1])
+	if strings.Contains(events[2].Message, secretPath) || !strings.Contains(events[2].Message, "<redacted>") {
+		t.Fatalf("warning event = %#v, want redacted value", events[2])
 	}
 }
 
@@ -799,8 +875,8 @@ func TestPostReceiveHandlerFinishesSuccessfulDeployWhenWarningOutputFails(t *tes
 	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
 
 	// Then
-	if err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "output unavailable") {
+		t.Fatalf("Handle error = %v, want output failure after deployment", err)
 	}
 	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q, want succeeded", status)
@@ -845,7 +921,7 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 		"detail=pull images failed: pull access denied",
 		"changed=release rel_my-app_abc123 and deployment dep_abc123 marked failed before containers started; routes were not changed",
 		"fix=check image names, registry credentials, and network access",
-		"retry=push the same commit again after fixing the deploy failure",
+		"retry=push a fixed commit to remote main, or run sudo sshdock apps redeploy my-app after a transient fix",
 	)
 
 	model, getErr := sqlite.GetApp(ctx, "my-app")
@@ -868,7 +944,7 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	if listEventsErr != nil {
 		t.Fatalf("ListEventsByApp: %v", listEventsErr)
 	}
-	wantTypes := []string{"deploy.started", "deploy.failed"}
+	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -905,7 +981,7 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 		"stage=deploy",
 		"detail=docker output included <redacted>",
 		"changed=release rel_my-app_abc123 and deployment dep_abc123 marked failed; inspect the detail before assuming container or route state",
-		"retry=push the same commit again after fixing the deploy failure",
+		"retry=push a fixed commit to remote main, or run sudo sshdock apps redeploy my-app after a transient fix",
 	)
 	if strings.Contains(errorMessage, "api-secret") {
 		t.Fatalf("deployment error leaked secret: %q", errorMessage)
@@ -914,8 +990,8 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if strings.Contains(events[1].Message, "api-secret") {
-		t.Fatalf("event leaked secret: %#v", events[1])
+	if strings.Contains(events[2].Message, "api-secret") {
+		t.Fatalf("event leaked secret: %#v", events[2])
 	}
 }
 
@@ -1003,14 +1079,14 @@ func TestPostReceiveHandlerDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *test
 	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if output.Len() != 0 {
+	if strings.Contains(output.String(), "stage=route inference") {
 		t.Fatalf("output = %q, want no initial-route guidance for an already-routed app", output.String())
 	}
 	events, err := sqlite.ListEventsByApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if got, want := eventTypes(events), []string{"deploy.started", "deploy.succeeded"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventTypes(events), []string{"git.ref_accepted", "deploy.started", "deploy.succeeded"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
 }
@@ -1073,9 +1149,14 @@ type fakeHookRouteSyncer struct {
 	Err   error
 }
 
-type failingWriter struct{}
+type failingWriter struct {
+	err error
+}
 
-func (failingWriter) Write([]byte) (int, error) {
+func (w failingWriter) Write([]byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
 	return 0, errors.New("output unavailable")
 }
 

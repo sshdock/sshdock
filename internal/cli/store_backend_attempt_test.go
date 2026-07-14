@@ -20,10 +20,11 @@ func TestStoreBackendRedeployCreatesDistinctAttemptsForSameRelease(t *testing.T)
 	ids := []string{"dep_first", "dep_second"}
 	nextID := 0
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:         "node-a",
-		AppsDir:        appsDir,
-		RecoveryRunner: &compose.FakeRunner{},
-		Now:            func() time.Time { return now },
+		NodeID:              "node-a",
+		AppsDir:             appsDir,
+		RecoveryRunner:      &compose.FakeRunner{},
+		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) { return "new", nil }),
+		Now:                 func() time.Time { return now },
 		NewDeploymentID: func() (string, error) {
 			id := ids[nextID]
 			nextID++

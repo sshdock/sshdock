@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -53,11 +54,14 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
 	}
+	if len(args) == 1 && args[0] == "git-pre-receive" {
+		return runGitPreReceive(stdin, stderr)
+	}
 	if len(args) == 1 && args[0] == "git-receive" {
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | dashboard | version | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | dashboard | version | git-pre-receive | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }
 
@@ -276,9 +280,10 @@ func newDashboardActions(persistentStore store.Store, cfg config.Config, runner 
 			AdminAddress: cfg.CaddyAdminAddress,
 			UpstreamHost: "127.0.0.1",
 		}),
-		RecoveryRunner:   runner,
-		RecoveryCheckout: gitrecv.LocalWorktreeCheckout{},
-		ConfigManager:    configService,
+		RecoveryRunner:      runner,
+		RecoveryCheckout:    gitrecv.LocalWorktreeCheckout{},
+		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
+		ConfigManager:       configService,
 	})
 	return dashboardActionBackend{backend: backend}
 }
@@ -333,10 +338,29 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	if stdin == nil {
 		stdin = os.Stdin
 	}
+	input, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "deploy: setup failed after remote main update: read hook input:", err)
+		return 1
+	}
+	gitUpdateReported := false
+	for _, line := range strings.Split(string(input), "\n") {
+		if line == "" {
+			continue
+		}
+		event, parseErr := gitrecv.ParsePostReceiveLine(*appName, *repoPath, line)
+		if parseErr != nil {
+			fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", parseErr)
+			return 1
+		}
+		if _, writeErr := fmt.Fprintf(stderr, "git: remote main updated to %s\n", event.CommitSHA); writeErr == nil {
+			gitUpdateReported = true
+		}
+	}
 
 	cfg := config.LoadFromEnv()
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
 		return 1
 	}
 	if *worktreePath == "" {
@@ -345,14 +369,14 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 
 	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
 		return 1
 	}
 	defer sqlite.Close()
 
 	runner, err := hookRunnerFromEnv()
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
 		return 1
 	}
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(context.Background(), sqlite, cfg)))
@@ -367,14 +391,31 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			AdminAddress: cfg.CaddyAdminAddress,
 			UpstreamHost: "127.0.0.1",
 		}),
-		Checkout: gitrecv.LocalWorktreeCheckout{},
-		Output:   stderr,
+		Checkout:          gitrecv.LocalWorktreeCheckout{},
+		Output:            stderr,
+		GitUpdateReported: gitUpdateReported,
 	})
-	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, stdin); err != nil {
-		fmt.Fprintln(stderr, err)
+	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, bytes.NewReader(input)); err != nil {
+		var outputErr *gitrecv.StatusOutputError
+		if errors.As(err, &outputErr) {
+			fmt.Fprintln(stderr, "deploy: succeeded, but status output failed:", err)
+			return 1
+		}
+		fmt.Fprintln(stderr, "deploy: failed:", err)
 		return 1
 	}
 
+	return 0
+}
+
+func runGitPreReceive(stdin io.Reader, stderr io.Writer) int {
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	if err := gitrecv.ValidatePreReceive(stdin); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	return 0
 }
 

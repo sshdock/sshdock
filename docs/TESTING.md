@@ -5,7 +5,7 @@ This guide explains SSHDock's local and end-to-end test tiers.
 The main product spine under test is:
 
 ```text
-git remote add sshdock git@server:<app>.git -> git push -> sshdockd git-receive -> app + bare repo -> post-receive hook -> sshdockd git-hook -> SQLite release/deployment records
+git remote add sshdock git@server:<app>.git -> git push -> sshdockd git-receive -> app + bare repo -> pre-receive main policy -> post-receive deploy -> SQLite release/deployment records
 ```
 
 ## Test Tiers
@@ -60,7 +60,7 @@ sshdock apps create my-app
 <data-dir>/apps/my-app/repo.git
 ```
 
-6. Verify the repo has an executable `hooks/post-receive` file.
+6. Verify the repo has executable `hooks/pre-receive` and `hooks/post-receive` files.
 7. Create a local source repository with one conventional root Compose file.
 8. Push `main` to the created bare repository path.
 9. Let the hook invoke:
@@ -80,6 +80,8 @@ git push sshdock main
 ```
 
 12. Verify `sshdockd git-receive` creates the app and records the deployment.
+
+`make server-push-e2e` also proves current-main semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, distinct same-commit redeploy attempts, failed deployment with remote `main` preserved, and force-pushing an older commit as Git-based rollback.
 
 ## Caddy Route Tier
 

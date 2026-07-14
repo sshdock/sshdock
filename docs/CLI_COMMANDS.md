@@ -243,7 +243,7 @@ sudo sshdock ssh-keys remove admin
 
 ### `sshdock apps create <name>`
 
-Create app metadata, create the bare Git receive repository, install the `post-receive` hook, and print Git remote instructions.
+Create app metadata, create the bare Git receive repository, install the `pre-receive` and `post-receive` hooks, and print Git remote instructions.
 
 ```bash
 sudo sshdock apps create my-app
@@ -255,6 +255,16 @@ Output includes:
 git remote add sshdock git@<server-domain>:my-app.git
 git push sshdock main
 ```
+
+Only remote `refs/heads/main` is accepted. The local source may be any branch, tag, or commit when it explicitly targets `main`:
+
+```bash
+git push sshdock feature:main
+git push --force sshdock v1.2.3:main                    # lightweight tag
+git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
+```
+
+Post-receive deployment happens after Git updates remote `main`. If deployment fails, remote `main` remains at the accepted commit. Remote output prints the Git ref update and deployment result as separate lines.
 
 When a base domain is configured, output also includes the expected default URL after the first successful deploy:
 
@@ -329,13 +339,13 @@ Whole-app restart maps to `docker compose restart` for the project when using th
 
 ### `sshdock apps redeploy <name>`
 
-Redeploy the latest good release.
+Redeploy the commit currently stored at remote `main`.
 
 ```bash
 sudo sshdock apps redeploy my-app
 ```
 
-Redeploy checks out the selected release commit into the app worktree, runs the configured Compose runner, and records a new deployment attempt and events in SQLite. Repeating a redeploy of the same release creates another attempt instead of overwriting its history.
+Redeploy resolves the app bare repository's `refs/heads/main`, checks out that commit into the app worktree, runs the configured Compose runner, and records a new deployment attempt and events in SQLite. Repeating a redeploy of the same commit creates another attempt instead of overwriting its history.
 
 ### `sshdock apps rollback <name> <release-id>`
 
@@ -543,7 +553,7 @@ Useful keys:
 - `r` refreshes the dashboard snapshot.
 - `q` quits.
 
-TUI app actions cover restart app, restart service, redeploy latest release, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `sshdock apps restart`, `sshdock apps redeploy`, `sshdock apps rollback`, `sshdock domains attach`, `sshdock domains detach`, and `sshdock apps remove`.
+TUI app actions cover restart app, restart service, redeploy current main, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `sshdock apps restart`, `sshdock apps redeploy`, `sshdock apps rollback`, `sshdock domains attach`, `sshdock domains detach`, and `sshdock apps remove`.
 
 The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
 
@@ -559,6 +569,12 @@ This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<ap
 
 Operators normally do not run this manually.
 
+### `sshdockd git-pre-receive`
+
+Validate receive-pack updates before Git changes any refs. It accepts only a non-deleting update to `refs/heads/main` and rejects every branch or tag destination with guidance to push `<source>:main`.
+
+Operators normally do not run this manually; SSHDock installs it as the bare repository's `pre-receive` hook.
+
 ### `sshdockd git-hook --app <name> --repo <repo.git> [--worktree <path>]`
 
 Handle a bare repository `post-receive` hook.
@@ -567,7 +583,7 @@ Handle a bare repository `post-receive` hook.
 sshdockd git-hook --app my-app --repo /var/lib/sshdock/apps/my-app/repo.git
 ```
 
-The hook reads pushed refs from stdin, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and records deployment events.
+The hook reads the accepted remote-main update from stdin, reports that Git already updated `main`, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and reports and records deployment success or failure.
 
 Operators normally do not run this manually.
 

@@ -3,6 +3,7 @@ package gitrecv
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -48,26 +49,38 @@ func (f WorktreeCheckoutFunc) Checkout(ctx context.Context, repoPath string, wor
 }
 
 type PostReceiveHandlerConfig struct {
-	Store           postReceiveStore
-	Runner          compose.Runner
-	Router          routeSyncer
-	ConfigResolver  configResolver
-	Checkout        WorktreeCheckout
-	Now             func() time.Time
-	NewDeploymentID func() (string, error)
-	Output          io.Writer
+	Store             postReceiveStore
+	Runner            compose.Runner
+	Router            routeSyncer
+	ConfigResolver    configResolver
+	Checkout          WorktreeCheckout
+	Now               func() time.Time
+	NewDeploymentID   func() (string, error)
+	Output            io.Writer
+	GitUpdateReported bool
 }
 
 type PostReceiveHandler struct {
-	store           postReceiveStore
-	runner          compose.Runner
-	router          routeSyncer
-	configResolver  configResolver
-	checkout        WorktreeCheckout
-	now             func() time.Time
-	newDeploymentID func() (string, error)
-	output          io.Writer
+	store             postReceiveStore
+	runner            compose.Runner
+	router            routeSyncer
+	configResolver    configResolver
+	checkout          WorktreeCheckout
+	now               func() time.Time
+	newDeploymentID   func() (string, error)
+	output            io.Writer
+	gitUpdateReported bool
 }
+
+// StatusOutputError reports that deployment state was persisted successfully,
+// but the hook could not deliver its status lines to the Git client.
+type StatusOutputError struct {
+	Err error
+}
+
+func (e *StatusOutputError) Error() string { return e.Err.Error() }
+
+func (e *StatusOutputError) Unwrap() error { return e.Err }
 
 func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler {
 	now := config.Now
@@ -87,6 +100,7 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 		store: config.Store, runner: config.Runner, router: config.Router,
 		configResolver: config.ConfigResolver, checkout: config.Checkout, now: now,
 		newDeploymentID: newDeploymentID, output: output,
+		gitUpdateReported: config.GitUpdateReported,
 	}
 }
 
@@ -101,6 +115,7 @@ func (h *PostReceiveHandler) Handle(ctx context.Context, appName string, repoPat
 		return fmt.Errorf("post-receive worktree checkout is not configured")
 	}
 	scanner := bufio.NewScanner(input)
+	var outputErr error
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -111,10 +126,24 @@ func (h *PostReceiveHandler) Handle(ctx context.Context, appName string, repoPat
 		if err != nil {
 			return err
 		}
+		if !h.gitUpdateReported {
+			if _, err := fmt.Fprintf(h.output, "git: remote main updated to %s\n", event.CommitSHA); err != nil {
+				outputErr = errors.Join(outputErr, fmt.Errorf("write Git ref status: %w", err))
+			}
+		}
 		if err := h.handleEvent(ctx, event, worktreePath); err != nil {
-			return err
+			return fmt.Errorf("current main %s: %w", event.CommitSHA, err)
+		}
+		if _, err := fmt.Fprintf(h.output, "deploy: current main %s succeeded\n", event.CommitSHA); err != nil {
+			outputErr = errors.Join(outputErr, fmt.Errorf("write deploy status: %w", err))
 		}
 	}
 
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if outputErr != nil {
+		return &StatusOutputError{Err: outputErr}
+	}
+	return nil
 }

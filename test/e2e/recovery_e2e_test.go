@@ -97,8 +97,10 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 		t.Fatalf("rollback deployment commit = %q, want %q", rollbackCommit, goodCommit)
 	}
 	assertEventTypes(t, dbPath, appName, []string{
+		"git.ref_accepted",
 		"deploy.started",
 		"deploy.succeeded",
+		"git.ref_accepted",
 		"deploy.started",
 		"deploy.failed",
 		"rollback.triggered",

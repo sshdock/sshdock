@@ -86,7 +86,7 @@ type dashboardActionItem struct {
 var dashboardActionItems = []dashboardActionItem{
 	{label: "restart app", kind: dashboardActionRestartApp},
 	{label: "restart service", kind: dashboardActionRestartService},
-	{label: "redeploy latest", kind: dashboardActionRedeploy},
+	{label: "redeploy current main", kind: dashboardActionRedeploy},
 	{label: "rollback release", kind: dashboardActionRollback},
 	{label: "attach domain", kind: dashboardActionAttachDomain},
 	{label: "detach domain", kind: dashboardActionDetachDomain},
@@ -629,7 +629,7 @@ func dashboardActionStatus(kind dashboardActionKind, primary string, secondary s
 	case dashboardActionRestartService:
 		return "restart service " + valueOrDash(primary) + " complete"
 	case dashboardActionRedeploy:
-		return "redeploy latest complete"
+		return "redeploy current main complete"
 	case dashboardActionRollback:
 		return "rollback " + valueOrDash(primary) + " complete"
 	case dashboardActionAttachDomain:

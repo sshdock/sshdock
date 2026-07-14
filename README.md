@@ -78,6 +78,8 @@ https://my-app.example.com
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 
+Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. A failed post-receive deployment does not rewrite `main`, and push output reports the Git ref update separately from deployment success or failure.
+
 SSHDock warns when trusted Compose input publishes on all interfaces or couples directly to the host through privileged mode, host networking, bind mounts, the Docker socket, explicit global volume names, or external volumes. These warnings do not provide a sandbox; only trusted owners should have deploy access.
 
 ## Day-One Commands
@@ -108,6 +110,13 @@ Operate an app:
 sudo sshdock apps restart my-app
 sudo sshdock apps redeploy my-app
 sudo sshdock apps rollback my-app <release-id>
+```
+
+`apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older revision with Git, push it to remote `main`:
+
+```bash
+git push --force sshdock <commit-or-lightweight-tag>:main
+git push --force sshdock '<annotated-tag>^{}:refs/heads/main'
 ```
 
 Manual domain attach is available when auto-routing is not enough:

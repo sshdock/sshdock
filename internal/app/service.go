@@ -32,6 +32,7 @@ type Service struct {
 	deploy          deployRunner
 	recover         recoveryRunner
 	checkout        WorktreeCheckout
+	currentMain     CurrentMainResolver
 	configResolver  configResolver
 	newDeploymentID func() (string, error)
 }
@@ -53,6 +54,16 @@ type recoveryRunner interface {
 
 type WorktreeCheckout interface {
 	Checkout(ctx context.Context, repoPath string, worktreePath string, commitSHA string) error
+}
+
+type CurrentMainResolver interface {
+	ResolveCurrentMain(ctx context.Context, repoPath string) (string, error)
+}
+
+type CurrentMainResolverFunc func(ctx context.Context, repoPath string) (string, error)
+
+func (f CurrentMainResolverFunc) ResolveCurrentMain(ctx context.Context, repoPath string) (string, error) {
+	return f(ctx, repoPath)
 }
 
 type configResolver interface {
@@ -106,6 +117,12 @@ func WithRecoveryRunner(runner recoveryRunner) ServiceOption {
 func WithWorktreeCheckout(checkout WorktreeCheckout) ServiceOption {
 	return func(service *Service) {
 		service.checkout = checkout
+	}
+}
+
+func WithCurrentMainResolver(resolver CurrentMainResolver) ServiceOption {
+	return func(service *Service) {
+		service.currentMain = resolver
 	}
 }
 

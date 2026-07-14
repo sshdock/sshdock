@@ -60,10 +60,11 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 	fakeRouter := router.NewFakeRouter()
 	currentTime := now.Add(time.Hour)
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
-		NodeID:         "local",
-		AppsDir:        appsDir,
-		Router:         fakeRouter,
-		RecoveryRunner: composeRunner,
+		NodeID:              "local",
+		AppsDir:             appsDir,
+		Router:              fakeRouter,
+		RecoveryRunner:      composeRunner,
+		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) { return "new", nil }),
 		Now: func() time.Time {
 			value := currentTime
 			currentTime = currentTime.Add(time.Second)

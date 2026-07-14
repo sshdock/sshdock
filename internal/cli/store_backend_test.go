@@ -1085,9 +1085,10 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 	currentTime := now
 	runner := &compose.FakeRunner{}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:         "node-a",
-		AppsDir:        appsDir,
-		RecoveryRunner: runner,
+		NodeID:              "node-a",
+		AppsDir:             appsDir,
+		RecoveryRunner:      runner,
+		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) { return "new", nil }),
 		Now: func() time.Time {
 			value := currentTime
 			currentTime = currentTime.Add(time.Second)
@@ -1134,7 +1135,7 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 	if code := cliRunner.Run([]string{"apps", "redeploy", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps redeploy exit code = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "redeployed my-app") {
+	if !strings.Contains(stdout.String(), "redeployed current main for my-app") {
 		t.Fatalf("apps redeploy stdout = %q", stdout.String())
 	}
 	if len(runner.DeployRequests) != 1 {

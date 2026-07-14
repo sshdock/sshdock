@@ -321,3 +321,54 @@ func TestRunGitReceiveValidatesConfig(t *testing.T) {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
+
+func TestRunGitHookReportsAcceptedMainBeforeSetupFailure(t *testing.T) {
+	t.Setenv("SSHDOCK_GIT_HOST", " ")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	input := strings.NewReader("oldsha newsha refs/heads/main\n")
+
+	code := runWithInput([]string{"git-hook", "--app", "my-app", "--repo", "/apps/my-app/repo.git"}, input, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{"git: remote main updated to newsha", "deploy: setup failed after remote main update", "SSHDOCK_GIT_HOST is required"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestRunGitPreReceiveAcceptsMainUpdate(t *testing.T) {
+	// Given
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	input := strings.NewReader("oldsha newsha refs/heads/main\n")
+
+	// When
+	code := runWithInput([]string{"git-pre-receive"}, input, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+}
+
+func TestRunGitPreReceiveRejectsNonMainUpdate(t *testing.T) {
+	// Given
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	input := strings.NewReader("oldsha newsha refs/heads/feature\n")
+
+	// When
+	code := runWithInput([]string{"git-pre-receive"}, input, &stdout, &stderr)
+
+	// Then
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "push to remote main") {
+		t.Fatalf("stderr = %q, want remote-main guidance", stderr.String())
+	}
+}

@@ -267,7 +267,7 @@ Interactive dashboard controls:
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
-The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy the latest release, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
+The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy current remote main, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
 
 Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 

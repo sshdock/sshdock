@@ -96,9 +96,10 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 			GitHost:  cfg.GitHost,
 			Executor: gitrecv.LocalGitExecutor{},
 		}),
-		RecoveryRunner:   recoveryRunner,
-		RecoveryCheckout: gitrecv.LocalWorktreeCheckout{},
-		ConfigManager:    configService,
+		RecoveryRunner:      recoveryRunner,
+		RecoveryCheckout:    gitrecv.LocalWorktreeCheckout{},
+		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
+		ConfigManager:       configService,
 	})
 	runner := cli.NewRunner(backend, version.String())
 	return runner.RunWithInput(args, os.Stdin, stdout, stderr)

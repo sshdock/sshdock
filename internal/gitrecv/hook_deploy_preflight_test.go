@@ -78,7 +78,7 @@ func assertPreflightAttempt(t *testing.T, ctx context.Context, sqlite interface 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if len(events) != 2 || events[0].Type != "deploy.started" || events[1].Type != "deploy.failed" {
+	if len(events) != 3 || events[0].Type != "git.ref_accepted" || events[1].Type != "deploy.started" || events[2].Type != "deploy.failed" {
 		t.Fatalf("events = %#v", events)
 	}
 }

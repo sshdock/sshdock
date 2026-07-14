@@ -25,15 +25,8 @@ func ParsePostReceiveLine(appName string, repoPath string, line string) (PushEve
 }
 
 func branchFromRef(ref string) (string, error) {
-	const prefix = "refs/heads/"
-	if !strings.HasPrefix(ref, prefix) {
-		return "", fmt.Errorf("unsupported git ref %q: expected refs/heads/<branch>", ref)
+	if ref != mainRef {
+		return "", fmt.Errorf("unsupported destination %q: only remote %s is deployable", ref, mainRef)
 	}
-
-	branch := strings.TrimPrefix(ref, prefix)
-	if branch == "" {
-		return "", fmt.Errorf("git branch name is empty")
-	}
-
-	return branch, nil
+	return "main", nil
 }

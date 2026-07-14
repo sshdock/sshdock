@@ -264,19 +264,60 @@ func TestServiceRestartAppAndServiceUseLatestSuccessfulRelease(t *testing.T) {
 	assertEventTypes(t, store.events["app_1"], []string{"restart.triggered", "restart.succeeded", "service.restart.triggered", "service.restart.succeeded"})
 }
 
-func TestServiceRedeployLatestSuccessfulReleaseCreatesDeploymentAndUpdatesState(t *testing.T) {
+func TestServiceRedeployCurrentMainUsesFailedCurrentCommitInsteadOfLatestGood(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	runner := &fakeRecoveryRunner{}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner))
+	service := NewService(
+		store,
+		WithClock(func() time.Time { return now }),
+		WithDeployRunner(runner),
+		WithCurrentMainResolver(CurrentMainResolverFunc(func(_ context.Context, repoPath string) (string, error) {
+			if repoPath != "/apps/app_1/repo.git" {
+				t.Fatalf("repo path = %q", repoPath)
+			}
+			return "new", nil
+		})),
+	)
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
+	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusFailed, CreatedAt: now.Add(-time.Hour)}
+
+	// When
+	deployment, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
+
+	// Then
+	if err != nil {
+		t.Fatalf("RedeployCurrentMain: %v", err)
+	}
+	if deployment.ReleaseID != "rel_new" || deployment.CommitSHA != "new" {
+		t.Fatalf("deployment = %#v, want current main release", deployment)
+	}
+	if len(runner.deploys) != 1 || runner.deploys[0].CommitSHA != "new" {
+		t.Fatalf("deploy requests = %#v, want current main commit", runner.deploys)
+	}
+	for index, want := range []string{"Redeploy current main new started", "Redeploy current main new succeeded"} {
+		if got := store.events["app_1"][index].Message; got != want {
+			t.Fatalf("event[%d] message = %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestServiceRedeployCurrentMainCreatesDeploymentAndUpdatesState(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	runner := &fakeRecoveryRunner{}
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), withCurrentMain("new"))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour)}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
-	deployment, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	deployment, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
 	if err != nil {
-		t.Fatalf("RedeployLatest: %v", err)
+		t.Fatalf("RedeployCurrentMain: %v", err)
 	}
 	if deployment.ReleaseID != "rel_new" {
 		t.Fatalf("deployment release = %q", deployment.ReleaseID)
@@ -303,18 +344,18 @@ func TestServiceRedeployLatestSuccessfulReleaseCreatesDeploymentAndUpdatesState(
 	assertEventTypes(t, store.events["app_1"], []string{"redeploy.started", "redeploy.succeeded"})
 }
 
-func TestServiceRedeployLatestPassesResolvedConfigEnvironment(t *testing.T) {
+func TestServiceRedeployCurrentMainPassesResolvedConfigEnvironment(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	runner := &fakeRecoveryRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
-	if _, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1"); err != nil {
-		t.Fatalf("RedeployLatest: %v", err)
+	if _, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1"); err != nil {
+		t.Fatalf("RedeployCurrentMain: %v", err)
 	}
 	if len(resolver.requests) != 1 {
 		t.Fatalf("resolver requests = %#v", resolver.requests)
@@ -351,13 +392,13 @@ func TestServiceRedeployConfigFailureStopsBeforeCompose(t *testing.T) {
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	runner := &fakeRecoveryRunner{}
 	resolver := &fakeConfigResolver{err: errors.New("missing required config for app_1: SECRET")}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
-	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
 	if err == nil || err.Error() != "missing required config for app_1: SECRET" {
-		t.Fatalf("RedeployLatest error = %v", err)
+		t.Fatalf("RedeployCurrentMain error = %v", err)
 	}
 	if len(runner.deploys) != 0 {
 		t.Fatalf("compose deploys = %#v, want none", runner.deploys)
@@ -381,13 +422,13 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	deployFailure := errors.New("compose failed")
 	failure := compose.NewDeployError(compose.DeployStageBuildServices, deployFailure)
 	runner := &fakeRecoveryRunner{deployErr: failure}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner))
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), withCurrentMain("new"))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
-	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
 	if !errors.Is(err, deployFailure) {
-		t.Fatalf("RedeployLatest error = %v, want wrapped %v", err, deployFailure)
+		t.Fatalf("RedeployCurrentMain error = %v, want wrapped %v", err, deployFailure)
 	}
 	if store.appStatuses["app_1"] != AppStatusFailed {
 		t.Fatalf("app status = %q", store.appStatuses["app_1"])
@@ -416,13 +457,13 @@ func TestServiceRedeployFailureRedactsResolvedConfigValues(t *testing.T) {
 	failure := errors.New("docker output included postgres://secret")
 	runner := &fakeRecoveryRunner{deployErr: failure}
 	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
+	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
-	_, err := service.RedeployLatest(ctx, "app_1", "dep_redeploy_1")
+	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
 	if !errors.Is(err, failure) {
-		t.Fatalf("RedeployLatest error = %v, want wrapped failure", err)
+		t.Fatalf("RedeployCurrentMain error = %v, want wrapped failure", err)
 	}
 	if strings.Contains(err.Error(), "postgres://secret") {
 		t.Fatalf("returned error leaked secret: %v", err)
@@ -479,6 +520,36 @@ func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
 	if store.deployments["dep_startup_attempt"].Trigger != DeploymentTriggerStartupRecovery {
 		t.Fatalf("startup deployment = %#v", store.deployments["dep_startup_attempt"])
 	}
+	for index, want := range []string{"Startup recovery for release rel_old started", "Startup recovery for release rel_old succeeded"} {
+		if got := store.events["app_1"][index].Message; got != want {
+			t.Fatalf("event[%d] message = %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestServiceRecoverDeployedAppsDoesNotRecommendCurrentMainRedeploy(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeServiceStore()
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	deployFailure := errors.New("compose failed")
+	service := NewService(
+		store,
+		WithClock(func() time.Time { return now }),
+		WithRecoveryRunner(&fakeRecoveryRunner{deployErr: deployFailure}),
+		WithDeploymentIDGenerator(func() (string, error) { return "dep_startup_attempt", nil }),
+	)
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+
+	err := service.RecoverDeployedApps(ctx)
+
+	if !errors.Is(err, deployFailure) {
+		t.Fatalf("RecoverDeployedApps error = %v, want wrapped %v", err, deployFailure)
+	}
+	guidance := store.deployments["dep_startup_attempt"].RetryGuidance
+	if !strings.Contains(guidance, "restart sshdockd") || strings.Contains(guidance, "apps redeploy") {
+		t.Fatalf("startup retry guidance = %q, want daemon-restart guidance without current-main redeploy", guidance)
+	}
 }
 
 type fakeServiceStore struct {
@@ -492,6 +563,12 @@ type fakeServiceStore struct {
 	deploymentErrors     map[string]string
 	domains              map[string][]Domain
 	events               map[string][]Event
+}
+
+func withCurrentMain(commitSHA string) ServiceOption {
+	return WithCurrentMainResolver(CurrentMainResolverFunc(func(context.Context, string) (string, error) {
+		return commitSHA, nil
+	}))
 }
 
 type fakeRecoveryRunner struct {

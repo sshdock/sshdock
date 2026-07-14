@@ -843,7 +843,7 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "redeployed %s\n", args[1])
+		fmt.Fprintf(stdout, "redeployed current main for %s\n", args[1])
 		return 0
 	}
 
@@ -1139,7 +1139,7 @@ Apps:
   apps info <name>                     Show app details
   apps health <name>                   Summarize app health and recovery state
   apps restart <name> [service]        Restart an app or service
-  apps redeploy <name>                 Redeploy the latest good release
+  apps redeploy <name>                 Redeploy current remote main
   apps rollback <name> <release-id>    Roll back to a release
   apps remove <name> [--force]         Remove an app
 

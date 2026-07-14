@@ -40,13 +40,21 @@ func TestRepoManagerSetupBareRepo(t *testing.T) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, wantCommands)
 	}
 
-	hookPath := filepath.Join(wantRepoPath, "hooks", "post-receive")
+	assertReceiveHook(t, filepath.Join(wantRepoPath, "hooks", "pre-receive"), "sshdockd git-pre-receive")
+	assertReceiveHook(t, filepath.Join(wantRepoPath, "hooks", "post-receive"), "sshdockd git-hook", "my-app", wantRepoPath)
+}
+
+func assertReceiveHook(t *testing.T, hookPath string, contents ...string) {
+	t.Helper()
+
 	hook, err := os.ReadFile(hookPath)
 	if err != nil {
 		t.Fatalf("read hook: %v", err)
 	}
-	if !strings.Contains(string(hook), "my-app") || !strings.Contains(string(hook), wantRepoPath) {
-		t.Fatalf("hook does not include app name and repo path:\n%s", hook)
+	for _, content := range contents {
+		if !strings.Contains(string(hook), content) {
+			t.Fatalf("hook missing %q:\n%s", content, hook)
+		}
 	}
 
 	info, err := os.Stat(hookPath)
@@ -71,6 +79,27 @@ func TestRepoManagerReturnsExecutorError(t *testing.T) {
 	if !errors.Is(err, failure) {
 		t.Fatalf("SetupBareRepo error = %v, want %v", err, failure)
 	}
+}
+
+func TestRepoManagerInstallHooksRepairsExistingHookPermissions(t *testing.T) {
+	repoPath := t.TempDir()
+	hookDir := filepath.Join(repoPath, "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll hooks: %v", err)
+	}
+	for _, name := range []string{"pre-receive", "post-receive"} {
+		if err := os.WriteFile(filepath.Join(hookDir, name), []byte("stale\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile %s: %v", name, err)
+		}
+	}
+
+	manager := NewRepoManager(RepoManagerConfig{})
+	if err := manager.InstallHooks("my-app", repoPath); err != nil {
+		t.Fatalf("InstallHooks: %v", err)
+	}
+
+	assertReceiveHook(t, filepath.Join(hookDir, "pre-receive"), "sshdockd git-pre-receive")
+	assertReceiveHook(t, filepath.Join(hookDir, "post-receive"), "sshdockd git-hook", "my-app", repoPath)
 }
 
 func TestRepoManagerUsesDefaultRemoteHost(t *testing.T) {

@@ -53,6 +53,7 @@ func TestRootHelpPrintsGroupedCommands(t *testing.T) {
 				"  sshdock <command> [arguments]",
 				"Core:",
 				"Apps:",
+				"Redeploy current remote main",
 				"Config:",
 				"Domains:",
 				"Operations:",

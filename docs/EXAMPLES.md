@@ -534,6 +534,7 @@ curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/
 git init -b main
 git add .
 git commit -m "Deploy rollback lab"
+GOOD_COMMIT=$(git rev-parse HEAD)
 git remote add sshdock git@sshdock.example.com:rollback-lab.git
 git push sshdock main
 curl -fsS https://rollback-lab.example.com
@@ -551,8 +552,7 @@ git push sshdock main
 Rollback:
 
 ```bash
-sudo sshdock releases list rollback-lab
-sudo sshdock apps rollback rollback-lab <successful-release-id>
+git push --force sshdock "$GOOD_COMMIT:main"
 curl -fsS https://rollback-lab.example.com
 sudo sshdock events list rollback-lab
 ```
@@ -561,8 +561,8 @@ Expected evidence:
 
 - The Git push may complete because SSHDock deploys from a post-receive hook.
 - The bad deploy fails and records `deploy.failed` with `stage`, `detail`, `changed`, `fix`, and `retry` fields.
-- `releases list rollback-lab` shows the previous successful release, the failed release, and the persisted failure detail.
-- Rollback records `rollback.triggered` and `rollback.succeeded`.
+- Remote `main` remains at the broken commit after its failed post-receive deployment.
+- Force-pushing the saved good commit to `main` records a normal push deployment for that commit.
 - HTTPS returns `SSHDock rollback lab OK` after rollback.
 
 Clean up:

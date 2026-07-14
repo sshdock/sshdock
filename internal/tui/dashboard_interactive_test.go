@@ -286,7 +286,7 @@ func TestInteractiveDashboardActionMenuListsAndCloses(t *testing.T) {
 		"Actions",
 		"restart app",
 		"restart service",
-		"redeploy latest",
+		"redeploy current main",
 		"rollback release",
 		"attach domain",
 		"detach domain",
@@ -320,7 +320,7 @@ func TestInteractiveDashboardActionsCallBackendWithSelectedArguments(t *testing.
 			want: "restart-service one web",
 		},
 		{
-			name: "redeploy latest",
+			name: "redeploy current main",
 			keys: []string{"a", "down", "down", "enter"},
 			want: "redeploy one",
 		},

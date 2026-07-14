@@ -59,7 +59,7 @@ func (m *RepoManager) SetupBareRepo(ctx context.Context, appName string) (BareRe
 		}
 	}
 
-	if err := m.renderPostReceiveHook(appName, repoPath); err != nil {
+	if err := m.InstallHooks(appName, repoPath); err != nil {
 		return BareRepo{}, err
 	}
 
@@ -67,6 +67,27 @@ func (m *RepoManager) SetupBareRepo(ctx context.Context, appName string) (BareRe
 		Path:      repoPath,
 		RemoteURL: m.RemoteURL(appName),
 	}, nil
+}
+
+func (m *RepoManager) InstallHooks(appName string, repoPath string) error {
+	if err := m.renderPreReceiveHook(repoPath); err != nil {
+		return err
+	}
+	return m.renderPostReceiveHook(appName, repoPath)
+}
+
+func (m *RepoManager) renderPreReceiveHook(repoPath string) error {
+	hookDir := filepath.Join(repoPath, "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		return err
+	}
+
+	const hook = `#!/bin/sh
+set -eu
+sshdockd git-pre-receive
+`
+
+	return writeExecutableHook(filepath.Join(hookDir, "pre-receive"), []byte(hook))
 }
 
 func (m *RepoManager) RemoteURL(appName string) string {
@@ -84,5 +105,34 @@ set -eu
 sshdockd git-hook --app %q --repo %q
 `, appName, repoPath)
 
-	return os.WriteFile(filepath.Join(hookDir, "post-receive"), []byte(hook), 0o755)
+	return writeExecutableHook(filepath.Join(hookDir, "post-receive"), []byte(hook))
+}
+
+func writeExecutableHook(path string, contents []byte) (returnErr error) {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".sshdock-hook-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer func() {
+		if returnErr != nil {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+
+	if err := temporary.Chmod(0o755); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(contents); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	return nil
 }

@@ -14,6 +14,7 @@ curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/
 git init -b main
 git add .
 git commit -m "Deploy rollback lab"
+GOOD_COMMIT=$(git rev-parse HEAD)
 git remote add sshdock git@sshdock.example.com:rollback-lab.git
 git push sshdock main
 curl -fsS https://rollback-lab.example.com
@@ -34,20 +35,19 @@ Expected bad-deploy evidence:
 - The deploy fails and records `deploy.failed` with `stage`, `detail`, `changed`, `fix`, and `retry` fields.
 - `sudo sshdock releases list rollback-lab` shows the original successful release, the failed release, and the persisted failure detail.
 - `sudo sshdock events list rollback-lab` includes `deploy.failed`.
-- The previous good app remains recoverable through rollback.
+- The previous good app keeps running while remote `main` records the broken commit.
 
 Rollback:
 
 ```bash
-sudo sshdock releases list rollback-lab
-sudo sshdock apps rollback rollback-lab <successful-release-id>
+git push --force sshdock "$GOOD_COMMIT:main"
 curl -fsS https://rollback-lab.example.com
 ```
 
 Expected rollback evidence:
 
 - HTTPS returns `SSHDock rollback lab OK`.
-- `events list rollback-lab` includes `rollback.triggered` and `rollback.succeeded`.
+- `events list rollback-lab` includes another accepted-ref and successful push deployment for the saved commit.
 - The dashboard shows release and deployment history.
 
 ## Clean Up

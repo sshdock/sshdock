@@ -38,6 +38,7 @@ type StoreBackendConfig struct {
 	Router                      routeSyncer
 	RecoveryRunner              compose.Runner
 	RecoveryCheckout            appmodel.WorktreeCheckout
+	CurrentMainResolver         appmodel.CurrentMainResolver
 	ConfigManager               configManager
 	Now                         func() time.Time
 	NewDeploymentID             func() (string, error)
@@ -76,6 +77,7 @@ type StoreBackend struct {
 	router                      routeSyncer
 	recoveryRunner              compose.Runner
 	recoveryCheckout            appmodel.WorktreeCheckout
+	currentMainResolver         appmodel.CurrentMainResolver
 	configManager               configManager
 	now                         func() time.Time
 	newDeploymentID             func() (string, error)
@@ -108,6 +110,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		router:                      cfg.Router,
 		recoveryRunner:              cfg.RecoveryRunner,
 		recoveryCheckout:            cfg.RecoveryCheckout,
+		currentMainResolver:         cfg.CurrentMainResolver,
 		configManager:               cfg.ConfigManager,
 		now:                         cfg.Now,
 		newDeploymentID:             cfg.NewDeploymentID,
@@ -165,7 +168,7 @@ func (b *StoreBackend) RedeployApp(name string) error {
 	if err != nil {
 		return fmt.Errorf("create redeploy attempt for app %q: %w", name, err)
 	}
-	if _, err := b.recoveryService().RedeployLatest(ctx, name, deploymentID); err != nil {
+	if _, err := b.recoveryService().RedeployCurrentMain(ctx, name, deploymentID); err != nil {
 		return fmt.Errorf("redeploy app %q: %w", name, err)
 	}
 	return nil
@@ -864,6 +867,9 @@ func (b *StoreBackend) recoveryService() *appmodel.Service {
 	}
 	if b.recoveryCheckout != nil {
 		options = append(options, appmodel.WithWorktreeCheckout(b.recoveryCheckout))
+	}
+	if b.currentMainResolver != nil {
+		options = append(options, appmodel.WithCurrentMainResolver(b.currentMainResolver))
 	}
 	if b.configManager != nil {
 		options = append(options, appmodel.WithConfigResolver(b.configManager))

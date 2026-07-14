@@ -8,7 +8,7 @@ Users should keep deploying the same way:
 git push -> SSHDock release -> SSH dashboard operations
 ```
 
-For the current release line, Docker Compose is the only implemented runtime engine. Apps use `compose.yml` or `docker-compose.yml`, services are started through Docker Compose, Caddy routes to loopback-published service ports, and SQLite stores SSHDock metadata.
+For the current release line, Docker Compose is the only implemented runtime engine. Apps use exactly one conventional root Compose file (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`), services are started through Docker Compose, Caddy routes to loopback-published service ports, and SQLite stores SSHDock metadata.
 
 ## Why Keep An Engine Boundary
 

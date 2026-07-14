@@ -14,7 +14,7 @@ type LocalCommandExecutor struct{}
 func (LocalCommandExecutor) Run(ctx context.Context, command Command) (string, error) {
 	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
 	cmd.Dir = command.Dir
-	cmd.Env = commandEnv(command.Env)
+	cmd.Env = commandEnv(command.Env, command.Dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s %s failed: %w\n%s", command.Name, strings.Join(command.Args, " "), err, output)
@@ -32,7 +32,7 @@ func (LocalCommandExecutor) Stream(ctx context.Context, command Command, stdout 
 	}
 	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
 	cmd.Dir = command.Dir
-	cmd.Env = commandEnv(command.Env)
+	cmd.Env = commandEnv(command.Env, command.Dir)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
@@ -41,13 +41,13 @@ func (LocalCommandExecutor) Stream(ctx context.Context, command Command, stdout 
 	return nil
 }
 
-func commandEnv(extra map[string]string) []string {
-	if len(extra) == 0 {
-		return nil
-	}
+func commandEnv(extra map[string]string, directory string) []string {
 	env := os.Environ()
 	for key, value := range extra {
 		env = append(env, key+"="+value)
+	}
+	if directory != "" {
+		env = append(env, "PWD="+directory)
 	}
 	return env
 }

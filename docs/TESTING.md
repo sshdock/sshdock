@@ -61,7 +61,7 @@ sshdock apps create my-app
 ```
 
 6. Verify the repo has an executable `hooks/post-receive` file.
-7. Create a local source repository with a supported `compose.yml`.
+7. Create a local source repository with one conventional root Compose file.
 8. Push `main` to the created bare repository path.
 9. Let the hook invoke:
 
@@ -276,8 +276,8 @@ For this first real pass, the command should:
 1. Load config from environment variables.
 2. Open the SQLite store.
 3. Check out the pushed commit into the configured app worktree.
-4. Detect `compose.yml` or `docker-compose.yml`.
-5. Validate the supported Compose subset.
+4. Select exactly one of the four conventional root Compose filenames.
+5. Enforce SSHDock's external-file policy and let Docker Compose validate the application model.
 6. Create a release record.
 7. Create a deployment record.
 8. Run the fake Compose deploy adapter.

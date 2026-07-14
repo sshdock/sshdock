@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 )
 
 const defaultKeepSuccessfulReleases = 5
@@ -29,35 +29,23 @@ func NewDockerRunner(executor CommandExecutor) *DockerRunner {
 	return &DockerRunner{executor: executor}
 }
 
-func (r *DockerRunner) Validate(ctx context.Context, composePath string) (ValidationResult, error) {
-	command := Command{
-		Name: "docker",
-		Dir:  filepath.Dir(composePath),
-		Args: []string{"compose", "-f", composePath, "config"},
-	}
-	if _, err := r.executor.Run(ctx, command); err != nil {
-		return ValidationResult{}, err
-	}
-
-	return ValidateFile(composePath)
-}
-
 func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) error {
 	projectName := request.projectName()
 	baseFiles := []string{request.ComposePath}
 	baseArgs := composeArgs(baseFiles, projectName)
 
-	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "config"))); err != nil {
-		return NewDeployError(DeployStageComposeConfig, err)
-	}
-	if _, err := ValidateFile(request.ComposePath); err != nil {
+	if _, err := ValidateFileWithEnv(request.ComposePath, request.Env); err != nil {
 		return NewDeployError(DeployStageValidateCompose, err)
+	}
+	activeOutput, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--services")))
+	if err != nil {
+		return NewDeployError(DeployStageComposeConfig, err)
 	}
 	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable"))); err != nil {
 		return NewDeployError(DeployStagePullImages, err)
 	}
 
-	buildServices, err := detectBuildServices(request.ComposePath)
+	buildServices, err := detectBuildServices(request.ComposePath, serviceSet(activeOutput), request.Env)
 	if err != nil {
 		return NewDeployError(DeployStageBuildServices, err)
 	}
@@ -213,9 +201,6 @@ func logsArgs(request LogsRequest) []string {
 }
 
 func (r DeployRequest) projectName() string {
-	if r.ProjectName != "" {
-		return r.ProjectName
-	}
 	return ProjectName(r.AppName)
 }
 
@@ -243,49 +228,22 @@ func (r LogsRequest) projectName() string {
 }
 
 func ProjectName(appName string) string {
-	name := strings.ToLower(appName)
-	var builder strings.Builder
-	for _, char := range name {
-		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' || char == '_' {
-			builder.WriteRune(char)
-			continue
-		}
-		builder.WriteByte('-')
-	}
-
-	normalized := strings.Trim(builder.String(), "-_")
-	if normalized == "" {
-		normalized = "app"
-	}
-	return "sshdock_" + normalized
+	return domaincfg.AppIsolationName(appName)
 }
 
-func detectBuildServices(composePath string) ([]string, error) {
-	data, err := os.ReadFile(composePath)
+func detectBuildServices(composePath string, activeServices map[string]bool, env map[string]string) ([]string, error) {
+	model, err := loadInterpolatedComposeModel(composePath, env)
 	if err != nil {
 		return nil, err
 	}
 
-	var document yaml.Node
-	if err := yaml.Unmarshal(data, &document); err != nil {
-		return nil, err
-	}
-
-	root := documentNode(&document)
-	if root == nil || root.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("compose file %s must be a mapping", composePath)
-	}
-
-	services := mappingValue(root, "services")
-	if services == nil || services.Kind != yaml.MappingNode {
-		return nil, nil
-	}
-
+	services := modelServices(model)
 	var buildServices []string
-	for i := 0; i < len(services.Content); i += 2 {
-		serviceName := services.Content[i].Value
-		service := services.Content[i+1]
-		if service.Kind == yaml.MappingNode && mappingValue(service, "build") != nil {
+	for serviceName := range services {
+		if !activeServices[serviceName] {
+			continue
+		}
+		if serviceHasBuild(serviceName, services, make(map[string]bool)) {
 			buildServices = append(buildServices, serviceName)
 		}
 	}
@@ -294,13 +252,32 @@ func detectBuildServices(composePath string) ([]string, error) {
 	return buildServices, nil
 }
 
-func mappingValue(node *yaml.Node, key string) *yaml.Node {
-	for i := 0; i < len(node.Content); i += 2 {
-		if node.Content[i].Value == key {
-			return node.Content[i+1]
-		}
+func serviceSet(output string) map[string]bool {
+	services := make(map[string]bool)
+	for _, name := range strings.Fields(output) {
+		services[name] = true
 	}
-	return nil
+	return services
+}
+
+func serviceHasBuild(serviceName string, services map[string]any, visiting map[string]bool) bool {
+	if visiting[serviceName] {
+		return false
+	}
+	visiting[serviceName] = true
+	defer delete(visiting, serviceName)
+
+	service := modelMapping(services[serviceName])
+	if _, found := service["build"]; found {
+		return true
+	}
+	extends := modelMapping(service["extends"])
+	baseService, found := modelString(extends["service"])
+	if !found {
+		return false
+	}
+	_, found = services[baseService]
+	return found && serviceHasBuild(baseService, services, visiting)
 }
 
 func writeReleaseOverride(projectDir string, appName string, commitSHA string, services []string) (string, error) {

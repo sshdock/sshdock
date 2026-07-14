@@ -228,13 +228,21 @@ func TestPostReceiveHandlerPassesResolvedConfigEnvironment(t *testing.T) {
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	runner := &compose.FakeRunner{}
-	resolver := &fakeHookConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	resolver := &fakeHookConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret", "ROOT_COMPOSE": "compose.yml"}}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:          sqlite,
 		Runner:         runner,
 		ConfigResolver: resolver,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  base:
+    image: example/base:latest
+  web:
+    extends:
+      file: ${ROOT_COMPOSE}
+      service: base
+`)
 			return nil
 		}),
 	})
@@ -659,7 +667,7 @@ func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *tes
 
 type cleanupWarningRunner struct{}
 
-func (cleanupWarningRunner) Validate(context.Context, string) (compose.ValidationResult, error) {
+func (cleanupWarningRunner) Validate(context.Context, string, string) (compose.ValidationResult, error) {
 	return compose.ValidationResult{}, nil
 }
 

@@ -85,10 +85,10 @@ func TestGitHookEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
 	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
-	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yaml"), []byte("services:\n  web:\n    image: example/web:latest\n    command: [\"./serve\"]\n    labels: {com.example.role: web}\n    networks: [frontend]\n    configs: [app-config]\n    secrets: [app-secret]\n    deploy: {resources: {limits: {memory: 256M}}}\nnetworks: {frontend: {}}\nconfigs: {app-config: {file: ./app.conf}}\nsecrets: {app-secret: {file: ./app.secret}}\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
 	}
-	runGit(t, sourceDir, nil, "add", "compose.yml")
+	runGit(t, sourceDir, nil, "add", "compose.yaml")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial compose app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	runGit(t, sourceDir, nil, "remote", "add", "prod", repoPath)

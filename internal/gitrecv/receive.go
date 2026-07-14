@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
 type receivePackStore interface {
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
+	ListApps(ctx context.Context) ([]app.App, error)
 }
 
 type ReceivePackRunner interface {
@@ -79,12 +81,23 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 }
 
 func ParseReceivePackCommand(originalCommand string) (string, error) {
-	fields := strings.Fields(originalCommand)
-	if len(fields) != 2 || fields[0] != "git-receive-pack" {
+	const command = "git-receive-pack"
+	trimmed := strings.TrimSpace(originalCommand)
+	if !strings.HasPrefix(trimmed, command) || len(trimmed) == len(command) || !strings.ContainsRune(" \t\r\n", rune(trimmed[len(command)])) {
 		return "", fmt.Errorf("unsupported SSH command %q: expected git-receive-pack '<app>.git'", originalCommand)
 	}
 
-	repoPath := strings.Trim(fields[1], `"'`)
+	repoPath := strings.TrimSpace(trimmed[len(command):])
+	if len(repoPath) >= 2 {
+		first := repoPath[0]
+		last := repoPath[len(repoPath)-1]
+		if (first == '\'' && last == '\'') || (first == '"' && last == '"') {
+			repoPath = repoPath[1 : len(repoPath)-1]
+		}
+	}
+	if repoPath == "" || strings.ContainsAny(repoPath, `"'`) {
+		return "", fmt.Errorf("unsupported SSH command %q: expected git-receive-pack '<app>.git'", originalCommand)
+	}
 	if !strings.HasSuffix(repoPath, ".git") {
 		return "", fmt.Errorf("unsupported git path %q: expected <app>.git", repoPath)
 	}
@@ -110,11 +123,25 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 
 	appName, err := ParseReceivePackCommand(request.OriginalCommand)
 	if err != nil {
-		return err
+		return s.withAppNameGuidance(err)
 	}
 
 	model, err := s.store.GetApp(ctx, appName)
 	if errors.Is(err, store.ErrNotFound) {
+		if nameErr := domaincfg.ValidateAppName(appName); nameErr != nil {
+			return s.withAppNameGuidance(nameErr)
+		}
+		existingApps, listErr := s.store.ListApps(ctx)
+		if listErr != nil {
+			return fmt.Errorf("list apps before creating %q: %w", appName, listErr)
+		}
+		existingNames := make([]string, 0, len(existingApps))
+		for _, existingApp := range existingApps {
+			existingNames = append(existingNames, existingApp.Name)
+		}
+		if isolationErr := domaincfg.ValidateAppIsolation(appName, existingNames); isolationErr != nil {
+			return isolationErr
+		}
 		model, err = s.createApp(ctx, appName)
 	}
 	if err != nil {
@@ -122,6 +149,14 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	}
 
 	return s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr)
+}
+
+func (s *ReceivePackService) withAppNameGuidance(err error) error {
+	var invalidName *domaincfg.InvalidAppNameError
+	if !errors.As(err, &invalidName) {
+		return err
+	}
+	return fmt.Errorf("%w\nrun: git remote set-url sshdock %s", err, s.repoManager.RemoteURL(invalidName.Suggestion))
 }
 
 func (s *ReceivePackService) createApp(ctx context.Context, appName string) (app.App, error) {
@@ -149,11 +184,8 @@ func (s *ReceivePackService) createApp(ctx context.Context, appName string) (app
 }
 
 func validateFlatAppName(appName string) error {
-	if appName == "" || appName == "." || appName == ".." {
-		return fmt.Errorf("app name must be a non-empty flat name")
-	}
-	if strings.ContainsAny(appName, `/\`) {
-		return fmt.Errorf("unsupported app path %q: namespaces are not supported in v0", appName)
+	if appName == "" || appName == "." || appName == ".." || strings.ContainsAny(appName, `/\`) {
+		return domaincfg.ValidateAppName(appName)
 	}
 
 	return nil

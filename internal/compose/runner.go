@@ -14,7 +14,7 @@ type CommandExecutor interface {
 }
 
 type Runner interface {
-	Validate(ctx context.Context, composePath string) (ValidationResult, error)
+	Validate(ctx context.Context, appName string, composePath string) (ValidationResult, error)
 	Deploy(ctx context.Context, request DeployRequest) error
 	Restart(ctx context.Context, request RestartRequest) error
 	Remove(ctx context.Context, request RemoveRequest) error
@@ -40,7 +40,6 @@ type DeployRequest struct {
 	ComposePath           string
 	ReleaseID             string
 	CommitSHA             string
-	ProjectName           string
 	Env                   map[string]string
 	KeepReleases          int
 	SuccessfulReleaseSHAs []string

@@ -42,7 +42,7 @@ Good candidates:
 
 - A Dokploy Docker Compose service whose compose file can be committed to Git.
 - A simple application whose deployment can move from provider polling/webhooks to `git push sshdock main`.
-- Apps that can use SSHDock's supported Compose subset.
+- Apps that fit one conventional root Compose file and SSHDock's external-file boundary.
 - Apps where secrets can move from Dokploy environment settings to SSHDock config.
 
 Poor candidates:
@@ -57,7 +57,7 @@ Poor candidates:
 Use [`MIGRATE_FROM_DOKPLOY.md`](MIGRATE_FROM_DOKPLOY.md) for a practical migration path. The short version:
 
 1. Export or copy the Compose file into a Git repo.
-2. Reduce it to SSHDock's supported Compose subset.
+2. Keep the application in one conventional root Compose file without top-level `include` or external `extends.file` references.
 3. Move UI-managed environment values into SSHDock config.
 4. Push to SSHDock.
 5. Verify health, route, logs, rollback, and backup before DNS cutover.

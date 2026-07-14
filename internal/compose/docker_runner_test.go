@@ -22,7 +22,7 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
   web:
     build: .
 `)
-	executor := &recordingExecutor{}
+	executor := &recordingExecutor{Outputs: []string{"api\nweb\n"}}
 	runner := NewDockerRunner(executor)
 
 	err := runner.Deploy(ctx, DeployRequest{
@@ -49,7 +49,7 @@ func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
 	}
 
 	want := []Command{
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--services"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "pull", "--ignore-buildable"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "build", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "up", "-d"}},
@@ -80,7 +80,7 @@ func TestDockerRunnerUpdatesLatestOnlyAfterUpSucceeds(t *testing.T) {
   web:
     build: .
 `)
-	executor := &recordingExecutor{FailAt: 3, Err: errors.New("up failed")}
+	executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: 3, Err: errors.New("up failed")}
 	runner := NewDockerRunner(executor)
 
 	err := runner.Deploy(ctx, DeployRequest{
@@ -121,7 +121,7 @@ func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			failure := errors.New(test.name + " failed")
-			executor := &recordingExecutor{FailAt: test.failAt, Err: failure}
+			executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: test.failAt, Err: failure}
 			runner := NewDockerRunner(executor)
 
 			err := runner.Deploy(ctx, DeployRequest{
@@ -189,7 +189,7 @@ func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
   web:
     build: .
 `)
-	executor := &recordingExecutor{FailAt: 5, Err: errors.New("image is in use")}
+	executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: 5, Err: errors.New("image is in use")}
 	recorder := &recordingCleanupRecorder{}
 	runner := NewDockerRunner(executor)
 
@@ -231,7 +231,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	}
 	runner := NewDockerRunner(executor)
 
-	result, err := runner.Validate(ctx, composePath)
+	result, err := runner.Validate(ctx, "my-app", composePath)
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	}
 
 	want := []Command{
-		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "config"}},
+		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "restart", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--format", "json"}, Env: inspectEnv},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}, Env: inspectEnv},

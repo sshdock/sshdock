@@ -46,7 +46,7 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	appName := "server-build-app"
 	projectName := compose.ProjectName(appName)
 	commitSHA := pushComposeAppThroughSSH(t, paths, appName, map[string]string{
-		"compose.yml": "services:\n  web:\n    build: .\n",
+		"compose.yml": "services:\n  base:\n    build: .\n  web:\n    extends:\n      service: ${BASE_SERVICE:-base}\n  debug:\n    profiles: [debug]\n    build: ./missing-debug\n",
 		"Dockerfile":  "FROM nginx:alpine\n",
 	})
 	worktreePath := filepath.Join(paths.dataDir, "apps", appName, "worktree")

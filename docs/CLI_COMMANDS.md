@@ -262,6 +262,12 @@ default URL after first deploy: https://my-app.example.com
 
 Manual app creation remains useful for scripts and debugging. The default v0 user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
 
+App names must already be normalized DNS labels: lowercase letters, numbers, and interior hyphens, up to 63 characters. Invalid names are rejected rather than changed silently. The error includes a deterministic suggestion and the exact command to update the conventional `sshdock` Git remote:
+
+```bash
+git remote set-url sshdock git@<server-domain>:<suggested-name>.git
+```
+
 ### `sshdock apps list`
 
 List apps from SQLite.
@@ -528,7 +534,7 @@ Receive pushes from OpenSSH forced-command wiring.
 sshdockd git-receive
 ```
 
-This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. It supports flat v0 app paths and rejects namespace paths such as `owner/repo.git`.
+This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. App names use the same normalized DNS-label rule as explicit creation; invalid names are rejected with a suggestion and exact Git remote update command.
 
 Operators normally do not run this manually.
 
@@ -540,7 +546,7 @@ Handle a bare repository `post-receive` hook.
 sshdockd git-hook --app my-app --repo /var/lib/sshdock/apps/my-app/repo.git
 ```
 
-The hook reads pushed refs from stdin, checks out the selected commit, detects and validates `compose.yml` or `docker-compose.yml`, creates release and deployment records, runs the configured Compose runner, and records deployment events.
+The hook reads pushed refs from stdin, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and records deployment events.
 
 Operators normally do not run this manually.
 

@@ -1,37 +1,54 @@
 # SSHDock Compose Support
 
-SSHDock v0 deploys Docker Compose apps on one node. The supported contract is intentionally small: enough for solo-developer web apps, workers, private dependencies, config interpolation, health checks, and named volumes.
+SSHDock v0 deploys Docker Compose apps on one node. Docker Compose is the schema authority for application fields: SSHDock passes standard services, images, builds, commands, ports, networks, volumes, resources, health checks, configs, secrets, labels, profiles, and other Compose fields to `docker compose config` instead of maintaining a second field allowlist.
 
-This is not a promise of full Docker Compose compatibility. Unsupported fields fail during deploy validation before SSHDock starts Compose. Validation errors include the unsupported field path, such as `networks` or `services.web.command`, and point back to this support boundary.
+## Root File Detection
 
-## File Detection
+Commit exactly one of these files at the repository root:
 
-SSHDock looks for one Compose file at the repository root:
-
+- `compose.yaml`
 - `compose.yml`
+- `docker-compose.yaml`
 - `docker-compose.yml`
 
-## Supported Top-Level Fields
+If none are present, deployment fails and lists all four expected names. If more than one is present, deployment fails and lists the conflicting files; SSHDock never guesses which definition to use.
 
-- `services`
-- `volumes`
+Custom Compose file flags are not supported.
 
-`services` must be a mapping and must define at least one service.
+## External File Boundary
 
-## Supported Service Fields
+The selected root file must contain the complete Compose application definition.
 
-- `image`
-- `build`
-- `environment`
-- `env_file`
-- `depends_on`
-- `volumes`
-- `ports`
-- `expose`
-- `healthcheck`
-- `restart`
+SSHDock rejects:
 
-Services may use published ports for SSHDock route inference. The most reliable routed shape is one public web service with one loopback-published TCP port:
+- top-level `include`
+- service `extends.file` references to another Compose file
+
+The error names the external file and asks you to keep the application in the selected root file. SSHDock uses Compose interpolation semantics and the effective process, app-config, and project `.env` values when checking `extends.file`. Same-file Compose behavior remains Docker Compose behavior, including YAML anchors, extension fields such as `x-service`, `extends` with only a same-file `service` reference, and `extends.file` that resolves to the selected root file itself.
+
+## Compose Project Isolation
+
+Every Compose operation uses one SSHDock-controlled project name derived from the validated app name:
+
+```text
+sshdock_<app-name>
+```
+
+This project name takes precedence over a top-level Compose `name`, keeping ordinary containers, networks, and named volumes isolated between apps. Explicit global resource names, external resources, bind mounts, host networking, and similar host-coupled settings remain operator-owned Compose behavior.
+
+## Config And Secrets
+
+Apps may commit `.sshdock.yml` to declare required SSHDock config keys. SSHDock resolves stored values before Compose starts and passes them only through the Compose process environment. It does not auto-inject every stored value into every service.
+
+Compose `configs` and `secrets` fields are passed to Docker Compose normally. The external-file boundary above applies to Compose definitions loaded through `include` or `extends.file`, not ordinary files referenced by application fields.
+
+See [`CLI_COMMANDS.md`](CLI_COMMANDS.md) for `config set`, `config import`, `config list`, and `config get`.
+
+## Routing Boundary
+
+Automatic route creation depends on a safely inferred host-published TCP port. Worker-only apps and private dependency services can deploy without a public route.
+
+The most reliable routed shape is one public web service with one loopback-published TCP port:
 
 ```yaml
 services:
@@ -40,35 +57,6 @@ services:
     ports:
       - "127.0.0.1:3000:80"
 ```
-
-## Known Unsupported Fields
-
-Unsupported top-level fields include:
-
-- `networks`
-- `secrets`
-- `configs`
-
-Unsupported service fields include:
-
-- `command`
-- `entrypoint`
-- `container_name`
-- `labels`
-- `deploy`
-- `profiles`
-
-If your app needs an unsupported field, keep the workaround inside the image or Dockerfile when possible. For example, prefer a small wrapper script baked into the image instead of a Compose `command` override.
-
-## Config And Secrets
-
-Apps may commit `.sshdock.yml` to declare required config keys. SSHDock resolves stored config values before Compose starts and passes them only through the Compose process environment. It does not auto-inject every stored value into every service.
-
-See [`CLI_COMMANDS.md`](CLI_COMMANDS.md) for `config set`, `config import`, `config list`, and `config get`.
-
-## Routing Boundary
-
-Automatic route creation depends on a safely inferred host-published TCP port. Worker-only apps and private dependency services can deploy without a public route.
 
 When automatic inference is not enough, attach a route explicitly:
 

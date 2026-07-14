@@ -34,7 +34,9 @@ Common Dokku starting points include `dokku apps:list`, domain commands, config 
 
 SSHDock expects one root-level Compose file:
 
+- `compose.yaml`
 - `compose.yml`
+- `docker-compose.yaml`
 - `docker-compose.yml`
 
 If the app uses a Dockerfile, create a service with `build: .`:
@@ -59,7 +61,7 @@ services:
 
 For automatic routing, prefer one public web service with one loopback-published TCP port. Private workers, Redis, Postgres, and other dependencies can be additional Compose services without public ports.
 
-Check the supported subset in [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md). SSHDock v0 intentionally rejects fields such as top-level `networks`, `secrets`, `configs`, and service-level `deploy`, `profiles`, `labels`, `container_name`, `command`, and `entrypoint`.
+Check [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) before pushing. Docker Compose validates standard application fields, including networks, secrets, configs, resources, labels, commands, and entrypoints. Keep exactly one conventional Compose file at the repository root, without top-level `include` or service `extends.file` references to another Compose file.
 
 ## 3. Move Config Without Committing Secrets
 

@@ -14,15 +14,17 @@ type FakeRunner struct {
 	StatusErr   error
 	LogsErr     error
 
-	ValidatedPath   string
-	DeployRequests  []DeployRequest
-	RestartRequests []RestartRequest
-	RemoveRequests  []RemoveRequest
-	StatusRequests  []StatusRequest
-	LogsRequests    []LogsRequest
+	ValidatedPath    string
+	ValidatedAppName string
+	DeployRequests   []DeployRequest
+	RestartRequests  []RestartRequest
+	RemoveRequests   []RemoveRequest
+	StatusRequests   []StatusRequest
+	LogsRequests     []LogsRequest
 }
 
-func (f *FakeRunner) Validate(_ context.Context, composePath string) (ValidationResult, error) {
+func (f *FakeRunner) Validate(_ context.Context, appName string, composePath string) (ValidationResult, error) {
+	f.ValidatedAppName = appName
 	f.ValidatedPath = composePath
 	if f.ValidateErr != nil {
 		return ValidationResult{}, f.ValidateErr

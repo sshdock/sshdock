@@ -2,10 +2,9 @@ package compose
 
 import (
 	"fmt"
-	"os"
+	"path/filepath"
 	"sort"
-
-	"gopkg.in/yaml.v3"
+	"strings"
 )
 
 type ValidationResult struct {
@@ -13,96 +12,105 @@ type ValidationResult struct {
 }
 
 func ValidateFile(path string) (ValidationResult, error) {
-	data, err := os.ReadFile(path)
+	return ValidateFileWithEnv(path, nil)
+}
+
+func ValidateFileWithEnv(path string, env map[string]string) (ValidationResult, error) {
+	rawModel, err := loadComposeModel(path)
 	if err != nil {
 		return ValidationResult{}, err
 	}
-
-	var document yaml.Node
-	if err := yaml.Unmarshal(data, &document); err != nil {
-		return ValidationResult{}, fmt.Errorf("invalid YAML in %s: %w", path, err)
-	}
-
-	root := documentNode(&document)
-	if root == nil || root.Kind != yaml.MappingNode {
-		return ValidationResult{}, fmt.Errorf("compose file %s must be a mapping with services", path)
-	}
-
-	servicesNode, err := validateTopLevel(root)
+	model, err := interpolateComposeModel(path, rawModel, env)
 	if err != nil {
 		return ValidationResult{}, err
 	}
-	if servicesNode == nil || servicesNode.Kind != yaml.MappingNode || len(servicesNode.Content) == 0 {
-		return ValidationResult{}, fmt.Errorf("compose file must define at least one service")
-	}
-
-	services, err := validateServices(servicesNode)
-	if err != nil {
+	if err := validateExternalFilePolicy(path, model, rawModel); err != nil {
 		return ValidationResult{}, err
 	}
 
+	servicesModel := modelServices(model)
+	services := make([]string, 0, len(servicesModel))
+	for serviceName := range servicesModel {
+		services = append(services, serviceName)
+	}
 	sort.Strings(services)
 	return ValidationResult{Services: services}, nil
 }
 
-func validateTopLevel(root *yaml.Node) (*yaml.Node, error) {
-	var servicesNode *yaml.Node
-	supported := map[string]bool{
-		"services": true,
-		"volumes":  true,
+func validateExternalFilePolicy(composePath string, model composeModel, rawModel composeModel) error {
+	if _, found := model["include"]; found {
+		rawInclude := rawModel["include"]
+		files := strings.Join(scalarValues(rawInclude), ", ")
+		if files == "" {
+			files = "the configured file"
+		}
+		return fmt.Errorf("top-level include references %s; external Compose files are not supported; keep the app in one root Compose file", files)
 	}
 
-	for i := 0; i < len(root.Content); i += 2 {
-		key := root.Content[i].Value
-		value := root.Content[i+1]
-		if !supported[key] {
-			return nil, fmt.Errorf("unsupported top-level field %q; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", key)
+	for serviceName, serviceValue := range modelServices(model) {
+		service := modelMapping(serviceValue)
+		extends := modelMapping(service["extends"])
+		if extends == nil {
+			continue
 		}
-		if key == "services" {
-			servicesNode = value
-		}
-	}
-
-	return servicesNode, nil
-}
-
-func validateServices(servicesNode *yaml.Node) ([]string, error) {
-	supported := map[string]bool{
-		"build":       true,
-		"image":       true,
-		"environment": true,
-		"env_file":    true,
-		"depends_on":  true,
-		"volumes":     true,
-		"ports":       true,
-		"expose":      true,
-		"healthcheck": true,
-		"restart":     true,
-	}
-
-	services := make([]string, 0, len(servicesNode.Content)/2)
-	for i := 0; i < len(servicesNode.Content); i += 2 {
-		serviceName := servicesNode.Content[i].Value
-		serviceNode := servicesNode.Content[i+1]
-		if serviceNode.Kind != yaml.MappingNode {
-			return nil, fmt.Errorf("service %q must be a mapping", serviceName)
-		}
-
-		services = append(services, serviceName)
-		for j := 0; j < len(serviceNode.Content); j += 2 {
-			field := serviceNode.Content[j].Value
-			if !supported[field] {
-				return nil, fmt.Errorf("unsupported field %q at services.%s.%s; see docs/COMPOSE_SUPPORT.md for SSHDock's supported Compose subset", field, serviceName, field)
+		file, found := extends["file"]
+		if found && !referencesSelectedComposeFile(composePath, file) {
+			rawService := modelMapping(modelServices(rawModel)[serviceName])
+			rawFile := modelMapping(rawService["extends"])["file"]
+			if rawFile == nil {
+				rawFile = "the configured value"
 			}
+			return fmt.Errorf("services.%s.extends.file references external Compose file %q; external Compose files are not supported; define the base service in the selected root Compose file", serviceName, fmt.Sprint(rawFile))
 		}
 	}
 
-	return services, nil
+	return nil
 }
 
-func documentNode(document *yaml.Node) *yaml.Node {
-	if document.Kind == yaml.DocumentNode && len(document.Content) == 1 {
-		return document.Content[0]
+func referencesSelectedComposeFile(composePath string, value any) bool {
+	file, ok := modelString(value)
+	if !ok {
+		return false
 	}
-	return document
+	selected, err := filepath.Abs(composePath)
+	if err != nil {
+		return false
+	}
+	referenced := file
+	if !filepath.IsAbs(referenced) {
+		referenced = filepath.Join(filepath.Dir(selected), referenced)
+	}
+	referenced, err = filepath.Abs(referenced)
+	return err == nil && filepath.Clean(referenced) == filepath.Clean(selected)
+}
+
+func scalarValues(value any) []string {
+	switch value := value.(type) {
+	case string:
+		return []string{value}
+	case []any:
+		var values []string
+		for _, child := range value {
+			values = append(values, scalarValues(child)...)
+		}
+		return values
+	case composeModel:
+		return scalarValues(map[string]any(value))
+	case map[string]any:
+		var values []string
+		for _, child := range value {
+			values = append(values, scalarValues(child)...)
+		}
+		return values
+	case map[any]any:
+		var values []string
+		for _, child := range value {
+			values = append(values, scalarValues(child)...)
+		}
+		return values
+	case nil:
+		return nil
+	default:
+		return []string{fmt.Sprint(value)}
+	}
 }

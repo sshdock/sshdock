@@ -27,7 +27,7 @@ Check:
 - The remote is `git@sshdock.<domain>:<app>.git`.
 - `sudo sshdock diagnostics` passes.
 - The deploy key was added with `sudo sshdock ssh-keys add <name>`.
-- The app repo contains `compose.yml` or `docker-compose.yml` at the root.
+- The app repo contains exactly one root `compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`.
 
 If the push reaches SSHDock but deploy fails, use the deploy-failure section below.
 
@@ -55,7 +55,7 @@ ssh -T dashboard@sshdock.<domain>
 Common cases:
 
 - `missing required config`: set the named key with `ssh dashboard@sshdock.<domain> config set <app> <key>`, then push or redeploy.
-- Unsupported Compose field: read the exact path in the error and adjust to [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md).
+- Compose validation failure: run `docker compose config` in the app repository, then fix the reported Compose error.
 - Image pull or build failure: fix the image reference, registry access, Dockerfile, or build context, then push again.
 - Container start failure: inspect logs with `sudo sshdock logs <app> --tail 200`, fix the app or config, then redeploy.
 - Caddy reload failure: run `sudo sshdock domains check <app>` and `sudo sshdock diagnostics`, then fix route or Caddy config state.

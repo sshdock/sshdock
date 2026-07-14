@@ -94,7 +94,6 @@ func (h *PostReceiveHandler) Handle(ctx context.Context, appName string, repoPat
 	if h.checkout == nil {
 		return fmt.Errorf("post-receive worktree checkout is not configured")
 	}
-
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -123,7 +122,11 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err != nil {
 		return err
 	}
-	if _, err := compose.ValidateFile(composePath); err != nil {
+	env, envErr := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
+	if envErr == nil {
+		_, err = compose.ValidateFileWithEnv(composePath, env)
+	}
+	if err != nil {
 		return err
 	}
 
@@ -170,11 +173,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		return err
 	}
 
-	env, err := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
-	if err != nil {
+	if envErr != nil {
 		failure := deployfailure.New(
 			"config",
-			err,
+			envErr,
 			"release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed",
 			"set the missing config value(s) with the command(s) in detail",
 			"push the same commit again after fixing config",
@@ -199,7 +201,6 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		ComposePath:           composePath,
 		ReleaseID:             releaseID,
 		CommitSHA:             event.CommitSHA,
-		ProjectName:           compose.ProjectName(event.AppName),
 		Env:                   env,
 		KeepReleases:          5,
 		SuccessfulReleaseSHAs: priorSuccessfulReleaseSHAs,

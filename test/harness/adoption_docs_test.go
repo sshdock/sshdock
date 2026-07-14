@@ -10,8 +10,9 @@ import (
 func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 	root := repoRoot(t)
 	docs := []struct {
-		path string
-		want []string
+		path   string
+		want   []string
+		reject []string
 	}{
 		{
 			path: filepath.Join(root, "docs", "COMPARE_DOKKU.md"),
@@ -35,6 +36,8 @@ func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 			path: filepath.Join(root, "docs", "MIGRATE_FROM_DOKKU.md"),
 			want: []string{
 				"does not run Procfiles, buildpacks, Dokku plugins",
+				"compose.yaml",
+				"docker-compose.yaml",
 				"COMPOSE_SUPPORT.md",
 				"config set my-app DATABASE_URL",
 				"backup create",
@@ -57,6 +60,7 @@ func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 				"domains check",
 				"Do not append a remote `dashboard` command.",
 			},
+			reject: []string{"Unsupported Compose field"},
 		},
 	}
 
@@ -70,6 +74,11 @@ func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 			for _, want := range doc.want {
 				if !strings.Contains(text, want) {
 					t.Fatalf("%s missing %q", doc.path, want)
+				}
+			}
+			for _, reject := range doc.reject {
+				if strings.Contains(text, reject) {
+					t.Fatalf("%s contains obsolete guidance %q", doc.path, reject)
 				}
 			}
 		})

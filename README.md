@@ -52,7 +52,7 @@ Add the Git remote from your app repo:
 git remote add sshdock git@sshdock.example.com:my-app.git
 ```
 
-Your app repo needs `compose.yml` or `docker-compose.yml`. A minimal static site can be:
+Your app repo needs exactly one root `compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`. A minimal static site can be:
 
 ```yaml
 services:
@@ -62,7 +62,7 @@ services:
       - "127.0.0.1:3000:80"
 ```
 
-See [`docs/COMPOSE_SUPPORT.md`](docs/COMPOSE_SUPPORT.md) for the supported Compose subset and known unsupported fields.
+See [`docs/COMPOSE_SUPPORT.md`](docs/COMPOSE_SUPPORT.md) for file detection, Compose authority, and the external-file boundary.
 
 Deploy:
 

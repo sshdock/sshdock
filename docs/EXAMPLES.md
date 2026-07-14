@@ -29,7 +29,7 @@ Examples already included in the latest stable release use release-tagged raw UR
 
 Docker Compose is the current runtime engine for these examples. SSHDock may explore k3s later as an advanced runtime engine, but that is a direction, not a promise. The examples are written to keep the user-facing contract Compose-first and SSH-native. See [`RUNTIME_ENGINES.md`](RUNTIME_ENGINES.md).
 
-For the validated Compose subset and known unsupported fields, see [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md).
+For root-file selection, Compose authority, project isolation, and the external-file boundary, see [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md).
 
 ## Minimal Static Site
 

@@ -158,22 +158,6 @@ func NewMemoryBackend(gitHost string) *MemoryBackend {
 	}
 }
 
-func (b *MemoryBackend) CreateApp(name string) (App, string, error) {
-	if _, ok := b.apps[name]; ok {
-		return App{}, "", fmt.Errorf("app %q already exists", name)
-	}
-
-	model := App{Name: name, Status: "created", NodeID: "local"}
-	if b.baseDomain != "" {
-		if appHost, err := domaincfg.AppHost(name, b.baseDomain); err == nil {
-			model.DefaultURL = "https://" + appHost
-		}
-	}
-	b.apps[name] = model
-
-	return model, fmt.Sprintf("git@%s:%s.git", b.gitHost, name), nil
-}
-
 func (b *MemoryBackend) ListApps() ([]App, error) {
 	names := make([]string, 0, len(b.apps))
 	for name := range b.apps {

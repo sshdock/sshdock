@@ -49,7 +49,7 @@ services:
       - "127.0.0.1:3000:3000"
 ```
 
-Check [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) before pushing. SSHDock v0 supports a smaller Compose subset than Dokploy. Remove or redesign unsupported fields before migration.
+Check [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) before pushing. Docker Compose validates the standard application model. Keep exactly one conventional Compose file at the repository root, without top-level `include` or service `extends.file` references to another Compose file.
 
 ## 3. Move Environment Values To SSHDock Config
 

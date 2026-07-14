@@ -14,7 +14,7 @@ func TestFakeRunnerValidateSuccessAndFailure(t *testing.T) {
 		Validation: ValidationResult{Services: []string{"web"}},
 	}
 
-	result, err := runner.Validate(ctx, "compose.yml")
+	result, err := runner.Validate(ctx, "my-app", "compose.yml")
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -24,9 +24,12 @@ func TestFakeRunnerValidateSuccessAndFailure(t *testing.T) {
 	if runner.ValidatedPath != "compose.yml" {
 		t.Fatalf("ValidatedPath = %q", runner.ValidatedPath)
 	}
+	if runner.ValidatedAppName != "my-app" {
+		t.Fatalf("ValidatedAppName = %q", runner.ValidatedAppName)
+	}
 
 	runner.ValidateErr = failure
-	_, err = runner.Validate(ctx, "compose.yml")
+	_, err = runner.Validate(ctx, "my-app", "compose.yml")
 	if !errors.Is(err, failure) {
 		t.Fatalf("Validate error = %v, want %v", err, failure)
 	}
@@ -42,7 +45,6 @@ func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 		ComposePath:  "compose.yml",
 		ReleaseID:    "rel_1",
 		CommitSHA:    "abc123",
-		ProjectName:  "sshdock_my-app",
 		KeepReleases: 5,
 	}
 

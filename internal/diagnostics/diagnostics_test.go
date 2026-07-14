@@ -142,6 +142,7 @@ func diagnosticsConfig(root string) config.Config {
 		DataDir:                     filepath.Join(root, "data"),
 		SQLiteDBPath:                filepath.Join(root, "data", "sshdock.db"),
 		AppsDir:                     filepath.Join(root, "data", "apps"),
+		LocksDir:                    filepath.Join(root, "data", "locks"),
 		ConfigKeyPath:               filepath.Join(root, "data", "config.key"),
 		NodeID:                      "local",
 		SSHListenAddr:               ":2222",

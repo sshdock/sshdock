@@ -81,7 +81,7 @@ git push sshdock main
 
 12. Verify `sshdockd git-receive` creates the app and records the deployment.
 
-`make server-push-e2e` also proves current-main semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, distinct same-commit redeploy attempts, failed deployment with remote `main` preserved, and force-pushing an older commit as Git-based rollback.
+`make server-push-e2e` also proves current-main and concurrency semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, distinct same-commit redeploy attempts, failed deployment with remote `main` preserved, force-pushing an older commit as Git-based rollback, immediate same-app contention rejection, and synchronous cross-app deployment waiting before receive-pack over the live Git connection.
 
 ## Caddy Route Tier
 

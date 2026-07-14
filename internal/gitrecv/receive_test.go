@@ -158,6 +158,10 @@ func TestReceivePackServiceReturnsReceivePackError(t *testing.T) {
 	if !errors.Is(err, failure) {
 		t.Fatalf("Receive error = %v, want %v", err, failure)
 	}
+	receivePack.err = nil
+	if err := service.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'test-app.git'"}); err != nil {
+		t.Fatalf("Receive after failed push released lock: %v", err)
+	}
 }
 
 type recordingReceivePackRunner struct {

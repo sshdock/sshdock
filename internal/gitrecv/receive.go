@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/deploycoord"
 	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/store"
 )
@@ -35,6 +36,7 @@ type ReceivePackRequest struct {
 type ReceivePackServiceConfig struct {
 	Store             receivePackStore
 	AppsDir           string
+	LocksDir          string
 	NodeID            string
 	RepoManager       *RepoManager
 	ReceivePackRunner ReceivePackRunner
@@ -47,6 +49,7 @@ type ReceivePackService struct {
 	nodeID            string
 	repoManager       *RepoManager
 	receivePackRunner ReceivePackRunner
+	coordination      *deploycoord.Manager
 	now               func() time.Time
 }
 
@@ -69,6 +72,10 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 	if receivePackRunner == nil {
 		receivePackRunner = LocalReceivePackRunner{}
 	}
+	locksDir := config.LocksDir
+	if locksDir == "" {
+		locksDir = filepath.Join(filepath.Dir(config.AppsDir), "locks")
+	}
 
 	return &ReceivePackService{
 		store:             config.Store,
@@ -76,6 +83,7 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 		nodeID:            nodeID,
 		repoManager:       repoManager,
 		receivePackRunner: receivePackRunner,
+		coordination:      deploycoord.NewManager(locksDir),
 		now:               now,
 	}
 }
@@ -110,7 +118,7 @@ func ParseReceivePackCommand(originalCommand string) (string, error) {
 	return appName, nil
 }
 
-func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackRequest) error {
+func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackRequest) (returnErr error) {
 	if s.store == nil {
 		return fmt.Errorf("receive-pack store is not configured")
 	}
@@ -125,6 +133,26 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	if err != nil {
 		return s.withAppNameGuidance(err)
 	}
+	guard, err := s.coordination.AcquireApp(ctx, appName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		returnErr = errors.Join(returnErr, guard.Release())
+	}()
+	deploymentGuard, err := s.coordination.AcquireDeployment(ctx, func() error {
+		if request.Stderr == nil {
+			return nil
+		}
+		_, writeErr := fmt.Fprintln(request.Stderr, "deploy: waiting for another app deployment to finish")
+		return writeErr
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		returnErr = errors.Join(returnErr, deploymentGuard.Release())
+	}()
 
 	model, err := s.store.GetApp(ctx, appName)
 	if errors.Is(err, store.ErrNotFound) {

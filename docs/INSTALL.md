@@ -365,7 +365,7 @@ The Git SSH entry point should run a forced command equivalent to:
 sudo -n -u sshdock /usr/local/bin/sshdock-git-receive
 ```
 
-`sshdockd git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, creates the app if needed, and then streams the push into the app's bare repository.
+`sshdockd git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, acquires a nonblocking app-specific lock, and then waits for the server-wide deployment lock before creating the app or starting receive-pack. Both locks remain held through post-receive, so a second push to the same app is rejected immediately while a different app stays connected, prints a wait message, and resumes synchronously without a durable queue.
 
 ## systemd Service
 

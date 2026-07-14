@@ -565,7 +565,7 @@ Receive pushes from OpenSSH forced-command wiring.
 sshdockd git-receive
 ```
 
-This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. App names use the same normalized DNS-label rule as explicit creation; invalid names are rejected with a suggestion and exact Git remote update command.
+This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. App names use the same normalized DNS-label rule as explicit creation; invalid names are rejected with a suggestion and exact Git remote update command. The receive wrapper first acquires a nonblocking app-specific lock, then waits synchronously for the server-wide deployment lock before receive-pack starts. It holds both locks through receive-pack and its hooks, so an overlapping push to the same app is rejected before Git receives it.
 
 Operators normally do not run this manually.
 
@@ -583,7 +583,7 @@ Handle a bare repository `post-receive` hook.
 sshdockd git-hook --app my-app --repo /var/lib/sshdock/apps/my-app/repo.git
 ```
 
-The hook reads the accepted remote-main update from stdin, reports that Git already updated `main`, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and reports and records deployment success or failure.
+The hook reads the accepted remote-main update from stdin, reports that Git already updated `main`, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and reports and records deployment success or failure. The receive wrapper acquires the server-wide deployment slot before starting receive-pack and streams wait status over the existing Git connection; no durable queue or detached deployment job is created.
 
 Operators normally do not run this manually.
 
@@ -594,6 +594,7 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_DATA_DIR`: runtime state root. Default: `/var/lib/sshdock`.
 - `SSHDOCK_SQLITE_DB_PATH`: SQLite database path. Default: `$SSHDOCK_DATA_DIR/sshdock.db`.
 - `SSHDOCK_APPS_DIR`: app repos and worktrees. Default: `$SSHDOCK_DATA_DIR/apps`.
+- `SSHDOCK_LOCKS_DIR`: process-shared app and deployment lock files. Default: `$SSHDOCK_DATA_DIR/locks`.
 - `SSHDOCK_NODE_ID`: assigned node ID for app metadata. Default: `local`.
 - `SSHDOCK_GIT_HOST`: fallback Git host before `sshdock server domain set`; new persisted config derives the control host from the base domain.
 - `SSHDOCK_GIT_AUTHORIZED_KEYS_PATH`: Git receive `authorized_keys` path.

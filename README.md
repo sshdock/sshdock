@@ -80,6 +80,8 @@ Deploys use native Compose behavior: validate the effective model, pull images, 
 
 Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. A failed post-receive deployment does not rewrite `main`, and push output reports the Git ref update separately from deployment success or failure.
 
+SSHDock accepts only one active push per app. An overlapping push to the same app is rejected immediately with retry guidance. Pushes to different apps wait before receive-pack for one server-wide deployment slot; a later push stays connected, reports that it is waiting, and resumes synchronously. SSHDock does not create a durable or detached deployment queue.
+
 SSHDock warns when trusted Compose input publishes on all interfaces or couples directly to the host through privileged mode, host networking, bind mounts, the Docker socket, explicit global volume names, or external volumes. These warnings do not provide a sandbox; only trusted owners should have deploy access.
 
 ## Day-One Commands

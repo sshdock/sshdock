@@ -149,6 +149,7 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	service := gitrecv.NewReceivePackService(gitrecv.ReceivePackServiceConfig{
 		Store:    sqlite,
 		AppsDir:  cfg.AppsDir,
+		LocksDir: cfg.LocksDir,
 		NodeID:   cfg.NodeID,
 		RepoManager: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
 			AppsDir:  cfg.AppsDir,

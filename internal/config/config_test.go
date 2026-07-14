@@ -18,6 +18,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.AppsDir != filepath.Join(cfg.DataDir, "apps") {
 		t.Fatalf("AppsDir = %q, want path under data dir", cfg.AppsDir)
 	}
+	if cfg.LocksDir != filepath.Join(cfg.DataDir, "locks") {
+		t.Fatalf("LocksDir = %q, want path under data dir", cfg.LocksDir)
+	}
 	if cfg.ConfigKeyPath != filepath.Join(cfg.DataDir, "config.key") {
 		t.Fatalf("ConfigKeyPath = %q, want path under data dir", cfg.ConfigKeyPath)
 	}
@@ -72,6 +75,7 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("SSHDOCK_DATA_DIR", "/tmp/sshdock-data")
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", "/tmp/sshdock.sqlite")
 	t.Setenv("SSHDOCK_APPS_DIR", "/tmp/sshdock-apps")
+	t.Setenv("SSHDOCK_LOCKS_DIR", "/tmp/sshdock-locks")
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", "/tmp/sshdock-config.key")
 	t.Setenv("SSHDOCK_NODE_ID", "node-a")
 	t.Setenv("SSHDOCK_SSH_LISTEN_ADDR", "127.0.0.1:2222")
@@ -98,6 +102,9 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.AppsDir != "/tmp/sshdock-apps" {
 		t.Fatalf("AppsDir = %q", cfg.AppsDir)
+	}
+	if cfg.LocksDir != "/tmp/sshdock-locks" {
+		t.Fatalf("LocksDir = %q", cfg.LocksDir)
 	}
 	if cfg.ConfigKeyPath != "/tmp/sshdock-config.key" {
 		t.Fatalf("ConfigKeyPath = %q", cfg.ConfigKeyPath)
@@ -150,6 +157,7 @@ func TestAppPathsAreDerivedFromDataDirectory(t *testing.T) {
 	t.Setenv("SSHDOCK_DATA_DIR", "/srv/sshdock")
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", "")
 	t.Setenv("SSHDOCK_APPS_DIR", "")
+	t.Setenv("SSHDOCK_LOCKS_DIR", "")
 
 	cfg := LoadFromEnv()
 
@@ -161,6 +169,9 @@ func TestAppPathsAreDerivedFromDataDirectory(t *testing.T) {
 	}
 	if cfg.AppWorktreePath("my-app") != "/srv/sshdock/apps/my-app/worktree" {
 		t.Fatalf("AppWorktreePath = %q", cfg.AppWorktreePath("my-app"))
+	}
+	if cfg.LocksDir != "/srv/sshdock/locks" {
+		t.Fatalf("LocksDir = %q", cfg.LocksDir)
 	}
 }
 

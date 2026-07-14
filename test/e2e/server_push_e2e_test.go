@@ -22,9 +22,12 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "server-image-app"
-	commitSHA := pushComposeAppThroughSSH(t, paths, appName, map[string]string{
+	commitSHA, pushOutput := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
+	if !strings.Contains(pushOutput, "sudo sshdock domains attach "+appName+" <service> <domain> --port <port>") {
+		t.Fatalf("git push output missing no-route guidance:\n%s", pushOutput)
+	}
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
@@ -36,7 +39,7 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	assertEventTypes(t, dbPath, appName, []string{"deploy.started", "deploy.succeeded"})
+	assertEventTypes(t, dbPath, appName, []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"})
 }
 
 func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
@@ -45,31 +48,40 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 
 	appName := "server-build-app"
 	projectName := compose.ProjectName(appName)
+	hostPort := freeLocalPort(t)
+	releaseImagePrefix := "sshdock/" + appName + "/"
+	legacyImagesBefore := countImageRepositoriesWithPrefix(
+		runCommand(t, "", nil, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"),
+		releaseImagePrefix,
+	)
 	commitSHA := pushComposeAppThroughSSH(t, paths, appName, map[string]string{
-		"compose.yml": "services:\n  base:\n    build: .\n  web:\n    extends:\n      service: ${BASE_SERVICE:-base}\n  debug:\n    profiles: [debug]\n    build: ./missing-debug\n",
-		"Dockerfile":  "FROM nginx:alpine\n",
+		"compose.yml":       fmt.Sprintf("services:\n  base:\n    build: .\n  web:\n    extends:\n      service: ${BASE_SERVICE:-base}\n    ports: [\"0.0.0.0:%d:80\"]\n    volumes: [\"./public:/usr/share/nginx/html:ro\"]\n  debug:\n    profiles: [debug]\n    build: ./missing-debug\n", hostPort),
+		"Dockerfile":        "FROM nginx:alpine\n",
+		"public/index.html": "native compose build\n",
 	})
 	worktreePath := filepath.Join(paths.dataDir, "apps", appName, "worktree")
 	composePath := filepath.Join(worktreePath, "compose.yml")
-	overridePath := filepath.Join(worktreePath, ".sshdock", "release-"+commitSHA+".compose.yml")
 	t.Cleanup(func() {
-		_ = runCommandNoFail(worktreePath, nil, "docker", "compose", "-f", composePath, "-f", overridePath, "-p", projectName, "down", "-v", "--remove-orphans")
-		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "sshdock/"+appName+"/web:"+commitSHA)
-		_ = runCommandNoFail(worktreePath, nil, "docker", "image", "rm", "sshdock/"+appName+"/web:latest")
+		_ = runCommandNoFail(worktreePath, nil, "docker", "compose", "-f", composePath, "-p", projectName, "down", "-v", "--remove-orphans")
 	})
 
-	override := readFile(t, overridePath)
-	wantImage := "sshdock/" + appName + "/web:" + commitSHA
-	if !strings.Contains(override, wantImage) {
-		t.Fatalf("release override missing %q:\n%s", wantImage, override)
+	if matches, err := filepath.Glob(filepath.Join(worktreePath, ".sshdock", "release-*.compose.yml")); err != nil {
+		t.Fatalf("Glob release overrides: %v", err)
+	} else if len(matches) != 0 {
+		t.Fatalf("release overrides = %#v, want none", matches)
 	}
 
-	output := runCommand(t, worktreePath, nil, "docker", "compose", "-f", composePath, "-f", overridePath, "-p", projectName, "ps", "--format", "json")
+	output := runCommand(t, worktreePath, nil, "docker", "compose", "-f", composePath, "-p", projectName, "ps", "--format", "json")
 	if !strings.Contains(output, `"Service":"web"`) && !strings.Contains(output, `"Name":"web"`) {
 		t.Fatalf("docker compose ps output missing web service:\n%s", output)
 	}
 	if !strings.Contains(output, `"State":"running"`) {
 		t.Fatalf("docker compose ps output missing running state:\n%s", output)
+	}
+	images := runCommand(t, worktreePath, nil, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}")
+	legacyImagesAfter := countImageRepositoriesWithPrefix(images, releaseImagePrefix)
+	if legacyImagesAfter != legacyImagesBefore {
+		t.Fatalf("SSHDock release image count changed from %d to %d:\n%s", legacyImagesBefore, legacyImagesAfter, images)
 	}
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
@@ -82,7 +94,10 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	assertEventTypes(t, dbPath, appName, []string{"deploy.started", "deploy.succeeded"})
+	assertEventTypes(t, dbPath, appName, []string{"deploy.started", "deploy.warning", "deploy.warning", "deploy.succeeded"})
+	assertEventMessageContains(t, dbPath, appName, "publishes 0.0.0.0:")
+	assertEventMessageContains(t, dbPath, appName, "uses host bind mount")
+	assertEventMessageContains(t, dbPath, appName, "does not sandbox this configuration")
 }
 
 type serverPushPaths struct {
@@ -229,6 +244,12 @@ LogLevel ERROR
 
 func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName string, files map[string]string) string {
 	t.Helper()
+	commitSHA, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, files)
+	return commitSHA
+}
+
+func pushComposeAppThroughSSHWithOutput(t *testing.T, paths serverPushPaths, appName string, files map[string]string) (string, string) {
+	t.Helper()
 	sourceDir := filepath.Join(paths.tmp, "source-"+appName)
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll source: %v", err)
@@ -258,8 +279,8 @@ func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName strin
 		"GIT_SSH_COMMAND="+sshCommand,
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
 	)
-	runGit(t, sourceDir, pushEnv, "push", "sshdock", "main")
-	return commitSHA
+	output := runGitOutput(t, sourceDir, pushEnv, "push", "sshdock", "main")
+	return commitSHA, output
 }
 
 func writeBootstrapFakeCommands(t *testing.T, fakeBinDir string) {
@@ -346,6 +367,45 @@ func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) 
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
+}
+
+func assertEventMessageContains(t *testing.T, dbPath string, appID string, want string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`select message from events where app_id = ? order by created_at, id`, appID)
+	if err != nil {
+		t.Fatalf("query event messages: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var message string
+		if err := rows.Scan(&message); err != nil {
+			t.Fatalf("scan event message: %v", err)
+		}
+		if strings.Contains(message, want) {
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("event message rows: %v", err)
+	}
+	t.Fatalf("event messages for %s do not contain %q", appID, want)
+}
+
+func countImageRepositoriesWithPrefix(images string, prefix string) int {
+	count := 0
+	for _, image := range strings.Split(images, "\n") {
+		if strings.HasPrefix(image, prefix) {
+			count++
+		}
+	}
+	return count
 }
 
 func queryString(t *testing.T, dbPath string, query string, args ...any) string {

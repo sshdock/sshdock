@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -367,6 +368,7 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			UpstreamHost: "127.0.0.1",
 		}),
 		Checkout: gitrecv.LocalWorktreeCheckout{},
+		Output:   stderr,
 	})
 	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, stdin); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -459,11 +461,31 @@ func dashboardRunnerFromEnv() (compose.Runner, error) {
 }
 
 func fakeRunnerFromEnv() *compose.FakeRunner {
+	deployResult, routeErr := parseFakeDeployResult(
+		os.Getenv("SSHDOCK_FAKE_COMPOSE_ROUTE"),
+		os.Getenv("SSHDOCK_FAKE_COMPOSE_ROUTE_REASON"),
+	)
 	return &compose.FakeRunner{
-		DeployErr:  envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"),
-		RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
-		RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
+		DeployResult: deployResult,
+		DeployErr:    errors.Join(envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"), routeErr),
+		RestartErr:   envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
+		RemoveErr:    envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 	}
+}
+
+func parseFakeDeployResult(route string, reason string) (compose.DeployResult, error) {
+	if route == "" {
+		return compose.DeployResult{RouteReason: reason}, nil
+	}
+	serviceName, portText, found := strings.Cut(route, ":")
+	port, err := strconv.Atoi(portText)
+	if !found || serviceName == "" || err != nil || port < 1 || port > 65535 {
+		return compose.DeployResult{}, fmt.Errorf("SSHDOCK_FAKE_COMPOSE_ROUTE %q must be service:port", route)
+	}
+	return compose.DeployResult{
+		RouteFound:  true,
+		RouteTarget: compose.RouteTarget{ServiceName: serviceName, Port: port},
+	}, nil
 }
 
 func envError(name string) error {

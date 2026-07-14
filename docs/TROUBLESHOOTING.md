@@ -57,7 +57,7 @@ Common cases:
 - `missing required config`: set the named key with `ssh dashboard@sshdock.<domain> config set <app> <key>`, then push or redeploy.
 - Compose validation failure: run `docker compose config` in the app repository, then fix the reported Compose error.
 - Image pull or build failure: fix the image reference, registry access, Dockerfile, or build context, then push again.
-- Container start failure: inspect logs with `sudo sshdock logs <app> --tail 200`, fix the app or config, then redeploy.
+- Service start or health-wait failure: inspect `sudo sshdock apps health <app>` and `sudo sshdock logs <app> --tail 200`, then fix services that exited, became unhealthy, or exceeded the bounded wait before redeploying.
 - Caddy reload failure: run `sudo sshdock domains check <app>` and `sudo sshdock diagnostics`, then fix route or Caddy config state.
 
 Stored config values are redacted from deploy output, events, logs, and dashboard views.
@@ -174,7 +174,7 @@ sudo sshdock apps health <app>
 
 ## Removing An App Did Not Remove Data
 
-This is expected. SSHDock removes app metadata, app repo/worktree, containers, and SSHDock-managed image refs, but it does not pass Compose `--volumes`.
+This is expected. SSHDock removes app metadata, app repo/worktree, and containers, but it does not pass Compose `--volumes` or prune Docker images and build cache.
 
 Back up data before removing volumes manually:
 

@@ -3,9 +3,10 @@ package compose
 import "context"
 
 type FakeRunner struct {
-	Validation ValidationResult
-	Services   []ServiceStatus
-	LogOutput  string
+	Validation   ValidationResult
+	DeployResult DeployResult
+	Services     []ServiceStatus
+	LogOutput    string
 
 	ValidateErr error
 	DeployErr   error
@@ -33,9 +34,9 @@ func (f *FakeRunner) Validate(_ context.Context, appName string, composePath str
 	return f.Validation, nil
 }
 
-func (f *FakeRunner) Deploy(_ context.Context, request DeployRequest) error {
+func (f *FakeRunner) Deploy(_ context.Context, request DeployRequest) (DeployResult, error) {
 	f.DeployRequests = append(f.DeployRequests, request)
-	return f.DeployErr
+	return f.DeployResult, f.DeployErr
 }
 
 func (f *FakeRunner) Restart(_ context.Context, request RestartRequest) error {

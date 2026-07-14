@@ -18,11 +18,11 @@ services:
     extends:
       service: ${BASE_SERVICE:-base}
 `)
-	executor := &recordingExecutor{Outputs: []string{"base\nweb\n"}}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"base":{"build":{"context":"."}},"web":{"build":{"context":"."}}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
-	err := runner.Deploy(context.Background(), DeployRequest{
+	_, err := runner.Deploy(context.Background(), DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,
@@ -34,7 +34,7 @@ services:
 		t.Fatalf("Deploy: %v", err)
 	}
 	for _, command := range executor.Commands {
-		if containsArgAfter(command.Args, "build", "web") {
+		if containsArgAfter(command.Args, "compose", "build") && !containsArgAfter(command.Args, "build", "web") {
 			return
 		}
 	}

@@ -108,7 +108,7 @@ func TestSmokeFakeAppLifecycle(t *testing.T) {
 	}
 
 	runner := &compose.FakeRunner{}
-	if err := runner.Deploy(ctx, compose.DeployRequest{AppName: model.Name, ReleaseID: release.ID, CommitSHA: release.CommitSHA, ComposePath: release.ComposePath}); err != nil {
+	if _, err := runner.Deploy(ctx, compose.DeployRequest{AppName: model.Name, ReleaseID: release.ID, CommitSHA: release.CommitSHA, ComposePath: release.ComposePath}); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
 	if err := service.MarkDeploymentSucceeded(ctx, deployment.ID); err != nil {

@@ -7,8 +7,7 @@ const (
 	DeployStageValidateCompose DeployStage = "validate compose"
 	DeployStagePullImages      DeployStage = "pull images"
 	DeployStageBuildServices   DeployStage = "build services"
-	DeployStageStartContainers DeployStage = "start containers"
-	DeployStageTagImages       DeployStage = "tag images"
+	DeployStageWaitServices    DeployStage = "start and wait for services"
 )
 
 type DeployError struct {

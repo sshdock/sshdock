@@ -326,8 +326,9 @@ SSHDOCK_COMPOSE_RUNNER=docker
 ```
 
 7. Verify SQLite contains a succeeded deployment.
-8. Verify Docker reports the app service as running.
-9. Tear down the Docker Compose project after the test.
+8. Verify image-only and build-based apps use native Compose images without SSHDock release overrides or tags.
+9. Verify healthy and no-healthcheck services succeed while unhealthy, timed-out, and immediately exited services fail at the health-wait stage.
+10. Tear down every Docker Compose project after the test.
 
 This test is opt-in because it uses the local Docker daemon and may pull images.
 
@@ -349,7 +350,7 @@ The server push e2e target:
 6. Pushes an image-service Compose app through real `ssh` with the fake Compose runner.
 7. Pushes a build-service Compose app through real `ssh` with the Docker Compose runner.
 8. Verifies app, release, deployment, and event state in SQLite.
-9. Verifies the build-service deploy writes the SSHDock release override and starts a running Docker Compose service.
+9. Verifies the build-service deploy creates no SSHDock release override or release image tag, starts a running Docker Compose service, and records all-interface and host-bind warnings.
 
 The build-service test uses the local Docker daemon and may pull `nginx:alpine`.
 

@@ -58,7 +58,8 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 			t.Fatalf("apps create output missing %q:\n%s", want, createOutput)
 		}
 	}
-	pushLocalComposeApp(t, tmp, env, filepath.Join(dataDir, "apps", appName, "repo.git"), "initial wildcard app", fmt.Sprintf(`
+	routedEnv := append(env, "SSHDOCK_FAKE_COMPOSE_ROUTE=web:3100")
+	pushLocalComposeApp(t, tmp, routedEnv, filepath.Join(dataDir, "apps", appName, "repo.git"), "initial wildcard app", fmt.Sprintf(`
 services:
   web:
     image: example/web:latest
@@ -89,7 +90,8 @@ services:
 
 	ambiguousApp := "ambiguous-app"
 	runCommand(t, root, env, sshdockPath, "apps", "create", ambiguousApp)
-	pushLocalComposeApp(t, tmp, env, filepath.Join(dataDir, "apps", ambiguousApp, "repo.git"), "ambiguous wildcard app", `
+	ambiguousEnv := append(env, "SSHDOCK_FAKE_COMPOSE_ROUTE_REASON=effective Compose model route is ambiguous")
+	pushLocalComposeApp(t, tmp, ambiguousEnv, filepath.Join(dataDir, "apps", ambiguousApp, "repo.git"), "ambiguous wildcard app", `
 services:
   api:
     image: example/api:latest

@@ -515,9 +515,9 @@ func (f *fakeWorktreeCheckout) Checkout(_ context.Context, repoPath string, work
 	return nil
 }
 
-func (f *fakeRecoveryRunner) Deploy(_ context.Context, request compose.DeployRequest) error {
+func (f *fakeRecoveryRunner) Deploy(_ context.Context, request compose.DeployRequest) (compose.DeployResult, error) {
 	f.deploys = append(f.deploys, request)
-	return f.deployErr
+	return compose.DeployResult{}, f.deployErr
 }
 
 func (f *fakeRecoveryRunner) Restart(_ context.Context, request compose.RestartRequest) error {

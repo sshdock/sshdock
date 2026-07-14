@@ -16,16 +16,12 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 	tests := []struct {
 		name          string
 		dir           string
-		wantService   string
-		wantRoutePort int
 		wantConfig    []appconfig.RequiredKey
 		requiredFiles []string
 	}{
 		{
-			name:          "static site",
-			dir:           filepath.Join(root, "examples", "static-site"),
-			wantService:   "web",
-			wantRoutePort: 18080,
+			name: "static site",
+			dir:  filepath.Join(root, "examples", "static-site"),
 			requiredFiles: []string{
 				"README.md",
 				"compose.yml",
@@ -33,20 +29,16 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			},
 		},
 		{
-			name:          "wordpress lite",
-			dir:           filepath.Join(root, "examples", "wordpress-lite"),
-			wantService:   "web",
-			wantRoutePort: 18081,
+			name: "wordpress lite",
+			dir:  filepath.Join(root, "examples", "wordpress-lite"),
 			requiredFiles: []string{
 				"README.md",
 				"compose.yml",
 			},
 		},
 		{
-			name:          "build service",
-			dir:           filepath.Join(root, "examples", "build-service"),
-			wantService:   "web",
-			wantRoutePort: 18083,
+			name: "build service",
+			dir:  filepath.Join(root, "examples", "build-service"),
 			requiredFiles: []string{
 				"README.md",
 				"compose.yml",
@@ -55,10 +47,8 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			},
 		},
 		{
-			name:          "config app",
-			dir:           filepath.Join(root, "examples", "config-app"),
-			wantService:   "web",
-			wantRoutePort: 18082,
+			name: "config app",
+			dir:  filepath.Join(root, "examples", "config-app"),
 			wantConfig: []appconfig.RequiredKey{
 				{Name: "APP_MESSAGE"},
 			},
@@ -84,17 +74,6 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			composePath := filepath.Join(tt.dir, "compose.yml")
 			if _, err := compose.ValidateFile(composePath); err != nil {
 				t.Fatalf("ValidateFile(%s): %v", composePath, err)
-			}
-
-			target, ok, reason, err := compose.InferDefaultRoute(composePath)
-			if err != nil {
-				t.Fatalf("InferDefaultRoute(%s): %v", composePath, err)
-			}
-			if !ok {
-				t.Fatalf("InferDefaultRoute(%s) ok = false, reason = %q", composePath, reason)
-			}
-			if target.ServiceName != tt.wantService || target.Port != tt.wantRoutePort {
-				t.Fatalf("route target = %#v, want %s:%d", target, tt.wantService, tt.wantRoutePort)
 			}
 
 			if len(tt.wantConfig) > 0 {

@@ -36,6 +36,32 @@ sshdock_<app-name>
 
 This project name takes precedence over a top-level Compose `name`, keeping ordinary containers, networks, and named volumes isolated between apps. Explicit global resource names, external resources, bind mounts, host networking, and similar host-coupled settings remain operator-owned Compose behavior.
 
+## Native Deploy And Health Semantics
+
+SSHDock asks Docker Compose to execute the application in this order:
+
+```text
+docker compose config --format json
+docker compose pull --ignore-buildable
+docker compose build
+docker compose up -d --wait --wait-timeout 120
+```
+
+The final operation also has a host-side two-minute deadline. Docker Compose decides whether each service is ready: an effective container health check must become healthy, while a service without one must remain running. An unhealthy service, an immediate exit, or an expired wait records a failed deployment at the `start and wait for services` stage.
+
+SSHDock does not generate release Compose overrides, tag build images with commit or `latest` release tags, prune release images, or automatically roll back a failed deployment. BuildKit and Docker own build cache and image garbage collection. A failed replacement may have changed containers already, and any existing route remains pointed at the same published host port. This is readiness observation, not blue-green or zero-downtime traffic switching.
+
+## Trusted Owner Warnings
+
+SSHDock reports warnings without rejecting Compose models that:
+
+- publish a port on all interfaces instead of IPv4 loopback
+- enable privileged mode or host networking
+- mount the Docker socket or another host bind path
+- use an explicit global volume name or an external volume
+
+These warnings make host coupling visible; they do not sandbox the workload. A trusted Compose push can have host-level impact, so deploy access belongs only to trusted server owners.
+
 ## Config And Secrets
 
 Apps may commit `.sshdock.yml` to declare required SSHDock config keys. SSHDock resolves stored values before Compose starts and passes them only through the Compose process environment. It does not auto-inject every stored value into every service.
@@ -46,7 +72,9 @@ See [`CLI_COMMANDS.md`](CLI_COMMANDS.md) for `config set`, `config import`, `con
 
 ## Routing Boundary
 
-Automatic route creation depends on a safely inferred host-published TCP port. Worker-only apps and private dependency services can deploy without a public route.
+After a deployment succeeds, automatic route creation consumes the effective model returned by `docker compose config`. It prefers a `web` service with exactly one published TCP port, then a single `127.0.0.1`-bound candidate, then a unique one-port service. Automatic routing accepts host bindings that the current Caddy upstream can reach: an unset host IP, `0.0.0.0`, or `127.0.0.1`. An IPv6-only or specific-host binding deploys without an automatic route and receives manual attach guidance, as do worker-only, private, missing-port, and ambiguous apps.
+
+Only an app without an existing domain receives an inferred initial route. A failed first deployment remains unrouted, and a later failed replacement does not rewrite an existing route.
 
 The most reliable routed shape is one public web service with one loopback-published TCP port:
 

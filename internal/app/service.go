@@ -48,11 +48,11 @@ type logsRunner interface {
 }
 
 type deployRunner interface {
-	Deploy(ctx context.Context, request compose.DeployRequest) error
+	Deploy(ctx context.Context, request compose.DeployRequest) (compose.DeployResult, error)
 }
 
 type recoveryRunner interface {
-	Deploy(ctx context.Context, request compose.DeployRequest) error
+	Deploy(ctx context.Context, request compose.DeployRequest) (compose.DeployResult, error)
 	Restart(ctx context.Context, request compose.RestartRequest) error
 }
 
@@ -238,7 +238,7 @@ func (s *Service) RollbackRelease(ctx context.Context, appID string, releaseID s
 		deployment.ErrorMessage = err.Error()
 		return deployment, err
 	}
-	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
+	if _, err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
 		ProjectDir:  projectDir,
 		ReleaseID:   release.ID,
@@ -328,7 +328,7 @@ func (s *Service) RedeployLatest(ctx context.Context, appID string, deploymentID
 		deployment.ErrorMessage = err.Error()
 		return deployment, err
 	}
-	if err := s.deploy.Deploy(ctx, compose.DeployRequest{
+	if _, err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName:     appID,
 		ProjectDir:  projectDir,
 		ReleaseID:   release.ID,

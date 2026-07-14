@@ -34,7 +34,7 @@ secrets:
   app-secret:
     file: ./app.secret
 `)
-	executor := &recordingExecutor{}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
@@ -55,7 +55,7 @@ func TestDockerRunnerValidateUsesStableSSHDockProjectName(t *testing.T) {
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yml")
 	writeFile(t, composePath, "name: caller-controlled\nservices:\n  web:\n    image: example/web:latest\n")
-	executor := &recordingExecutor{}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
@@ -95,11 +95,11 @@ func TestDockerRunnerDeployUsesStableSSHDockProjectName(t *testing.T) {
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yml")
 	writeFile(t, composePath, "name: caller-controlled\nservices:\n  web:\n    image: example/web:latest\n")
-	executor := &recordingExecutor{}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
-	err := runner.Deploy(context.Background(), DeployRequest{
+	_, err := runner.Deploy(context.Background(), DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,
@@ -130,11 +130,11 @@ services:
   web:
     <<: *build
 `)
-	executor := &recordingExecutor{Outputs: []string{"web\n"}}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"build":{"context":"."}}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
-	err := runner.Deploy(context.Background(), DeployRequest{
+	_, err := runner.Deploy(context.Background(), DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,
@@ -147,7 +147,7 @@ services:
 	}
 	foundBuild := false
 	for _, command := range executor.Commands {
-		if containsArgs(command.Args, "build", "web") {
+		if containsArgs(command.Args, "-p", "sshdock_my-app") && containsArgAfter(command.Args, "compose", "build") {
 			foundBuild = true
 			break
 		}
@@ -169,11 +169,11 @@ services:
     extends:
       service: base
 `)
-	executor := &recordingExecutor{Outputs: []string{"base\nweb\n"}}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"base":{"build":{"context":"."}},"web":{"build":{"context":"."}}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
-	err := runner.Deploy(context.Background(), DeployRequest{
+	_, err := runner.Deploy(context.Background(), DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,
@@ -185,7 +185,7 @@ services:
 		t.Fatalf("Deploy: %v", err)
 	}
 	for _, command := range executor.Commands {
-		if containsArgAfter(command.Args, "build", "web") {
+		if containsArgAfter(command.Args, "compose", "build") && !containsArgAfter(command.Args, "build", "web") {
 			return
 		}
 	}
@@ -204,11 +204,11 @@ services:
     profiles: [debug]
     build: .
 `)
-	executor := &recordingExecutor{Outputs: []string{"web\n"}}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
 	runner := NewDockerRunner(executor)
 
 	// When
-	err := runner.Deploy(context.Background(), DeployRequest{
+	_, err := runner.Deploy(context.Background(), DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,

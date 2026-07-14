@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,12 +16,17 @@ func (LocalCommandExecutor) Run(ctx context.Context, command Command) (string, e
 	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
 	cmd.Dir = command.Dir
 	cmd.Env = commandEnv(command.Env, command.Dir)
-	output, err := cmd.CombinedOutput()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("%s %s failed: %w\n%s", command.Name, strings.Join(command.Args, " "), err, output)
+		detail := strings.TrimSpace(strings.Join([]string{stdout.String(), stderr.String()}, "\n"))
+		return "", fmt.Errorf("%s %s failed: %w\n%s", command.Name, strings.Join(command.Args, " "), err, detail)
 	}
 
-	return string(output), nil
+	return stdout.String(), nil
 }
 
 func (LocalCommandExecutor) Stream(ctx context.Context, command Command, stdout io.Writer, stderr io.Writer) error {

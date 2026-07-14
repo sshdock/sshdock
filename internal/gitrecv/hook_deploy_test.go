@@ -23,7 +23,10 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
-	runner := &compose.FakeRunner{}
+	runner := &compose.FakeRunner{DeployResult: compose.DeployResult{
+		RouteFound:  true,
+		RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
+	}}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: runner,
@@ -112,8 +115,11 @@ func TestPostReceiveHandlerAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	routeSyncer := &fakeHookRouteSyncer{}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
+		}},
 		Router: routeSyncer,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
@@ -258,6 +264,50 @@ services:
 	}
 }
 
+func TestPostReceiveHandlerRecordsValidationFailureBeforeFakeDeploy(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	runner := &compose.FakeRunner{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         runner,
+		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"ROOT_COMPOSE": "shared.compose.yml"}},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookCompose(t, gotWorktreePath, `
+services:
+  web:
+    extends:
+      file: ${ROOT_COMPOSE}
+      service: base
+`)
+			return nil
+		}),
+	})
+
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	if err == nil || !strings.Contains(err.Error(), "external Compose file") {
+		t.Fatalf("Handle error = %v, want external Compose validation failure", err)
+	}
+	if strings.Contains(err.Error(), "shared.compose.yml") {
+		t.Fatalf("Handle error disclosed resolved config value: %v", err)
+	}
+	if len(runner.DeployRequests) != 0 {
+		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
+	}
+	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusFailed) {
+		t.Fatalf("deployment status = %q, want failed", status)
+	}
+	events, listErr := sqlite.ListEventsByApp(ctx, "my-app")
+	if listErr != nil {
+		t.Fatalf("ListEventsByApp: %v", listErr)
+	}
+	if got, want := eventTypes(events), []string{"deploy.started", "deploy.failed"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("event types = %#v, want %#v", got, want)
+	}
+}
+
 func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
@@ -324,7 +374,7 @@ func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.
 	routeSyncer := &fakeHookRouteSyncer{}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model route is ambiguous"}},
 		Router: routeSyncer,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
@@ -368,6 +418,43 @@ services:
 	assertFailureDetail(t, events[2].Message, "stage=route inference", "ambiguous", "changed=containers deployed, routes unchanged", "domains attach")
 }
 
+func TestPostReceiveHandlerPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	var output strings.Builder
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model has no route candidate"}},
+		Output: &output,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	// When
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+
+	// Then
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if !strings.Contains(output.String(), "sudo sshdock domains attach my-app <service> <domain> --port <port>") {
+		t.Fatalf("output = %q, want manual route guidance", output.String())
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
 func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
@@ -383,8 +470,11 @@ func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *test
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	routeSyncer := &fakeHookRouteSyncer{Err: errors.New("caddy reload failed")}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
+		}},
 		Router: routeSyncer,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
@@ -433,8 +523,11 @@ func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing
 	}
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
+		}},
 		Router: &fakeHookRouteSyncer{},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
@@ -473,57 +566,111 @@ services:
 	}
 }
 
-func TestPostReceiveHandlerPassesPriorSuccessfulReleaseSHAsForCleanup(t *testing.T) {
+func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	baseTime := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
-	for index, release := range []struct {
-		sha    string
-		status app.ReleaseStatus
-	}{
-		{sha: "oldest-success", status: app.ReleaseStatusSucceeded},
-		{sha: "failed-release", status: app.ReleaseStatusFailed},
-		{sha: "middle-success", status: app.ReleaseStatusSucceeded},
-		{sha: "newest-success", status: app.ReleaseStatusSucceeded},
-	} {
-		createdAt := baseTime.Add(time.Duration(index) * time.Minute)
-		if err := sqlite.CreateRelease(ctx, app.Release{
-			ID:          "rel_" + release.sha,
-			AppID:       "my-app",
-			CommitSHA:   release.sha,
-			ComposePath: filepath.Join(worktreePath, "compose.yml"),
-			Status:      release.status,
-			CreatedAt:   createdAt,
-			UpdatedAt:   createdAt,
-		}); err != nil {
-			t.Fatalf("CreateRelease %s: %v", release.sha, err)
-		}
-	}
-
-	runner := &compose.FakeRunner{}
+	warning := "service web uses privileged mode; trusted Compose pushes have host-level impact; SSHDock does not sandbox this configuration"
+	runner := &compose.FakeRunner{DeployResult: compose.DeployResult{
+		RouteFound:  true,
+		RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
+		Warnings:    []string{warning},
+	}}
+	var output strings.Builder
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: runner,
+		Output: &output,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
-		Now: func() time.Time { return baseTime.Add(10 * time.Minute) },
 	})
 
 	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(runner.DeployRequests) != 1 {
-		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
+	if !strings.Contains(output.String(), "warning: "+warning) {
+		t.Fatalf("output = %q, want trusted Compose warning", output.String())
 	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	wantTypes := []string{"deploy.started", "deploy.warning", "deploy.succeeded"}
+	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
+		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+	if events[1].Message != warning {
+		t.Fatalf("warning event = %#v, want %q", events[1], warning)
+	}
+}
 
-	want := []string{"newest-success", "middle-success", "oldest-success"}
-	if !reflect.DeepEqual(runner.DeployRequests[0].SuccessfulReleaseSHAs, want) {
-		t.Fatalf("SuccessfulReleaseSHAs = %#v, want %#v", runner.DeployRequests[0].SuccessfulReleaseSHAs, want)
+func TestPostReceiveHandlerRedactsConfigValuesFromTrustedComposeWarnings(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	secretPath := "/srv/private/customer-secret"
+	warning := "service web uses host bind mount " + secretPath + "; trusted Compose pushes have host-level impact; SSHDock does not sandbox this configuration"
+	var output strings.Builder
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         &compose.FakeRunner{DeployResult: compose.DeployResult{Warnings: []string{warning}}},
+		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"PRIVATE_PATH": secretPath}},
+		Output:         &output,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if strings.Contains(output.String(), secretPath) || !strings.Contains(output.String(), "<redacted>") {
+		t.Fatalf("output = %q, want redacted warning", output.String())
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	if strings.Contains(events[1].Message, secretPath) || !strings.Contains(events[1].Message, "<redacted>") {
+		t.Fatalf("warning event = %#v, want redacted value", events[1])
+	}
+}
+
+func TestPostReceiveHandlerFinishesSuccessfulDeployWhenWarningOutputFails(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
+			Warnings:    []string{"trusted Compose warning"},
+		}},
+		Output: failingWriter{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	// When
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+
+	// Then
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusSucceeded) {
+		t.Fatalf("deployment status = %q, want succeeded", status)
 	}
 }
 
@@ -534,9 +681,10 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	deployFailure := errors.New("pull access denied")
 	failure := compose.NewDeployError(compose.DeployStagePullImages, deployFailure)
+	runner := &compose.FakeRunner{DeployErr: failure}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
-		Runner: &compose.FakeRunner{DeployErr: failure},
+		Runner: runner,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
@@ -546,6 +694,9 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
 	if !errors.Is(err, deployFailure) {
 		t.Fatalf("Handle error = %v, want wrapped %v", err, deployFailure)
+	}
+	if len(runner.DeployRequests) != 1 {
+		t.Fatalf("DeployRequests = %#v, want one attempt and no automatic rollback", runner.DeployRequests)
 	}
 
 	status := queryDeploymentStatus(t, dbPath, "dep_abc123")
@@ -629,14 +780,35 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 	}
 }
 
-func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *testing.T) {
+func TestPostReceiveHandlerKeepsExistingRouteAfterSuccessfulReplacement(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{BaseDomain: "example.com", GitHost: "sshdock.example.com"}); err != nil {
+		t.Fatalf("SetServerConfig: %v", err)
+	}
+	createdAt := time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC)
+	if err := sqlite.AttachDomain(ctx, app.Domain{
+		ID:          "dom_existing",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3100,
+		HTTPS:       true,
+		CreatedAt:   createdAt,
+		UpdatedAt:   createdAt,
+	}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	routeSyncer := &fakeHookRouteSyncer{}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: cleanupWarningRunner{},
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "replacement", Port: 4100},
+		}},
+		Router: routeSyncer,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
@@ -648,53 +820,60 @@ func TestPostReceiveHandlerRecordsCleanupFailureEventWithoutFailingDeploy(t *tes
 		t.Fatalf("Handle: %v", err)
 	}
 
-	status := queryDeploymentStatus(t, dbPath, "dep_abc123")
-	if status != string(app.DeploymentStatusSucceeded) {
-		t.Fatalf("deployment status = %q", status)
+	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDomainsByApp: %v", err)
+	}
+	if len(domains) != 1 || domains[0].ServiceName != "web" || domains[0].Port != 3100 {
+		t.Fatalf("domains = %#v, want unchanged web:3100 route", domains)
+	}
+	if len(routeSyncer.Syncs) != 0 {
+		t.Fatalf("router syncs = %#v, want none for existing route", routeSyncer.Syncs)
+	}
+}
+
+func TestPostReceiveHandlerDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
+	sqlite := newHookTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	createdAt := time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC)
+	if err := sqlite.AttachDomain(ctx, app.Domain{
+		ID:          "dom_existing",
+		AppID:       "my-app",
+		ServiceName: "web",
+		DomainName:  "my-app.example.com",
+		Port:        3100,
+		HTTPS:       true,
+		CreatedAt:   createdAt,
+		UpdatedAt:   createdAt,
+	}); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	var output strings.Builder
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model has no route candidate"}},
+		Output: &output,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+	})
+
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("output = %q, want no initial-route guidance for an already-routed app", output.String())
 	}
 	events, err := sqlite.ListEventsByApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"deploy.started", "cleanup.failed", "deploy.succeeded"}
-	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
-		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	if got, want := eventTypes(events), []string{"deploy.started", "deploy.succeeded"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
-	if !strings.Contains(events[1].Message, "sshdock/my-app/web:old-1") || !strings.Contains(events[1].Message, "image is in use") {
-		t.Fatalf("cleanup event = %#v", events[1])
-	}
-}
-
-type cleanupWarningRunner struct{}
-
-func (cleanupWarningRunner) Validate(context.Context, string, string) (compose.ValidationResult, error) {
-	return compose.ValidationResult{}, nil
-}
-
-func (cleanupWarningRunner) Deploy(ctx context.Context, request compose.DeployRequest) error {
-	return request.CleanupRecorder.RecordCleanupFailure(ctx, compose.CleanupFailure{
-		AppName:      request.AppName,
-		ServiceName:  "web",
-		CommitSHA:    "old-1",
-		Image:        "sshdock/my-app/web:old-1",
-		ErrorMessage: "image is in use",
-	})
-}
-
-func (cleanupWarningRunner) Restart(context.Context, compose.RestartRequest) error {
-	return nil
-}
-
-func (cleanupWarningRunner) Remove(context.Context, compose.RemoveRequest) error {
-	return nil
-}
-
-func (cleanupWarningRunner) Status(context.Context, compose.StatusRequest) ([]compose.ServiceStatus, error) {
-	return nil, nil
-}
-
-func (cleanupWarningRunner) Logs(context.Context, compose.LogsRequest) (string, error) {
-	return "", nil
 }
 
 func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.SQLiteStore {
@@ -753,6 +932,12 @@ func writeHookCompose(t *testing.T, worktreePath string, content string) {
 type fakeHookRouteSyncer struct {
 	Syncs [][]router.Route
 	Err   error
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("output unavailable")
 }
 
 type hookConfigResolveRequest struct {

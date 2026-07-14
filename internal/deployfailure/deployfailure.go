@@ -45,10 +45,8 @@ func FixForStage(stage string) string {
 		return "check image names, registry credentials, and network access"
 	case compose.DeployStageBuildServices:
 		return "fix Dockerfile or build context errors"
-	case compose.DeployStageStartContainers:
-		return "inspect docker compose logs on the server and fix the app"
-	case compose.DeployStageTagImages:
-		return "check Docker image permissions and disk space"
+	case compose.DeployStageWaitServices:
+		return "inspect docker compose ps and logs; fix services that exited, became unhealthy, or timed out"
 	default:
 		return "inspect the detail, fix the app or server issue, and retry"
 	}

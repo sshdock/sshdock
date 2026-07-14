@@ -40,15 +40,14 @@ func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 	failure := errors.New("deploy failed")
 	runner := &FakeRunner{}
 	request := DeployRequest{
-		AppName:      "my-app",
-		ProjectDir:   "/data/apps/my-app/worktree",
-		ComposePath:  "compose.yml",
-		ReleaseID:    "rel_1",
-		CommitSHA:    "abc123",
-		KeepReleases: 5,
+		AppName:     "my-app",
+		ProjectDir:  "/data/apps/my-app/worktree",
+		ComposePath: "compose.yml",
+		ReleaseID:   "rel_1",
+		CommitSHA:   "abc123",
 	}
 
-	if err := runner.Deploy(ctx, request); err != nil {
+	if _, err := runner.Deploy(ctx, request); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
 	if !reflect.DeepEqual(runner.DeployRequests[0], request) {
@@ -56,7 +55,7 @@ func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 	}
 
 	runner.DeployErr = failure
-	if err := runner.Deploy(ctx, request); !errors.Is(err, failure) {
+	if _, err := runner.Deploy(ctx, request); !errors.Is(err, failure) {
 		t.Fatalf("Deploy error = %v, want %v", err, failure)
 	}
 }

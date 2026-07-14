@@ -419,7 +419,7 @@ An upgrade should:
 5. Preserve generated app repositories, worktrees, releases, and SQLite state.
 6. Reload Caddy only after route config is valid.
 
-Upgrades must not prune Docker images broadly. Cleanup should remain scoped to SSHDock-managed image tags.
+SSHDock does not prune Docker images during deploy, removal, or upgrade. BuildKit and Docker own build cache and image garbage collection; use normal Docker maintenance appropriate for the host.
 
 After an upgrade, run:
 

@@ -64,6 +64,37 @@ func TestHookRunnerFromEnvConfiguresFakeDeployError(t *testing.T) {
 	}
 }
 
+func TestHookRunnerFromEnvConfiguresFakeDeployRouteResult(t *testing.T) {
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_ROUTE", "web:3100")
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("hookRunnerFromEnv: %v", err)
+	}
+	fake, ok := runner.(*compose.FakeRunner)
+	if !ok {
+		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
+	}
+	if !fake.DeployResult.RouteFound || fake.DeployResult.RouteTarget != (compose.RouteTarget{ServiceName: "web", Port: 3100}) {
+		t.Fatalf("DeployResult = %#v, want web:3100 route", fake.DeployResult)
+	}
+}
+
+func TestHookRunnerFromEnvConfiguresFakeDeployRouteReason(t *testing.T) {
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_ROUTE_REASON", "effective Compose model route is ambiguous")
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("hookRunnerFromEnv: %v", err)
+	}
+	fake := runner.(*compose.FakeRunner)
+	if fake.DeployResult.RouteReason != "effective Compose model route is ambiguous" {
+		t.Fatalf("DeployResult = %#v", fake.DeployResult)
+	}
+}
+
 func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
 	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	t.Setenv("SSHDOCK_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")

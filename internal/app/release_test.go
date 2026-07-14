@@ -75,7 +75,7 @@ func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	deployFailure := errors.New("deploy failed")
-	failure := compose.NewDeployError(compose.DeployStageStartContainers, deployFailure)
+	failure := compose.NewDeployError(compose.DeployStageWaitServices, deployFailure)
 	runner := &compose.FakeRunner{DeployErr: failure}
 	service := NewService(store, WithDeployRunner(runner))
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
@@ -95,10 +95,10 @@ func TestServiceRollbackReleaseMarksFailedWhenDeployFails(t *testing.T) {
 		t.Fatalf("stored deployment status = %q", store.deploymentStatuses["dep_rollback_1"])
 	}
 	for _, want := range []string{
-		"stage=start containers",
-		"detail=start containers failed: deploy failed",
+		"stage=start and wait for services",
+		"detail=start and wait for services failed: deploy failed",
 		"changed=rollback deployment dep_rollback_1 marked failed; the previously running release may still be serving",
-		"fix=inspect docker compose logs on the server and fix the app",
+		"fix=inspect docker compose ps and logs; fix services that exited, became unhealthy, or timed out",
 		"retry=sudo sshdock apps rollback app_1 rel_1",
 	} {
 		if !strings.Contains(store.deploymentErrors["dep_rollback_1"], want) {

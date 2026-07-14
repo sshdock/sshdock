@@ -20,7 +20,6 @@ import (
 type postReceiveStore interface {
 	CreateRelease(ctx context.Context, model app.Release) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
-	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	AttachDomain(ctx context.Context, model app.Domain) error
 	ListDomains(ctx context.Context) ([]app.Domain, error)
 	GetServerConfig(ctx context.Context) (store.ServerConfig, error)
@@ -55,6 +54,7 @@ type PostReceiveHandlerConfig struct {
 	ConfigResolver configResolver
 	Checkout       WorktreeCheckout
 	Now            func() time.Time
+	Output         io.Writer
 }
 
 type PostReceiveHandler struct {
@@ -64,6 +64,7 @@ type PostReceiveHandler struct {
 	configResolver configResolver
 	checkout       WorktreeCheckout
 	now            func() time.Time
+	output         io.Writer
 }
 
 func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler {
@@ -73,6 +74,10 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 			return time.Now().UTC()
 		}
 	}
+	output := config.Output
+	if output == nil {
+		output = io.Discard
+	}
 
 	return &PostReceiveHandler{
 		store:          config.Store,
@@ -81,6 +86,7 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 		configResolver: config.ConfigResolver,
 		checkout:       config.Checkout,
 		now:            now,
+		output:         output,
 	}
 }
 
@@ -123,20 +129,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		return err
 	}
 	env, envErr := h.resolveDeployEnv(ctx, event.AppName, worktreePath)
-	if envErr == nil {
-		_, err = compose.ValidateFileWithEnv(composePath, env)
-	}
-	if err != nil {
-		return err
-	}
 
 	now := h.now()
 	releaseID := ReleaseID(event.CommitSHA)
 	deploymentID := DeploymentID(event.CommitSHA)
-	priorSuccessfulReleaseSHAs, err := h.priorSuccessfulReleaseSHAs(ctx, event.AppName)
-	if err != nil {
-		return err
-	}
 	if err := h.store.CreateRelease(ctx, app.Release{
 		ID:          releaseID,
 		AppID:       event.AppName,
@@ -194,23 +190,39 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		})
 		return failure
 	}
+	if _, err := compose.ValidateFileWithEnv(composePath, env); err != nil {
+		err = compose.RedactError(err, env)
+		stage := string(compose.DeployStageValidateCompose)
+		failure := deployfailure.New(
+			stage,
+			err,
+			gitPushChangedState(releaseID, deploymentID, stage),
+			deployfailure.FixForStage(stage),
+			"push the same commit again after fixing the deploy failure",
+		)
+		finishedAt := h.now()
+		_ = h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusFailed, finishedAt, failure.Error())
+		_ = h.store.UpdateReleaseStatus(ctx, releaseID, app.ReleaseStatusFailed, finishedAt)
+		_ = h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusFailed, finishedAt)
+		_ = h.store.CreateEvent(ctx, app.Event{
+			ID:        EventID(deploymentID, "failed"),
+			AppID:     event.AppName,
+			Type:      "deploy.failed",
+			Message:   "Deploy failed for release " + releaseID + ": " + failure.Error(),
+			CreatedAt: finishedAt,
+		})
+		return failure
+	}
 
-	err = h.runner.Deploy(ctx, compose.DeployRequest{
-		AppName:               event.AppName,
-		ProjectDir:            worktreePath,
-		ComposePath:           composePath,
-		ReleaseID:             releaseID,
-		CommitSHA:             event.CommitSHA,
-		Env:                   env,
-		KeepReleases:          5,
-		SuccessfulReleaseSHAs: priorSuccessfulReleaseSHAs,
-		CleanupRecorder: cleanupEventRecorder{
-			store:        h.store,
-			appID:        event.AppName,
-			deploymentID: deploymentID,
-			now:          h.now,
-		},
+	result, err := h.runner.Deploy(ctx, compose.DeployRequest{
+		AppName:     event.AppName,
+		ProjectDir:  worktreePath,
+		ComposePath: composePath,
+		ReleaseID:   releaseID,
+		CommitSHA:   event.CommitSHA,
+		Env:         env,
 	})
+	warningErr := h.recordDeployWarnings(ctx, event.AppName, deploymentID, result.Warnings, env)
 	if err != nil {
 		err = compose.RedactError(err, env)
 		stage := deployfailure.Stage(err)
@@ -245,16 +257,20 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err := h.store.UpdateAppStatus(ctx, event.AppName, app.AppStatusHealthy, finishedAt); err != nil {
 		return err
 	}
+	succeededMessage := "Deploy succeeded for release " + releaseID
+	if warningErr != nil {
+		succeededMessage += "; one or more deploy warnings could not be delivered or recorded: " + warningErr.Error()
+	}
 	if err := h.store.CreateEvent(ctx, app.Event{
 		ID:        EventID(deploymentID, "succeeded"),
 		AppID:     event.AppName,
 		Type:      "deploy.succeeded",
-		Message:   "Deploy succeeded for release " + releaseID,
+		Message:   succeededMessage,
 		CreatedAt: finishedAt,
 	}); err != nil {
 		return err
 	}
-	return h.autoRoute(ctx, event.AppName, composePath, deploymentID, finishedAt)
+	return h.autoRoute(ctx, event.AppName, result, deploymentID, finishedAt)
 }
 
 func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName string, projectDir string) (map[string]string, error) {
@@ -264,7 +280,19 @@ func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName strin
 	return h.configResolver.ResolveAppConfig(ctx, appName, projectDir)
 }
 
-func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, composePath string, deploymentID string, createdAt time.Time) error {
+func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, result compose.DeployResult, deploymentID string, createdAt time.Time) error {
+	domains, err := h.store.ListDomains(ctx)
+	if err != nil {
+		return fmt.Errorf("list domains before initial auto-route: %w", err)
+	}
+	for _, domain := range domains {
+		if domain.AppID == appName {
+			return nil
+		}
+	}
+	if !result.RouteFound {
+		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, result.RouteReason, createdAt)
+	}
 	config, err := h.store.GetServerConfig(ctx)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil
@@ -281,13 +309,7 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, comp
 		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, err.Error(), createdAt)
 	}
 
-	target, ok, reason, err := compose.InferDefaultRoute(composePath)
-	if err != nil {
-		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, "could not inspect Compose ports: "+err.Error(), createdAt)
-	}
-	if !ok {
-		return h.recordAutoRouteSkipped(ctx, appName, deploymentID, reason, createdAt)
-	}
+	target := result.RouteTarget
 
 	model := app.Domain{
 		ID:          domainID(appName, appHost),
@@ -348,21 +370,27 @@ func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName
 		"attach manually with sshdock domains attach",
 		"sudo sshdock domains attach "+appName+" <service> <domain> --port <port>",
 	)
-	return h.store.CreateEvent(ctx, app.Event{
+	if err := h.store.CreateEvent(ctx, app.Event{
 		ID:        EventID(deploymentID, "route_auto_skipped"),
 		AppID:     appName,
 		Type:      "route.auto_skipped",
 		Message:   message,
 		CreatedAt: createdAt.Add(time.Second),
-	})
+	}); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(h.output, message); err != nil {
+		return nil
+	}
+	return nil
 }
 
 func gitPushChangedState(releaseID string, deploymentID string, stage string) string {
 	switch compose.DeployStage(stage) {
 	case compose.DeployStageComposeConfig, compose.DeployStageValidateCompose, compose.DeployStagePullImages, compose.DeployStageBuildServices:
 		return "release " + releaseID + " and deployment " + deploymentID + " marked failed before containers started; routes were not changed"
-	case compose.DeployStageStartContainers:
-		return "release " + releaseID + " and deployment " + deploymentID + " marked failed while starting containers; routes were not changed"
+	case compose.DeployStageWaitServices:
+		return "release " + releaseID + " and deployment " + deploymentID + " marked failed while starting or waiting for services; routes were not changed; no automatic rollback was attempted"
 	default:
 		return "release " + releaseID + " and deployment " + deploymentID + " marked failed; inspect the detail before assuming container or route state"
 	}
@@ -374,21 +402,6 @@ func (h *PostReceiveHandler) syncRoutesFromStore(ctx context.Context) error {
 		return fmt.Errorf("list domains for route rebuild: %w", err)
 	}
 	return h.router.SyncRoutes(ctx, routesFromDomains(domains))
-}
-
-func (h *PostReceiveHandler) priorSuccessfulReleaseSHAs(ctx context.Context, appName string) ([]string, error) {
-	releases, err := h.store.ListReleasesByApp(ctx, appName)
-	if err != nil {
-		return nil, err
-	}
-
-	var shas []string
-	for i := len(releases) - 1; i >= 0; i-- {
-		if releases[i].Status == app.ReleaseStatusSucceeded {
-			shas = append(shas, releases[i].CommitSHA)
-		}
-	}
-	return shas, nil
 }
 
 func ReleaseID(commitSHA string) string {
@@ -421,21 +434,24 @@ func routesFromDomains(domains []app.Domain) []router.Route {
 	return routes
 }
 
-type cleanupEventRecorder struct {
-	store        postReceiveStore
-	appID        string
-	deploymentID string
-	now          func() time.Time
-}
-
-func (r cleanupEventRecorder) RecordCleanupFailure(ctx context.Context, failure compose.CleanupFailure) error {
-	return r.store.CreateEvent(ctx, app.Event{
-		ID:        EventID(r.deploymentID+"_"+failure.ServiceName+"_"+failure.CommitSHA, "cleanup_failed"),
-		AppID:     r.appID,
-		Type:      "cleanup.failed",
-		Message:   "Cleanup failed for image " + failure.Image + ": " + failure.ErrorMessage,
-		CreatedAt: r.now(),
-	})
+func (h *PostReceiveHandler) recordDeployWarnings(ctx context.Context, appName string, deploymentID string, warnings []string, env map[string]string) error {
+	var result error
+	for index, warning := range warnings {
+		warning = compose.RedactValues(warning, env)
+		if err := h.store.CreateEvent(ctx, app.Event{
+			ID:        EventID(deploymentID, fmt.Sprintf("warning_%d", index+1)),
+			AppID:     appName,
+			Type:      "deploy.warning",
+			Message:   warning,
+			CreatedAt: h.now(),
+		}); err != nil {
+			result = errors.Join(result, fmt.Errorf("record deploy warning: %w", err))
+		}
+		if _, err := fmt.Fprintln(h.output, "warning: "+warning); err != nil {
+			result = errors.Join(result, fmt.Errorf("print deploy warning: %w", err))
+		}
+	}
+	return result
 }
 
 func shortCommitSHA(commitSHA string) string {

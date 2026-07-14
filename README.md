@@ -76,6 +76,10 @@ After a successful deploy, SSHDock can route the app at:
 https://my-app.example.com
 ```
 
+Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
+
+SSHDock warns when trusted Compose input publishes on all interfaces or couples directly to the host through privileged mode, host networking, bind mounts, the Docker socket, explicit global volume names, or external volumes. These warnings do not provide a sandbox; only trusted owners should have deploy access.
+
 ## Day-One Commands
 
 Open the SSH dashboard:

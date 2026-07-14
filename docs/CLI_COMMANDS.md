@@ -205,7 +205,9 @@ git@sshdock.example.com:<app>.git
 
 Successful deploys also try to create `<app>.example.com` automatically when the Compose file exposes one safely inferred TCP host-published port. Existing legacy stored values that are already Git hosts continue to work for remote output.
 
-Failed deploys print and persist a one-line recovery summary with `stage`, `detail`, `changed`, `fix`, and `retry` fields. Missing config, Compose validation, image pull, build, container start, redeploy, and rollback failures use the same field names in push output, event records, release inspection, and dashboard views. Route inference skips and Caddy reload failures use the same fields in event and dashboard views. Stored config values are redacted from these normal inspection paths.
+Failed deploys print and persist a one-line recovery summary with `stage`, `detail`, `changed`, `fix`, and `retry` fields. Missing config, Compose validation, image pull, build, service health wait, redeploy, and rollback failures use the same field names in push output, event records, release inspection, and dashboard views. Route inference skips and Caddy reload failures use the same fields in event and dashboard views. Stored config values are redacted from these normal inspection paths.
+
+Native deploys run Compose config, pull, build, and bounded `up -d --wait`. Trusted-owner warnings for all-interface ports and dangerous host coupling are printed during Git push and stored as `deploy.warning` events. They do not reject the deploy or claim to sandbox the Compose workload.
 
 ### `sshdock ssh-keys add <name>`
 
@@ -362,7 +364,7 @@ When a deployed release exists, the Docker runner first runs the equivalent of:
 docker compose down --remove-orphans
 ```
 
-It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It then removes only image refs matching `sshdock/<app>/*`, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
+It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It leaves image and build-cache garbage collection to Docker, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
 
 Successful output includes a Docker-volume preservation note. Remove app-specific Docker volumes manually only after backing up any data you need.
 
@@ -384,7 +386,7 @@ Output format:
 
 ### `sshdock events list <app>`
 
-List persisted deploy, router, recovery, and cleanup events for an app.
+List persisted deploy, trusted-owner warning, router, and recovery events for an app.
 
 ```bash
 sudo sshdock events list my-app
@@ -418,8 +420,10 @@ The command persists the domain, rebuilds the generated Caddyfile from SQLite st
 
 With a base domain configured, this command is the manual override/fallback path. Deploy-time auto-routing creates `<app>.<base-domain>` only when the app name is DNS-label-safe and Compose inference is safe:
 
-- service `web` wins if it has exactly one TCP host-published port.
+- effective Compose service `web` wins if it has exactly one TCP host-published port.
+- otherwise, a single `127.0.0.1`-published candidate is preferred.
 - otherwise, the only service with exactly one TCP host-published port wins.
+- automatic routing accepts an unset host IP, `0.0.0.0`, or `127.0.0.1`; IPv6-only and specific-host bindings receive manual attach guidance.
 - supported short forms include `127.0.0.1:3000:80` and `3000:80`.
 - supported long form includes `published: 3000` and `target: 80`.
 - ambiguous or missing published ports do not fail deploy; SSHDock records `route.auto_skipped` with manual attach guidance.

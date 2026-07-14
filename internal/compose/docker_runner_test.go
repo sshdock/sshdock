@@ -12,94 +12,6 @@ import (
 	"testing"
 )
 
-func TestDockerRunnerDeployConstructsSafeReleaseCommands(t *testing.T) {
-	ctx := context.Background()
-	projectDir := t.TempDir()
-	composePath := filepath.Join(projectDir, "compose.yml")
-	writeFile(t, composePath, `services:
-  api:
-    image: example/api:latest
-  web:
-    build: .
-`)
-	executor := &recordingExecutor{Outputs: []string{"api\nweb\n"}}
-	runner := NewDockerRunner(executor)
-
-	err := runner.Deploy(ctx, DeployRequest{
-		AppName:               "my-app",
-		ProjectDir:            projectDir,
-		ComposePath:           composePath,
-		CommitSHA:             "abc123",
-		SuccessfulReleaseSHAs: []string{"prev-1", "prev-2", "prev-3", "prev-4", "prev-5", "old-1"},
-	})
-	if err != nil {
-		t.Fatalf("Deploy: %v", err)
-	}
-
-	overridePath := filepath.Join(projectDir, ".sshdock", "release-abc123.compose.yml")
-	override, err := os.ReadFile(overridePath)
-	if err != nil {
-		t.Fatalf("read override: %v", err)
-	}
-	if !strings.Contains(string(override), "sshdock/my-app/web:abc123") {
-		t.Fatalf("override does not contain release image tag:\n%s", override)
-	}
-	if strings.Contains(string(override), "latest") {
-		t.Fatalf("override should deploy commit tags, not latest:\n%s", override)
-	}
-
-	want := []Command{
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--services"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "pull", "--ignore-buildable"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "build", "web"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-f", overridePath, "-p", "sshdock_my-app", "up", "-d"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "tag", "sshdock/my-app/web:abc123", "sshdock/my-app/web:latest"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:prev-5"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:old-1"}},
-	}
-	if !reflect.DeepEqual(executor.Commands, want) {
-		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
-	}
-
-	for _, command := range executor.Commands {
-		joined := strings.Join(command.Args, " ")
-		if strings.Contains(joined, "system prune") {
-			t.Fatalf("unexpected broad cleanup command: %#v", command)
-		}
-		if strings.Contains(joined, "sshdock/my-app/api") {
-			t.Fatalf("image-only service should not receive SSHDock build tags: %#v", command)
-		}
-	}
-}
-
-func TestDockerRunnerUpdatesLatestOnlyAfterUpSucceeds(t *testing.T) {
-	ctx := context.Background()
-	projectDir := t.TempDir()
-	composePath := filepath.Join(projectDir, "compose.yml")
-	writeFile(t, composePath, `services:
-  web:
-    build: .
-`)
-	executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: 3, Err: errors.New("up failed")}
-	runner := NewDockerRunner(executor)
-
-	err := runner.Deploy(ctx, DeployRequest{
-		AppName:     "my-app",
-		ProjectDir:  projectDir,
-		ComposePath: composePath,
-		CommitSHA:   "abc123",
-	})
-	if !errors.Is(err, executor.Err) {
-		t.Fatalf("Deploy error = %v, want %v", err, executor.Err)
-	}
-
-	for _, command := range executor.Commands {
-		if strings.Contains(strings.Join(command.Args, " "), ":latest") {
-			t.Fatalf("latest tag was updated after failed deploy: %#v", command)
-		}
-	}
-}
-
 func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
@@ -114,17 +26,18 @@ func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
 		failAt int
 		stage  DeployStage
 	}{
+		{name: "config", failAt: 0, stage: DeployStageComposeConfig},
 		{name: "pull", failAt: 1, stage: DeployStagePullImages},
 		{name: "build", failAt: 2, stage: DeployStageBuildServices},
-		{name: "start", failAt: 3, stage: DeployStageStartContainers},
+		{name: "wait", failAt: 3, stage: DeployStageWaitServices},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			failure := errors.New(test.name + " failed")
-			executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: test.failAt, Err: failure}
+			executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"build":{"context":"."}}}}`}, FailAt: test.failAt, Err: failure}
 			runner := NewDockerRunner(executor)
 
-			err := runner.Deploy(ctx, DeployRequest{
+			_, err := runner.Deploy(ctx, DeployRequest{
 				AppName:     "my-app",
 				ProjectDir:  projectDir,
 				ComposePath: composePath,
@@ -144,6 +57,33 @@ func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerReportsParentCancellationWithoutClaimingWaitTimeout(t *testing.T) {
+	// Given
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, "services:\n  web:\n    image: example/web:latest\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	executor := &cancelBeforeWaitExecutor{cancel: cancel}
+	runner := NewDockerRunner(executor)
+
+	// When
+	_, err := runner.Deploy(ctx, DeployRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "deployment context") {
+		t.Fatalf("Deploy error = %v, want parent-context interruption", err)
+	}
+	if strings.Contains(err.Error(), "exceeded 2m") {
+		t.Fatalf("Deploy error falsely claimed the runner timeout: %v", err)
+	}
+}
+
+func TestDockerRunnerHostDeadlineAllowsComposeWaitDiagnostics(t *testing.T) {
+	if defaultDeployHostWait <= defaultDeployWait {
+		t.Fatalf("host wait = %s, want longer than Compose wait %s", defaultDeployHostWait, defaultDeployWait)
+	}
+}
+
 func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
@@ -154,10 +94,10 @@ func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
     environment:
       DATABASE_URL: ${DATABASE_URL}
 `)
-	executor := &recordingExecutor{}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
 	runner := NewDockerRunner(executor)
 
-	err := runner.Deploy(ctx, DeployRequest{
+	_, err := runner.Deploy(ctx, DeployRequest{
 		AppName:     "my-app",
 		ProjectDir:  projectDir,
 		ComposePath: composePath,
@@ -168,8 +108,8 @@ func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
 		t.Fatalf("Deploy: %v", err)
 	}
 
-	if len(executor.Commands) != 3 {
-		t.Fatalf("commands = %#v, want config/pull/up", executor.Commands)
+	if len(executor.Commands) != 4 {
+		t.Fatalf("commands = %#v, want config/pull/build/up", executor.Commands)
 	}
 	for _, command := range executor.Commands {
 		if command.Env["DATABASE_URL"] != "postgres://secret" {
@@ -181,7 +121,7 @@ func TestDockerRunnerDeployPassesConfigAsCommandEnvironment(t *testing.T) {
 	}
 }
 
-func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
+func TestDockerRunnerDeployNeverRunsSSHDockImageCleanup(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yml")
@@ -189,27 +129,22 @@ func TestDockerRunnerRecordsCleanupFailureWithoutFailingDeploy(t *testing.T) {
   web:
     build: .
 `)
-	executor := &recordingExecutor{Outputs: []string{"web\n"}, FailAt: 5, Err: errors.New("image is in use")}
-	recorder := &recordingCleanupRecorder{}
+	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"build":{"context":"."}}}}`}}
 	runner := NewDockerRunner(executor)
 
-	err := runner.Deploy(ctx, DeployRequest{
-		AppName:               "my-app",
-		ProjectDir:            projectDir,
-		ComposePath:           composePath,
-		CommitSHA:             "abc123",
-		SuccessfulReleaseSHAs: []string{"prev-1", "prev-2", "prev-3", "prev-4", "prev-5", "old-1"},
-		CleanupRecorder:       recorder,
+	_, err := runner.Deploy(ctx, DeployRequest{
+		AppName:     "my-app",
+		ProjectDir:  projectDir,
+		ComposePath: composePath,
+		CommitSHA:   "abc123",
 	})
 	if err != nil {
-		t.Fatalf("Deploy error = %v, want nil cleanup warning", err)
+		t.Fatalf("Deploy: %v", err)
 	}
-	if len(recorder.Failures) != 1 {
-		t.Fatalf("cleanup failures = %#v", recorder.Failures)
-	}
-	failure := recorder.Failures[0]
-	if failure.AppName != "my-app" || failure.ServiceName != "web" || failure.CommitSHA != "prev-5" || failure.Image != "sshdock/my-app/web:prev-5" || failure.ErrorMessage != "image is in use" {
-		t.Fatalf("cleanup failure = %#v", failure)
+	for _, command := range executor.Commands {
+		if command.Name != "docker" || len(command.Args) == 0 || command.Args[0] != "compose" {
+			t.Fatalf("unexpected image-management command: %#v", command)
+		}
 	}
 }
 
@@ -272,7 +207,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	}
 }
 
-func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t *testing.T) {
+func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesOrImageCleanup(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yml")
@@ -280,12 +215,7 @@ func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t 
   web:
     image: example/web:latest
 `)
-	executor := &recordingExecutor{
-		Outputs: []string{
-			"",
-			"sshdock/my-app/web:abc123\nsshdock/my-app/web:latest\n",
-		},
-	}
+	executor := &recordingExecutor{}
 	runner := NewDockerRunner(executor)
 
 	if err := runner.Remove(ctx, RemoveRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath}); err != nil {
@@ -294,9 +224,6 @@ func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t 
 
 	want := []Command{
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "down", "--remove-orphans"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=sshdock/my-app/*"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:abc123"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"image", "rm", "sshdock/my-app/web:latest"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
@@ -306,8 +233,8 @@ func TestDockerRunnerRemoveUsesComposeDownWithoutVolumesAndScopedImageCleanup(t 
 		if strings.Contains(joined, "--volumes") || strings.Contains(joined, " -v") {
 			t.Fatalf("remove should preserve volumes, got command %#v", command)
 		}
-		if strings.Contains(joined, "system prune") {
-			t.Fatalf("remove should not run broad prune, got command %#v", command)
+		if command.Name == "docker" && len(command.Args) > 0 && command.Args[0] == "image" {
+			t.Fatalf("remove should leave image garbage collection to Docker, got command %#v", command)
 		}
 	}
 }
@@ -371,14 +298,11 @@ func TestParseServiceStatusesAcceptsJSONArrayAndJSONLines(t *testing.T) {
 }
 
 type recordingExecutor struct {
-	Commands []Command
-	Outputs  []string
-	FailAt   int
-	Err      error
-}
-
-type recordingCleanupRecorder struct {
-	Failures []CleanupFailure
+	Commands  []Command
+	Outputs   []string
+	Deadlines []bool
+	FailAt    int
+	Err       error
 }
 
 type streamingRecordingExecutor struct {
@@ -387,13 +311,30 @@ type streamingRecordingExecutor struct {
 	Err      error
 }
 
-func (r *recordingCleanupRecorder) RecordCleanupFailure(_ context.Context, failure CleanupFailure) error {
-	r.Failures = append(r.Failures, failure)
-	return nil
+type cancelBeforeWaitExecutor struct {
+	commands int
+	cancel   context.CancelFunc
 }
 
-func (r *recordingExecutor) Run(_ context.Context, command Command) (string, error) {
+func (e *cancelBeforeWaitExecutor) Run(ctx context.Context, _ Command) (string, error) {
+	e.commands++
+	if e.commands == 1 {
+		return `{"services":{"web":{"image":"example/web:latest"}}}`, nil
+	}
+	if e.commands == 3 {
+		e.cancel()
+		return "", nil
+	}
+	if e.commands == 4 {
+		return "", ctx.Err()
+	}
+	return "", nil
+}
+
+func (r *recordingExecutor) Run(ctx context.Context, command Command) (string, error) {
 	r.Commands = append(r.Commands, command)
+	_, hasDeadline := ctx.Deadline()
+	r.Deadlines = append(r.Deadlines, hasDeadline)
 	index := len(r.Commands) - 1
 	if r.Err != nil && index == r.FailAt {
 		return "", r.Err

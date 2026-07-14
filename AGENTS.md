@@ -74,6 +74,8 @@ Keep local-only material under `.local/`:
 - VPS evidence, screenshots, command transcripts, raw logs, and private domains
 - Personal workflow notes or temporary release checklists
 
+For end-to-end or release acceptance, read and follow `.local/DOGFOOD.md` when present.
+
 Do not add private hostnames, IPs, SSH key paths, fingerprints, backup paths, hashes, or raw development logs to tracked files.
 
 ## Commands

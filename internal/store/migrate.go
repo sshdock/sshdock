@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -31,9 +32,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			id text primary key,
 			app_id text not null,
 			release_id text not null,
+			commit_sha text not null,
+			trigger text not null,
 			status text not null,
 			started_at text not null,
 			finished_at text not null,
+			failure_stage text not null,
+			failure_detail text not null,
+			retry_guidance text not null,
 			error_message text not null
 		)`,
 		`create table if not exists domains (
@@ -76,6 +82,8 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			primary key (app_id, name, scope)
 		)`,
 		`create index if not exists idx_releases_app_id on releases(app_id)`,
+		`create unique index if not exists idx_releases_app_commit on releases(app_id, commit_sha)`,
+		`create index if not exists idx_deployments_app_started on deployments(app_id, started_at, id)`,
 		`create index if not exists idx_domains_app_id on domains(app_id)`,
 		`create index if not exists idx_events_app_id on events(app_id)`,
 		`create index if not exists idx_app_config_values_app_id on app_config_values(app_id)`,
@@ -83,9 +91,80 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 
 	for _, statement := range statements {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return err
+			return fmt.Errorf("migrate schema: %w", err)
 		}
 	}
 
+	return migrateLegacyDeployments(ctx, db)
+}
+
+func migrateLegacyDeployments(ctx context.Context, db *sql.DB) error {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "commit_sha", definition: "text not null default ''"},
+		{name: "trigger", definition: "text not null default 'legacy'"},
+		{name: "failure_stage", definition: "text not null default ''"},
+		{name: "failure_detail", definition: "text not null default ''"},
+		{name: "retry_guidance", definition: "text not null default ''"},
+	}
+	for _, column := range columns {
+		exists, err := tableColumnExists(ctx, db, "deployments", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		statement := "alter table deployments add column " + column.name + " " + column.definition
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("add deployments.%s: %w", column.name, err)
+		}
+	}
+
+	statements := []string{
+		`update deployments set trigger = 'legacy' where trigger = ''`,
+		`update deployments
+		 set commit_sha = coalesce((select releases.commit_sha from releases where releases.id = deployments.release_id), '')
+		 where commit_sha = ''`,
+		`update deployments set failure_stage = 'legacy' where status = 'failed' and failure_stage = ''`,
+		`update deployments set failure_detail = error_message where failure_detail = '' and error_message != ''`,
+		`update deployments
+		 set retry_guidance = 'inspect failure detail and retry the original deployment operation'
+		 where status = 'failed' and retry_guidance = ''`,
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("backfill deployment attempts: %w", err)
+		}
+	}
 	return nil
+}
+
+func tableColumnExists(ctx context.Context, db *sql.DB, table string, column string) (bool, error) {
+	rows, err := db.QueryContext(ctx, "pragma table_info("+table+")")
+	if err != nil {
+		return false, fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sequence int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&sequence, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, fmt.Errorf("scan %s columns: %w", table, err)
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	return false, nil
 }

@@ -39,7 +39,7 @@ func TestRealDashboardSSHScreenCapture(t *testing.T) {
 	if manifest.Rows != 32 || manifest.Cols != 120 {
 		t.Fatalf("manifest size = %dx%d, want 32x120", manifest.Rows, manifest.Cols)
 	}
-	if len(manifest.Frames) != 6 {
+	if len(manifest.Frames) != 7 {
 		t.Fatalf("manifest frames = %#v", manifest.Frames)
 	}
 	for _, frame := range manifest.Frames {

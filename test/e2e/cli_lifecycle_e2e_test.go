@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/store"
 )
@@ -66,7 +67,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "initial lifecycle app")
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	releaseID := "rel_" + shortSHA(commitSHA)
+	releaseID := app.ReleaseID(appName, commitSHA)
 	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
 	runGit(t, sourceDir, env, "push", "prod", "main")
 

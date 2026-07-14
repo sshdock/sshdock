@@ -461,6 +461,18 @@ func TestLifecycleInspectionCommands(t *testing.T) {
 		Failure:   "stage=build services; detail=build services failed: docker output included <redacted>",
 		CreatedAt: time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC),
 	}}
+	for index := 1; index <= 6; index++ {
+		backend.deployments = append(backend.deployments, Deployment{
+			ID:         fmt.Sprintf("dep_%d", index),
+			AppName:    "my-app",
+			ReleaseID:  "rel_1",
+			CommitSHA:  "abc123",
+			Trigger:    "push",
+			Status:     "succeeded",
+			StartedAt:  time.Date(2026, 7, 4, 10, index, 0, 0, time.UTC),
+			FinishedAt: time.Date(2026, 7, 4, 10, index, 30, 0, time.UTC),
+		})
+	}
 	backend.events = []Event{{
 		AppName:   "my-app",
 		Type:      "deploy.succeeded",
@@ -489,6 +501,7 @@ func TestLifecycleInspectionCommands(t *testing.T) {
 	}{
 		{name: "logs", args: []string{"logs", "my-app", "web", "-f"}, want: []string{"web log\n"}},
 		{name: "releases list", args: []string{"releases", "list", "my-app"}, want: []string{"rel_1\tfailed\tabc123\t2026-07-04T10:00:00Z", "stage=build services", "<redacted>"}},
+		{name: "deployments list", args: []string{"deployments", "list", "my-app"}, want: []string{"dep_1\tsucceeded\tpush\tabc123\trel_1\t2026-07-04T10:01:00Z\t2026-07-04T10:01:30Z", "dep_6\tsucceeded\tpush\tabc123\trel_1\t2026-07-04T10:06:00Z\t2026-07-04T10:06:30Z"}},
 		{name: "events list", args: []string{"events", "list", "my-app"}, want: []string{"2026-07-04T10:01:00Z\tdeploy.succeeded\tDeploy succeeded"}},
 		{name: "domains list", args: []string{"domains", "list", "my-app"}, want: []string{"example.com\tweb\t3000\ttrue"}},
 		{name: "ssh-keys list", args: []string{"ssh-keys", "list"}, want: []string{"admin\t", "\t2026-07-04T10:02:00Z"}},
@@ -515,10 +528,39 @@ func TestLifecycleInspectionCommands(t *testing.T) {
 	}
 }
 
+func TestDeploymentsListSanitizesControlCharacters(t *testing.T) {
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app"}
+	backend.deployments = []Deployment{{
+		ID:            "dep_1",
+		AppName:       "my-app",
+		ReleaseID:     "rel_1",
+		CommitSHA:     "abc123",
+		Trigger:       "push",
+		Status:        "failed",
+		FailureDetail: "bad\tline\n\x1b[31mred\u0085next",
+	}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := NewRunner(backend, "dev").Run([]string{"deployments", "list", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	output := stdout.String()
+	if strings.ContainsAny(output, "\x1b\u0085") {
+		t.Fatalf("output contains terminal controls: %q", output)
+	}
+	fields := strings.Split(strings.TrimSuffix(output, "\n"), "\t")
+	if len(fields) != 10 || fields[8] != "bad line  [31mred next" {
+		t.Fatalf("fields = %#v", fields)
+	}
+}
+
 func TestLifecycleMutationCommands(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
 	backend.domains = []Domain{{AppName: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true}}
+	backend.deployments = []Deployment{{ID: "dep_1", AppName: "my-app"}}
 	backend.keys["admin"] = SSHKey{Name: "admin", PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com"}
 	runner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -562,6 +604,9 @@ func TestLifecycleMutationCommands(t *testing.T) {
 	}
 	if _, ok := backend.apps["my-app"]; ok {
 		t.Fatal("app still exists after remove")
+	}
+	if len(backend.deployments) != 0 {
+		t.Fatalf("deployments after remove = %#v", backend.deployments)
 	}
 }
 

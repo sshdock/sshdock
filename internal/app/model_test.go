@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -35,6 +36,48 @@ func TestAppModelFields(t *testing.T) {
 	}
 	if !model.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("UpdatedAt = %s", model.UpdatedAt)
+	}
+}
+
+func TestReleaseIDScopesFullCommitIdentityToApp(t *testing.T) {
+	// Given
+	commit := "1234567890abcdef1234567890abcdef12345678"
+
+	// When
+	first := ReleaseID("first-app", commit)
+	second := ReleaseID("second-app", commit)
+
+	// Then
+	if first == second {
+		t.Fatalf("release IDs = %q, want app-scoped identities", first)
+	}
+	if !strings.Contains(first, commit) {
+		t.Fatalf("release ID = %q, want full commit %q", first, commit)
+	}
+}
+
+func TestNewDeploymentIDCreatesUniqueAttemptIdentity(t *testing.T) {
+	// Given
+	const attempts = 2
+
+	// When
+	ids := make([]string, 0, attempts)
+	for range attempts {
+		id, err := NewDeploymentID()
+		if err != nil {
+			t.Fatalf("NewDeploymentID: %v", err)
+		}
+		ids = append(ids, id)
+	}
+
+	// Then
+	if ids[0] == ids[1] {
+		t.Fatalf("deployment IDs = %#v, want unique attempt identities", ids)
+	}
+	for _, id := range ids {
+		if !strings.HasPrefix(id, "dep_") || len(id) != len("dep_")+32 {
+			t.Fatalf("deployment ID = %q, want dep_ plus 128-bit hex", id)
+		}
 	}
 }
 

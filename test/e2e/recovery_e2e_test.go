@@ -53,7 +53,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "good compose app")
 	goodCommit := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	goodReleaseID := "rel_" + shortSHA(goodCommit)
+	goodReleaseID := app.ReleaseID(appName, goodCommit)
 	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
 
 	runGit(t, sourceDir, baseEnv, "push", "prod", "main")
@@ -61,7 +61,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	dbPath := cfg.SQLiteDBPath
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusSucceeded)
-	if status, err := deploymentStatus(dbPath, "dep_"+shortSHA(goodCommit)); err != nil {
+	if status, err := deploymentStatusForCommit(dbPath, appName, goodCommit, app.DeploymentTriggerPush); err != nil {
 		t.Fatalf("deploymentStatus good: %v", err)
 	} else if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("good deployment status = %q", status)
@@ -71,13 +71,13 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "bad compose app")
 	badCommit := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	badReleaseID := "rel_" + shortSHA(badCommit)
+	badReleaseID := app.ReleaseID(appName, badCommit)
 	failingEnv := append(baseEnv, "SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR=compose failed")
 	runGitAllowError(t, sourceDir, failingEnv, "push", "prod", "main")
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusFailed)
 	assertReleaseStatus(t, dbPath, badReleaseID, app.ReleaseStatusFailed)
-	if status, err := deploymentStatus(dbPath, "dep_"+shortSHA(badCommit)); err != nil {
+	if status, err := deploymentStatusForCommit(dbPath, appName, badCommit, app.DeploymentTriggerPush); err != nil {
 		t.Fatalf("deploymentStatus bad: %v", err)
 	} else if status != string(app.DeploymentStatusFailed) {
 		t.Fatalf("bad deployment status = %q", status)
@@ -88,9 +88,13 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusRolledBack)
 	assertReleaseStatus(t, dbPath, badReleaseID, app.ReleaseStatusFailed)
-	rollbackStatus := queryString(t, dbPath, `select status from deployments where app_id = ? and release_id = ? order by started_at desc, id desc limit 1`, appName, goodReleaseID)
+	rollbackStatus := queryString(t, dbPath, `select status from deployments where app_id = ? and release_id = ? and trigger = 'rollback' order by started_at desc, id desc limit 1`, appName, goodReleaseID)
 	if rollbackStatus != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("rollback deployment status = %q", rollbackStatus)
+	}
+	rollbackCommit := queryString(t, dbPath, `select commit_sha from deployments where app_id = ? and release_id = ? and trigger = 'rollback' order by started_at desc, id desc limit 1`, appName, goodReleaseID)
+	if rollbackCommit != goodCommit {
+		t.Fatalf("rollback deployment commit = %q, want %q", rollbackCommit, goodCommit)
 	}
 	assertEventTypes(t, dbPath, appName, []string{
 		"deploy.started",
@@ -99,6 +103,7 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 		"deploy.failed",
 		"rollback.triggered",
 		"rollback.succeeded",
+		"route.auto_skipped",
 	})
 }
 

@@ -38,7 +38,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		deploymentsByApp: map[string][]app.Deployment{
 			"my-app": {
 				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
-				{ID: "dep_2", AppID: "my-app", ReleaseID: "rel_old", Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), ErrorMessage: "stage=build services; detail=build services failed: docker output included postgres://secret"},
+				{ID: "dep_2", AppID: "my-app", ReleaseID: "rel_old", CommitSHA: "old", Trigger: app.DeploymentTriggerRedeploy, Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), FailureStage: "build services", FailureDetail: "build services failed: docker output included postgres://secret", RetryGuidance: "sudo sshdock apps redeploy my-app", ErrorMessage: "stage=build services; detail=build services failed: docker output included postgres://secret"},
 			},
 		},
 		eventsByApp: map[string][]app.Event{
@@ -69,7 +69,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"domains=1",
 		"App my-app",
 		"Route: routed",
-		"Latest deploy: succeeded",
+		"Latest deploy: failed",
 		"Service status: 1 running",
 		"Last failure: stage=build services; detail=build services failed: docker output included <redacted>",
 		"Services",
@@ -81,6 +81,9 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"Deployments",
 		"dep_1 succeeded rel_new",
 		"dep_2 failed rel_old",
+		"trigger=redeploy commit=old",
+		"failure-stage=build services",
+		"retry=sudo sshdock apps redeploy my-app",
 		"stage=build services; detail=build services failed: docker output included <redacted>",
 		"Events",
 		"deploy.succeeded Deploy succeeded",

@@ -1359,17 +1359,21 @@ func renderDeployTable(width int, deployments []DeploymentView) string {
 	rows := make([][]string, 0, len(deployments))
 	for _, deployment := range deployments {
 		rows = append(rows, []string{
-			deployment.ID,
+			compactDeploymentID(deployment.ID),
 			deployment.Status,
-			deployment.ReleaseID,
-			formatDashboardTime(deployment.StartedAt),
+			compactDeploymentTrigger(deployment.Trigger),
+			compactCommitSHA(deployment.CommitSHA),
+			compactReleaseID(deployment.ReleaseID),
+			formatDashboardCompactTime(deployment.StartedAt),
 		})
 	}
 	return renderDashboardTable(width, []dashboardTableColumn{
-		{Header: "Deploy", MinWidth: 12, Flex: true, Priority: 0},
+		{Header: "Deploy", MinWidth: 10, Flex: true, Priority: 0},
 		{Header: "Status", MinWidth: 9, Priority: 0},
-		{Header: "Release", MinWidth: 12, Priority: 1},
-		{Header: "Started", MinWidth: 12, Priority: 2},
+		{Header: "Trigger", MinWidth: 8, Priority: 3},
+		{Header: "Commit", MinWidth: 7, Priority: 4},
+		{Header: "Release", MinWidth: 11, Priority: 1},
+		{Header: "Started", MinWidth: 11, Priority: 2},
 	}, rows)
 }
 
@@ -1519,11 +1523,49 @@ func shortValue(value string, maxWidth int) string {
 	return fitLine(value, maxWidth)
 }
 
+func compactDeploymentID(value string) string {
+	const suffixLength = 6
+	if len(value) <= len("dep_…")+suffixLength {
+		return value
+	}
+	return "dep_…" + value[len(value)-suffixLength:]
+}
+
+func compactCommitSHA(value string) string {
+	const width = 7
+	if len(value) <= width {
+		return value
+	}
+	return value[:width]
+}
+
+func compactReleaseID(value string) string {
+	const suffixLength = 6
+	if len(value) <= len("rel_…")+suffixLength {
+		return value
+	}
+	return "rel_…" + value[len(value)-suffixLength:]
+}
+
+func compactDeploymentTrigger(value string) string {
+	if value == "startup_recovery" {
+		return "startup"
+	}
+	return value
+}
+
 func formatDashboardTime(value time.Time) string {
 	if value.IsZero() {
 		return "-"
 	}
 	return value.Format("2006-01-02 15:04")
+}
+
+func formatDashboardCompactTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format("01-02 15:04")
 }
 
 func renderServiceBlock(services []ServiceView) string {
@@ -1573,7 +1615,17 @@ func renderDeploymentBlock(deployments []DeploymentView) string {
 		return builder.String()
 	}
 	for _, deployment := range deployments {
-		fmt.Fprintf(&builder, "- %s %s %s\n", deployment.ID, deployment.Status, deployment.ReleaseID)
+		fmt.Fprintf(&builder, "- %s %s %s trigger=%s commit=%s", deployment.ID, deployment.Status, deployment.ReleaseID, deployment.Trigger, deployment.CommitSHA)
+		if deployment.FailureStage != "" {
+			fmt.Fprintf(&builder, " failure-stage=%s", deployment.FailureStage)
+		}
+		if deployment.FailureDetail != "" {
+			fmt.Fprintf(&builder, " detail=%s", deployment.FailureDetail)
+		}
+		if deployment.RetryGuidance != "" {
+			fmt.Fprintf(&builder, " retry=%s", deployment.RetryGuidance)
+		}
+		builder.WriteByte('\n')
 	}
 	return builder.String()
 }

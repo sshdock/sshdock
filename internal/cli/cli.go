@@ -48,6 +48,20 @@ type Release struct {
 	UpdatedAt   time.Time
 }
 
+type Deployment struct {
+	ID            string
+	AppName       string
+	ReleaseID     string
+	CommitSHA     string
+	Trigger       string
+	Status        string
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	FailureStage  string
+	FailureDetail string
+	RetryGuidance string
+}
+
 type Event struct {
 	AppName   string
 	Type      string
@@ -116,6 +130,7 @@ type Backend interface {
 	AppHealth(name string) (AppHealth, error)
 	Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error
 	ListReleases(appName string) ([]Release, error)
+	ListDeployments(appName string) ([]Deployment, error)
 	ListEvents(appName string) ([]Event, error)
 	ListDomains(appName string) ([]Domain, error)
 	CheckDomains(appName string) ([]DomainCheck, error)
@@ -137,6 +152,7 @@ type MemoryBackend struct {
 	baseDomain  string
 	apps        map[string]App
 	releases    []Release
+	deployments []Deployment
 	events      []Event
 	domains     []Domain
 	keys        map[string]SSHKey
@@ -245,6 +261,7 @@ func (b *MemoryBackend) RemoveApp(name string) error {
 	}
 	delete(b.apps, name)
 	b.releases = filterReleases(b.releases, name)
+	b.deployments = filterDeployments(b.deployments, name)
 	b.events = filterEvents(b.events, name)
 	b.domains = filterDomains(b.domains, name)
 	return nil
@@ -303,6 +320,25 @@ func (b *MemoryBackend) ListReleases(appName string) ([]Release, error) {
 		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
 	})
 	return releases, nil
+}
+
+func (b *MemoryBackend) ListDeployments(appName string) ([]Deployment, error) {
+	if _, ok := b.apps[appName]; !ok {
+		return nil, fmt.Errorf("app %q not found", appName)
+	}
+	var deployments []Deployment
+	for _, deployment := range b.deployments {
+		if deployment.AppName == appName {
+			deployments = append(deployments, deployment)
+		}
+	}
+	sort.Slice(deployments, func(i, j int) bool {
+		if deployments[i].StartedAt.Equal(deployments[j].StartedAt) {
+			return deployments[i].ID < deployments[j].ID
+		}
+		return deployments[i].StartedAt.Before(deployments[j].StartedAt)
+	})
+	return deployments, nil
 }
 
 func (b *MemoryBackend) ListEvents(appName string) ([]Event, error) {
@@ -537,6 +573,8 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 			return r.runConfig(args[1:], stdin, stdout, stderr)
 		case "domains":
 			return r.runDomains(args[1:], stdout, stderr)
+		case "deployments":
+			return r.runDeployments(args[1:], stdout, stderr)
 		case "events":
 			return r.runEvents(args[1:], stdout, stderr)
 		case "logs":
@@ -942,6 +980,38 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 	return 2
 }
 
+func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 2 && args[0] == "list" {
+		deployments, err := r.backend.ListDeployments(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if len(deployments) == 0 {
+			fmt.Fprintln(stdout, "no deployments")
+			return 0
+		}
+		for _, deployment := range deployments {
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				cliField(deployment.ID),
+				cliField(deployment.Status),
+				cliField(deployment.Trigger),
+				cliField(deployment.CommitSHA),
+				cliField(deployment.ReleaseID),
+				formatCLITime(deployment.StartedAt),
+				formatCLITime(deployment.FinishedAt),
+				cliField(deployment.FailureStage),
+				cliField(deployment.FailureDetail),
+				cliField(deployment.RetryGuidance),
+			)
+		}
+		return 0
+	}
+
+	printInvalidUsage(stderr, "deployments")
+	return 2
+}
+
 func (r *Runner) runLogs(args []string, stdout io.Writer, stderr io.Writer) int {
 	request, ok := parseLogsArgs(args)
 	if !ok {
@@ -1093,6 +1163,7 @@ Operations:
   backup restore <archive>
   logs <app> [service] [-f] [--tail <lines>]
   releases list <app>
+  deployments list <app>
   events list <app>
 
 Access:
@@ -1171,6 +1242,12 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock releases list <app>",
 		}, []string{
 			"sudo sshdock releases list my-app",
+		})
+	case "deployments":
+		printTopicHelp(stdout, "Deployment commands inspect every execution attempt.", []string{
+			"sshdock deployments list <app>",
+		}, []string{
+			"sudo sshdock deployments list my-app",
 		})
 	case "events":
 		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events.", []string{
@@ -1454,11 +1531,31 @@ func cliValueOrDash(value string) string {
 	return value
 }
 
+func cliField(value string) string {
+	value = cliValueOrDash(value)
+	return strings.Map(func(char rune) rune {
+		if char < 32 || (char >= 127 && char <= 159) {
+			return ' '
+		}
+		return char
+	}, value)
+}
+
 func filterReleases(releases []Release, appName string) []Release {
 	filtered := releases[:0]
 	for _, release := range releases {
 		if release.AppName != appName {
 			filtered = append(filtered, release)
+		}
+	}
+	return filtered
+}
+
+func filterDeployments(deployments []Deployment, appName string) []Deployment {
+	filtered := deployments[:0]
+	for _, deployment := range deployments {
+		if deployment.AppName != appName {
+			filtered = append(filtered, deployment)
 		}
 	}
 	return filtered

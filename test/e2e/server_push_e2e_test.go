@@ -31,8 +31,8 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
-	assertReleaseStatus(t, dbPath, "rel_"+shortSHA(commitSHA), app.ReleaseStatusSucceeded)
-	status, err := deploymentStatus(dbPath, "dep_"+shortSHA(commitSHA))
+	assertReleaseStatus(t, dbPath, app.ReleaseID(appName, commitSHA), app.ReleaseStatusSucceeded)
+	status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v", err)
 	}
@@ -86,8 +86,8 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
-	assertReleaseStatus(t, dbPath, "rel_"+shortSHA(commitSHA), app.ReleaseStatusSucceeded)
-	status, err := deploymentStatus(dbPath, "dep_"+shortSHA(commitSHA))
+	assertReleaseStatus(t, dbPath, app.ReleaseID(appName, commitSHA), app.ReleaseStatusSucceeded)
+	status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v", err)
 	}

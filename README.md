@@ -96,10 +96,11 @@ sudo sshdock apps info my-app
 sudo sshdock apps health my-app
 sudo sshdock logs my-app --tail 200
 sudo sshdock releases list my-app
+sudo sshdock deployments list my-app
 sudo sshdock events list my-app
 ```
 
-Failed deploys print and persist `stage`, `detail`, `changed`, `fix`, and `retry` fields. The same failure detail is visible through `releases list`, `events list`, and the SSH dashboard, with stored config values redacted.
+Each app commit has one stable release while every push or redeploy records a separate deployment attempt. `deployments list` prints the complete attempt history, including timing and redacted failure recovery detail; recent attempts also appear in the SSH dashboard.
 
 Operate an app:
 

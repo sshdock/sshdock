@@ -106,7 +106,7 @@ func TestGitHookEndToEnd(t *testing.T) {
 		t.Fatalf("release commit = %q, want %q", releases[0].CommitSHA, commitSHA)
 	}
 
-	status, err := deploymentStatus(cfg.SQLiteDBPath, "dep_"+shortSHA(commitSHA))
+	status, err := deploymentStatusForCommit(cfg.SQLiteDBPath, "my-app", commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v", err)
 	}
@@ -219,7 +219,7 @@ SSH_ORIGINAL_COMMAND="$*" exec sshdockd git-receive
 		t.Fatalf("release commit = %q, want %q", releases[0].CommitSHA, commitSHA)
 	}
 
-	status, err := deploymentStatus(cfg.SQLiteDBPath, "dep_"+shortSHA(commitSHA))
+	status, err := deploymentStatusForCommit(cfg.SQLiteDBPath, appName, commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 
 	runGit(t, sourceDir, env, "push", "prod", "main")
 
-	status, err := deploymentStatus(cfg.SQLiteDBPath, "dep_"+shortSHA(commitSHA))
+	status, err := deploymentStatusForCommit(cfg.SQLiteDBPath, appName, commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v", err)
 	}
@@ -335,7 +335,7 @@ func listReleases(dbPath string, appID string) ([]releaseRow, error) {
 	return releases, rows.Err()
 }
 
-func deploymentStatus(dbPath string, deploymentID string) (string, error) {
+func deploymentStatusForCommit(dbPath string, appID string, commitSHA string, trigger app.DeploymentTrigger) (string, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return "", err
@@ -343,7 +343,10 @@ func deploymentStatus(dbPath string, deploymentID string) (string, error) {
 	defer db.Close()
 
 	var status string
-	err = db.QueryRow(`select status from deployments where id = ?`, deploymentID).Scan(&status)
+	err = db.QueryRow(`
+		select status from deployments
+		where app_id = ? and commit_sha = ? and trigger = ?
+		order by started_at desc, id desc limit 1`, appID, commitSHA, string(trigger)).Scan(&status)
 	return status, err
 }
 

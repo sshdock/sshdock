@@ -177,7 +177,7 @@ LogLevel ERROR
 	pushEnv := append(env, "GIT_SSH_COMMAND="+sshCommand)
 	runGit(t, sourceDir, pushEnv, "push", "sshdock", "main")
 
-	status, err := deploymentStatus(filepath.Join(dataDir, "sshdock.db"), "dep_"+shortSHA(commitSHA))
+	status, err := deploymentStatusForCommit(filepath.Join(dataDir, "sshdock.db"), "ssh-app", commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
 		t.Fatalf("deploymentStatus: %v\nsshd log:\n%s", err, readFile(t, sshdLogPath))
 	}

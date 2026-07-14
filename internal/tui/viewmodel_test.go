@@ -101,6 +101,55 @@ func TestNewAppDetailViewSummarizesLastFailure(t *testing.T) {
 	}
 }
 
+func TestNewAppDetailViewUsesNewestAttemptAndFailure(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	deployments := []app.Deployment{
+		{ID: "dep_old_failure", Status: app.DeploymentStatusFailed, StartedAt: now, ErrorMessage: "old failure"},
+		{ID: "dep_new_failure", Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), ErrorMessage: "new failure"},
+		{ID: "dep_latest_success", Status: app.DeploymentStatusSucceeded, StartedAt: now.Add(2 * time.Minute)},
+	}
+
+	view := NewAppDetailView(app.App{ID: "app_1"}, nil, nil, nil, deployments, nil)
+
+	if view.Health.LatestDeploymentStatus != "succeeded" {
+		t.Fatalf("latest deployment status = %q", view.Health.LatestDeploymentStatus)
+	}
+	if view.Health.LastFailure != "new failure" {
+		t.Fatalf("last failure = %q", view.Health.LastFailure)
+	}
+}
+
+func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
+	// Given
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	deployment := app.Deployment{
+		ID:            "dep_attempt",
+		AppID:         "app_1",
+		ReleaseID:     "rel_app_1_abc123",
+		CommitSHA:     "abc123",
+		Trigger:       app.DeploymentTriggerRedeploy,
+		Status:        app.DeploymentStatusFailed,
+		StartedAt:     now,
+		FinishedAt:    now.Add(time.Minute),
+		FailureStage:  "start services",
+		FailureDetail: "container exited",
+		RetryGuidance: "sudo sshdock apps redeploy app_1",
+		ErrorMessage:  "container exited",
+	}
+
+	// When
+	view := NewAppDetailView(app.App{ID: "app_1"}, nil, nil, nil, []app.Deployment{deployment}, nil)
+
+	// Then
+	if len(view.Deployments) != 1 {
+		t.Fatalf("deployments = %#v", view.Deployments)
+	}
+	got := view.Deployments[0]
+	if got.CommitSHA != deployment.CommitSHA || got.Trigger != string(deployment.Trigger) || got.FailureStage != deployment.FailureStage || got.FailureDetail != deployment.FailureDetail || got.RetryGuidance != deployment.RetryGuidance {
+		t.Fatalf("deployment view = %#v", got)
+	}
+}
+
 func TestNewLogsView(t *testing.T) {
 	view := NewLogsView("app_1", "web", "first\nsecond\n")
 

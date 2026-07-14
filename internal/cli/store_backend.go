@@ -40,6 +40,7 @@ type StoreBackendConfig struct {
 	RecoveryCheckout            appmodel.WorktreeCheckout
 	ConfigManager               configManager
 	Now                         func() time.Time
+	NewDeploymentID             func() (string, error)
 }
 
 type routeSyncer interface {
@@ -77,6 +78,7 @@ type StoreBackend struct {
 	recoveryCheckout            appmodel.WorktreeCheckout
 	configManager               configManager
 	now                         func() time.Time
+	newDeploymentID             func() (string, error)
 }
 
 func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *StoreBackend {
@@ -88,6 +90,9 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.NewDeploymentID == nil {
+		cfg.NewDeploymentID = appmodel.NewDeploymentID
 	}
 
 	return &StoreBackend{
@@ -105,6 +110,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		recoveryCheckout:            cfg.RecoveryCheckout,
 		configManager:               cfg.ConfigManager,
 		now:                         cfg.Now,
+		newDeploymentID:             cfg.NewDeploymentID,
 	}
 }
 
@@ -155,7 +161,10 @@ func (b *StoreBackend) RestartService(appName string, serviceName string) error 
 
 func (b *StoreBackend) RedeployApp(name string) error {
 	ctx := context.Background()
-	deploymentID := recoveryDeploymentID("redeploy", name, "", b.now())
+	deploymentID, err := b.newDeploymentID()
+	if err != nil {
+		return fmt.Errorf("create redeploy attempt for app %q: %w", name, err)
+	}
 	if _, err := b.recoveryService().RedeployLatest(ctx, name, deploymentID); err != nil {
 		return fmt.Errorf("redeploy app %q: %w", name, err)
 	}
@@ -164,7 +173,10 @@ func (b *StoreBackend) RedeployApp(name string) error {
 
 func (b *StoreBackend) RollbackApp(name string, releaseID string) error {
 	ctx := context.Background()
-	deploymentID := recoveryDeploymentID("rollback", name, releaseID, b.now())
+	deploymentID, err := b.newDeploymentID()
+	if err != nil {
+		return fmt.Errorf("create rollback attempt for app %q: %w", name, err)
+	}
 	if _, err := b.recoveryService().RollbackRelease(ctx, name, releaseID, deploymentID); err != nil {
 		return fmt.Errorf("rollback app %q to %q: %w", name, releaseID, err)
 	}
@@ -399,6 +411,40 @@ func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 		})
 	}
 	return releases, nil
+}
+
+func (b *StoreBackend) ListDeployments(appName string) ([]Deployment, error) {
+	ctx := context.Background()
+	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("app %q not found", appName)
+	} else if err != nil {
+		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	}
+	models, err := b.store.ListDeploymentsByApp(ctx, appName)
+	if err != nil {
+		return nil, fmt.Errorf("list deployments for app %q: %w", appName, err)
+	}
+	redactionValues, err := b.configRedactionValues(ctx, appName)
+	if err != nil {
+		return nil, err
+	}
+	deployments := make([]Deployment, 0, len(models))
+	for _, model := range models {
+		deployments = append(deployments, Deployment{
+			ID:            model.ID,
+			AppName:       model.AppID,
+			ReleaseID:     model.ReleaseID,
+			CommitSHA:     model.CommitSHA,
+			Trigger:       string(model.Trigger),
+			Status:        string(model.Status),
+			StartedAt:     model.StartedAt,
+			FinishedAt:    model.FinishedAt,
+			FailureStage:  model.FailureStage,
+			FailureDetail: compose.RedactValues(model.FailureDetail, redactionValues),
+			RetryGuidance: model.RetryGuidance,
+		})
+	}
+	return deployments, nil
 }
 
 func (b *StoreBackend) ListEvents(appName string) ([]Event, error) {
@@ -756,13 +802,13 @@ func (b *StoreBackend) configRedactionValues(ctx context.Context, appName string
 	}
 	entries, err := b.configManager.List(ctx, appName)
 	if err != nil {
-		return nil, fmt.Errorf("load config metadata for log redaction: %w", err)
+		return nil, fmt.Errorf("load config metadata for redaction: %w", err)
 	}
 	values := map[string]string{}
 	for _, entry := range entries {
 		value, err := b.configManager.Reveal(ctx, appconfig.ConfigRef{AppID: appName, Name: entry.Name, Scope: entry.Scope})
 		if err != nil {
-			return nil, fmt.Errorf("load config value %s for log redaction: %w", entry.Name, err)
+			return nil, fmt.Errorf("load config value %s for redaction: %w", entry.Name, err)
 		}
 		values[entry.Name] = value
 	}
@@ -981,22 +1027,6 @@ func domainID(appName string, domainName string) string {
 
 func eventID(subjectID string, suffix string) string {
 	return "evt_" + sanitizeIDPart(subjectID) + "_" + sanitizeIDPart(suffix)
-}
-
-func recoveryDeploymentID(operation string, appName string, releaseID string, now time.Time) string {
-	parts := []string{"dep", operation, appName}
-	if releaseID != "" {
-		parts = append(parts, releaseID)
-	}
-	parts = append(parts, now.UTC().Format("20060102150405_000000000"))
-
-	sanitized := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if value := sanitizeIDPart(part); value != "" {
-			sanitized = append(sanitized, value)
-		}
-	}
-	return strings.Join(sanitized, "_")
 }
 
 func routesFromDomains(domains []appmodel.Domain) []router.Route {

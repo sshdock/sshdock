@@ -366,6 +366,7 @@ func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
 		{"apps", "restart", "my-app", "web"},
 		{"apps", "redeploy", "my-app"},
 		{"apps", "rollback", "my-app", "rel_1"},
+		{"deployments", "list", "my-app"},
 	}
 
 	for _, args := range tests {

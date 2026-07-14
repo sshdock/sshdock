@@ -447,6 +447,9 @@ func TestStoreBackendLifecycleInspectionCommands(t *testing.T) {
 	if err := sqlite.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: "my-app", Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now.Add(time.Minute)}); err != nil {
 		t.Fatalf("CreateEvent: %v", err)
 	}
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), FailureStage: "build services", FailureDetail: "build failed", RetryGuidance: "push again", ErrorMessage: "build failed"}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
 	if err := sqlite.UpsertSSHKey(ctx, store.SSHKey{Name: "admin", PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com", CreatedAt: now.Add(2 * time.Minute)}); err != nil {
 		t.Fatalf("UpsertSSHKey: %v", err)
 	}
@@ -471,6 +474,7 @@ func TestStoreBackendLifecycleInspectionCommands(t *testing.T) {
 		want []string
 	}{
 		{name: "releases list", args: []string{"releases", "list", "my-app"}, want: []string{"rel_old\tsucceeded\told\t", "rel_new\tsucceeded\tnew\t"}},
+		{name: "deployments list", args: []string{"deployments", "list", "my-app"}, want: []string{"dep_1\tfailed\tpush\tnew\trel_new\t2026-07-04T10:01:00Z\t2026-07-04T10:02:00Z\tbuild services\tbuild failed\tpush again"}},
 		{name: "events list", args: []string{"events", "list", "my-app"}, want: []string{"deploy.succeeded\tDeploy succeeded"}},
 		{name: "domains list", args: []string{"domains", "list", "my-app"}, want: []string{"example.com\tweb\t3000\ttrue"}},
 		{name: "ssh-keys list", args: []string{"ssh-keys", "list"}, want: []string{"admin\t", "\t2026-07-04T10:02:00Z"}},
@@ -735,6 +739,32 @@ func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
 	}
 	if runner.LogsRequests[0].Env["DATABASE_URL"] != "postgres://secret" {
 		t.Fatalf("logs request env = %#v", runner.LogsRequests[0].Env)
+	}
+}
+
+func TestStoreBackendDeploymentsListRedactsStoredConfigValues(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	configService := appconfig.NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), appconfig.WithClock(func() time.Time { return now }))
+	secret := "postgres://secret"
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte(secret)}); err != nil {
+		t.Fatalf("Set config: %v", err)
+	}
+	if err := sqlite.CreateDeployment(ctx, app.Deployment{ID: "dep_failed", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusFailed, StartedAt: now, FinishedAt: now.Add(time.Minute), FailureStage: "build", FailureDetail: "connection failed for " + secret, RetryGuidance: "push again"}); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, ConfigManager: configService})
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if code := NewRunner(backend, "dev").Run([]string{"deployments", "list", "my-app"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), secret) || !strings.Contains(stdout.String(), "connection failed for <redacted>") {
+		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
 

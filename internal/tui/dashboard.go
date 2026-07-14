@@ -210,6 +210,7 @@ func redactDeployments(deployments []app.Deployment, values map[string]string) [
 	}
 	redacted := append([]app.Deployment(nil), deployments...)
 	for i := range redacted {
+		redacted[i].FailureDetail = compose.RedactValues(redacted[i].FailureDetail, values)
 		redacted[i].ErrorMessage = compose.RedactValues(redacted[i].ErrorMessage, values)
 	}
 	return redacted
@@ -342,8 +343,23 @@ func renderDeployments(writer io.Writer, deployments []DeploymentView) error {
 		if _, err := fmt.Fprintf(writer, "- %s %s %s", deployment.ID, deployment.Status, deployment.ReleaseID); err != nil {
 			return err
 		}
+		if deployment.Trigger != "" || deployment.CommitSHA != "" {
+			if _, err := fmt.Fprintf(writer, " trigger=%s commit=%s", deployment.Trigger, deployment.CommitSHA); err != nil {
+				return err
+			}
+		}
+		if deployment.FailureStage != "" {
+			if _, err := fmt.Fprintf(writer, " failure-stage=%s", deployment.FailureStage); err != nil {
+				return err
+			}
+		}
 		if deployment.ErrorMessage != "" {
 			if _, err := fmt.Fprintf(writer, " %s", deployment.ErrorMessage); err != nil {
+				return err
+			}
+		}
+		if deployment.RetryGuidance != "" {
+			if _, err := fmt.Fprintf(writer, " retry=%s", deployment.RetryGuidance); err != nil {
 				return err
 			}
 		}

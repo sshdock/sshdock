@@ -30,6 +30,9 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: runner,
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, repoPath string, gotWorktreePath string, commitSHA string) error {
 			if repoPath != "/apps/my-app/repo.git" {
 				t.Fatalf("repoPath = %q", repoPath)
@@ -58,7 +61,7 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	if len(releases) != 1 {
 		t.Fatalf("releases = %#v", releases)
 	}
-	if releases[0].ID != "rel_abc123" || releases[0].CommitSHA != "abc123" || releases[0].ComposePath != filepath.Join(worktreePath, "compose.yml") {
+	if releases[0].ID != app.ReleaseID("my-app", "abc123") || releases[0].CommitSHA != "abc123" || releases[0].ComposePath != filepath.Join(worktreePath, "compose.yml") {
 		t.Fatalf("release = %#v", releases[0])
 	}
 	if releases[0].Status != app.ReleaseStatusSucceeded {
@@ -69,7 +72,7 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
 	}
 	request := runner.DeployRequests[0]
-	if request.AppName != "my-app" || request.ProjectDir != worktreePath || request.ReleaseID != "rel_abc123" || request.CommitSHA != "abc123" {
+	if request.AppName != "my-app" || request.ProjectDir != worktreePath || request.ReleaseID != app.ReleaseID("my-app", "abc123") || request.CommitSHA != "abc123" {
 		t.Fatalf("DeployRequest = %#v", request)
 	}
 
@@ -97,6 +100,114 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	wantTypes := []string{"deploy.started", "deploy.succeeded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
+	}
+}
+
+func TestPostReceiveHandlerCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	ids := []string{"dep_00000000000000000000000000000001", "dep_00000000000000000000000000000002"}
+	nextID := 0
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store: sqlite,
+		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
+			RouteFound:  true,
+			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
+		}},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+		NewDeploymentID: func() (string, error) {
+			id := ids[nextID]
+			nextID++
+			return id, nil
+		},
+	})
+	input := "oldsha abc123 refs/heads/main\n"
+
+	// When
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input)); err != nil {
+		t.Fatalf("Handle first: %v", err)
+	}
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input)); err != nil {
+		t.Fatalf("Handle second: %v", err)
+	}
+
+	// Then
+	releases, err := sqlite.ListReleasesByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListReleasesByApp: %v", err)
+	}
+	if len(releases) != 1 || releases[0].ID != app.ReleaseID("my-app", "abc123") {
+		t.Fatalf("releases = %#v, want one stable app/commit release", releases)
+	}
+	deployments, err := sqlite.ListDeploymentsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 2 {
+		t.Fatalf("deployments = %#v, want two attempts", deployments)
+	}
+	for index, deployment := range deployments {
+		if deployment.ID != ids[index] || deployment.ReleaseID != releases[0].ID || deployment.CommitSHA != "abc123" || deployment.Trigger != app.DeploymentTriggerPush {
+			t.Fatalf("deployment[%d] = %#v", index, deployment)
+		}
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatalf("ListEventsByApp: %v", err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("events = %#v, want two events per attempt", events)
+	}
+}
+
+func TestPostReceiveHandlerScopesSameCommitReleaseAcrossApps(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	if err := sqlite.CreateApp(ctx, app.App{ID: "other-app", Name: "other-app", NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateApp other-app: %v", err)
+	}
+	ids := []string{"dep_10000000000000000000000000000001", "dep_20000000000000000000000000000002"}
+	nextID := 0
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:  sqlite,
+		Runner: &compose.FakeRunner{},
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeHookComposeFixture(t, gotWorktreePath)
+			return nil
+		}),
+		NewDeploymentID: func() (string, error) {
+			id := ids[nextID]
+			nextID++
+			return id, nil
+		},
+	})
+
+	// When
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", filepath.Join(t.TempDir(), "first"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle my-app: %v", err)
+	}
+	if err := handler.Handle(ctx, "other-app", "/apps/other-app/repo.git", filepath.Join(t.TempDir(), "second"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
+		t.Fatalf("Handle other-app: %v", err)
+	}
+
+	// Then
+	first, err := sqlite.GetReleaseByAppCommit(ctx, "my-app", "abc123")
+	if err != nil {
+		t.Fatalf("GetReleaseByAppCommit my-app: %v", err)
+	}
+	second, err := sqlite.GetReleaseByAppCommit(ctx, "other-app", "abc123")
+	if err != nil {
+		t.Fatalf("GetReleaseByAppCommit other-app: %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("release IDs = %q, want app-scoped identities", first.ID)
 	}
 }
 
@@ -274,6 +385,9 @@ func TestPostReceiveHandlerRecordsValidationFailureBeforeFakeDeploy(t *testing.T
 		Store:          sqlite,
 		Runner:         runner,
 		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"ROOT_COMPOSE": "shared.compose.yml"}},
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
 services:
@@ -320,6 +434,9 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 		Store:          sqlite,
 		Runner:         runner,
 		ConfigResolver: resolver,
+		NewDeploymentID: func() (string, error) {
+			return "dep_config_attempt", nil
+		},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
@@ -334,7 +451,7 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 		"stage=config",
 		"detail=missing required config for my-app: SECRET",
 		"ssh dashboard@<host> config set my-app SECRET",
-		"changed=release rel_abc123 and deployment dep_abc123 marked failed before Compose started; containers and routes were not changed",
+		"changed=release rel_my-app_abc123 and deployment dep_config_attempt marked failed before Compose started; containers and routes were not changed",
 		"fix=set the missing config value(s) with the command(s) in detail",
 		"retry=push the same commit again after fixing config",
 	)
@@ -344,11 +461,18 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	if len(runner.DeployRequests) != 0 {
 		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
 	}
-	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusFailed) {
+	if status := queryDeploymentStatus(t, dbPath, "dep_config_attempt"); status != string(app.DeploymentStatusFailed) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
-	assertFailureDetail(t, errorMessage, "stage=config", "changed=release rel_abc123", "retry=push the same commit again")
+	errorMessage := queryDeploymentError(t, dbPath, "dep_config_attempt")
+	assertFailureDetail(t, errorMessage, "stage=config", "changed=release rel_my-app_abc123", "retry=push the same commit again")
+	deployments, deploymentErr := sqlite.ListDeploymentsByApp(ctx, "my-app")
+	if deploymentErr != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", deploymentErr)
+	}
+	if len(deployments) != 1 || deployments[0].FailureStage != "config" || deployments[0].FailureDetail == "" || deployments[0].RetryGuidance != "push the same commit again after fixing config" {
+		t.Fatalf("deployment metadata = %#v", deployments)
+	}
 	events, eventErr := sqlite.ListEventsByApp(ctx, "my-app")
 	if eventErr != nil {
 		t.Fatalf("ListEventsByApp: %v", eventErr)
@@ -475,6 +599,9 @@ func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *test
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
 		}},
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Router: routeSyncer,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookCompose(t, gotWorktreePath, `
@@ -581,6 +708,9 @@ func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) 
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: runner,
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Output: &output,
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
@@ -655,6 +785,9 @@ func TestPostReceiveHandlerFinishesSuccessfulDeployWhenWarningOutputFails(t *tes
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
 			Warnings:    []string{"trusted Compose warning"},
 		}},
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Output: failingWriter{},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
@@ -685,6 +818,9 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:  sqlite,
 		Runner: runner,
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
@@ -707,7 +843,7 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	assertFailureDetail(t, errorMessage,
 		"stage=pull images",
 		"detail=pull images failed: pull access denied",
-		"changed=release rel_abc123 and deployment dep_abc123 marked failed before containers started; routes were not changed",
+		"changed=release rel_my-app_abc123 and deployment dep_abc123 marked failed before containers started; routes were not changed",
 		"fix=check image names, registry credentials, and network access",
 		"retry=push the same commit again after fixing the deploy failure",
 	)
@@ -748,6 +884,9 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 		Store:          sqlite,
 		Runner:         &compose.FakeRunner{DeployErr: failure},
 		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"API_TOKEN": "api-secret"}},
+		NewDeploymentID: func() (string, error) {
+			return "dep_abc123", nil
+		},
 		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
@@ -765,7 +904,7 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 	assertFailureDetail(t, errorMessage,
 		"stage=deploy",
 		"detail=docker output included <redacted>",
-		"changed=release rel_abc123 and deployment dep_abc123 marked failed; inspect the detail before assuming container or route state",
+		"changed=release rel_my-app_abc123 and deployment dep_abc123 marked failed; inspect the detail before assuming container or route state",
 		"retry=push the same commit again after fixing the deploy failure",
 	)
 	if strings.Contains(errorMessage, "api-secret") {

@@ -3,11 +3,35 @@ package capture
 import (
 	"bytes"
 	"encoding/json"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestReadableForegroundRepairsInvisibleCapturedText(t *testing.T) {
+	black := color.RGBA{A: 255}
+	got := readableForeground(black, black)
+	if got == black {
+		t.Fatalf("readableForeground = %#v, want contrasting text", got)
+	}
+
+	blue := color.RGBA{B: 255, A: 255}
+	if got := readableForeground(blue, black); got != blue {
+		t.Fatalf("readableForeground changed visible color to %#v", got)
+	}
+
+	nearBlack := color.RGBA{R: 8, G: 12, B: 18, A: 255}
+	if got := readableForeground(nearBlack, black); got == nearBlack {
+		t.Fatalf("readableForeground kept low-contrast color %#v", got)
+	}
+
+	darkBlue := color.RGBA{B: 128, A: 255}
+	if got := readableForeground(darkBlue, black); got == darkBlue {
+		t.Fatalf("readableForeground kept dark text %#v on black", got)
+	}
+}
 
 func TestTerminalCaptureReplaysAlternateScreenAndCursorMoves(t *testing.T) {
 	term := NewTerminal(6, 24, nil)

@@ -33,14 +33,29 @@ type Release struct {
 	UpdatedAt   time.Time
 }
 
+type DeploymentTrigger string
+
+const (
+	DeploymentTriggerLegacy          DeploymentTrigger = "legacy"
+	DeploymentTriggerPush            DeploymentTrigger = "push"
+	DeploymentTriggerRedeploy        DeploymentTrigger = "redeploy"
+	DeploymentTriggerRollback        DeploymentTrigger = "rollback"
+	DeploymentTriggerStartupRecovery DeploymentTrigger = "startup_recovery"
+)
+
 type Deployment struct {
-	ID           string
-	AppID        string
-	ReleaseID    string
-	Status       DeploymentStatus
-	StartedAt    time.Time
-	FinishedAt   time.Time
-	ErrorMessage string
+	ID            string
+	AppID         string
+	ReleaseID     string
+	CommitSHA     string
+	Trigger       DeploymentTrigger
+	Status        DeploymentStatus
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	FailureStage  string
+	FailureDetail string
+	RetryGuidance string
+	ErrorMessage  string
 }
 
 type Domain struct {

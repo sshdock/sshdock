@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -112,6 +113,48 @@ func TestSQLiteStoreReleases(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreReleaseIdentityIsStablePerAppCommit(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	commit := "1234567890abcdef1234567890abcdef12345678"
+	first := app.Release{
+		ID:          app.ReleaseID("first-app", commit),
+		AppID:       "first-app",
+		CommitSHA:   commit,
+		ComposePath: "compose.yml",
+		Status:      app.ReleaseStatusPending,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	second := first
+	second.ID = app.ReleaseID("second-app", commit)
+	second.AppID = "second-app"
+
+	// When
+	if err := store.CreateRelease(ctx, first); err != nil {
+		t.Fatalf("CreateRelease first: %v", err)
+	}
+	if err := store.CreateRelease(ctx, second); err != nil {
+		t.Fatalf("CreateRelease second: %v", err)
+	}
+	got, err := store.GetReleaseByAppCommit(ctx, first.AppID, commit)
+
+	// Then
+	if err != nil {
+		t.Fatalf("GetReleaseByAppCommit: %v", err)
+	}
+	if got != first {
+		t.Fatalf("release = %#v, want %#v", got, first)
+	}
+	duplicate := first
+	duplicate.ID = "rel_duplicate"
+	if err := store.CreateRelease(ctx, duplicate); err == nil {
+		t.Fatal("CreateRelease duplicate app/commit error = nil")
+	}
+}
+
 func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
@@ -128,15 +171,23 @@ func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	if err := store.CreateDeployment(ctx, deployment); err != nil {
 		t.Fatalf("CreateDeployment: %v", err)
 	}
-	if err := store.UpdateDeploymentStatus(ctx, deployment.ID, app.DeploymentStatusFailed, finishedAt, "compose failed"); err != nil {
-		t.Fatalf("UpdateDeploymentStatus: %v", err)
+	failureDetail := "stage=build services; detail=compose failed; fix=fix the Dockerfile"
+	deployment.FinishedAt = finishedAt
+	deployment.FailureStage = "build services"
+	deployment.FailureDetail = failureDetail
+	deployment.RetryGuidance = "push the same commit again"
+	if err := store.UpdateDeploymentFailure(ctx, deployment); err != nil {
+		t.Fatalf("UpdateDeploymentFailure: %v", err)
 	}
 
 	var status string
 	var finishedAtText string
+	var failureStage string
+	var storedFailureDetail string
+	var retryGuidance string
 	var errorMessage string
-	err := store.db.QueryRowContext(ctx, `select status, finished_at, error_message from deployments where id = ?`, deployment.ID).
-		Scan(&status, &finishedAtText, &errorMessage)
+	err := store.db.QueryRowContext(ctx, `select status, finished_at, failure_stage, failure_detail, retry_guidance, error_message from deployments where id = ?`, deployment.ID).
+		Scan(&status, &finishedAtText, &failureStage, &storedFailureDetail, &retryGuidance, &errorMessage)
 	if err != nil {
 		t.Fatalf("query deployment: %v", err)
 	}
@@ -146,7 +197,10 @@ func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	if finishedAtText != formatTime(finishedAt) {
 		t.Fatalf("finished_at = %q", finishedAtText)
 	}
-	if errorMessage != "compose failed" {
+	if failureStage != "build services" || storedFailureDetail != failureDetail || retryGuidance != "push the same commit again" {
+		t.Fatalf("failure metadata = %q, %q, %q", failureStage, storedFailureDetail, retryGuidance)
+	}
+	if errorMessage != storedFailureDetail {
 		t.Fatalf("error_message = %q", errorMessage)
 	}
 
@@ -178,11 +232,170 @@ func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	if len(deployments) != 2 {
 		t.Fatalf("deployments = %#v, want two app_1 rows", deployments)
 	}
-	if deployments[0].ID != "dep_1" || deployments[0].Status != app.DeploymentStatusFailed || deployments[0].ErrorMessage != "compose failed" {
+	if deployments[0].ID != "dep_1" || deployments[0].Status != app.DeploymentStatusFailed || deployments[0].FailureStage != "build services" || deployments[0].FailureDetail != storedFailureDetail || deployments[0].RetryGuidance != retryGuidance {
 		t.Fatalf("first deployment = %#v", deployments[0])
 	}
 	if deployments[1] != second {
 		t.Fatalf("second deployment = %#v, want %#v", deployments[1], second)
+	}
+}
+
+func TestSQLiteStoreFailedAttemptDoesNotDemoteGoodRelease(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	good := app.Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}
+	deploying := app.Release{ID: "rel_deploying", AppID: "app_1", CommitSHA: "deploying", Status: app.ReleaseStatusDeploying, CreatedAt: now, UpdatedAt: now}
+	failed := app.Release{ID: "rel_failed", AppID: "app_1", CommitSHA: "failed", Status: app.ReleaseStatusFailed, CreatedAt: now, UpdatedAt: now}
+	for _, release := range []app.Release{good, deploying, failed} {
+		if err := store.CreateRelease(ctx, release); err != nil {
+			t.Fatalf("CreateRelease %s: %v", release.ID, err)
+		}
+	}
+
+	if err := store.MarkReleaseFailedUnlessGood(ctx, good.ID, now.Add(time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseFailedUnlessGood good: %v", err)
+	}
+	if err := store.MarkReleaseFailedUnlessGood(ctx, deploying.ID, now.Add(time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseFailedUnlessGood deploying: %v", err)
+	}
+	if err := store.MarkReleaseDeployingUnlessGood(ctx, good.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseDeployingUnlessGood good: %v", err)
+	}
+	if err := store.MarkReleaseDeployingUnlessGood(ctx, failed.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseDeployingUnlessGood failed: %v", err)
+	}
+
+	gotGood, err := store.GetRelease(ctx, good.ID)
+	if err != nil {
+		t.Fatalf("GetRelease good: %v", err)
+	}
+	gotDeploying, err := store.GetRelease(ctx, deploying.ID)
+	if err != nil {
+		t.Fatalf("GetRelease deploying: %v", err)
+	}
+	gotFailed, err := store.GetRelease(ctx, failed.ID)
+	if err != nil {
+		t.Fatalf("GetRelease failed: %v", err)
+	}
+	if gotGood.Status != app.ReleaseStatusSucceeded {
+		t.Fatalf("good release status = %q", gotGood.Status)
+	}
+	if gotDeploying.Status != app.ReleaseStatusFailed {
+		t.Fatalf("deploying release status = %q", gotDeploying.Status)
+	}
+	if gotFailed.Status != app.ReleaseStatusDeploying {
+		t.Fatalf("failed release status = %q", gotFailed.Status)
+	}
+}
+
+func TestSQLiteStoreDeploymentAttemptMetadata(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	startedAt := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(time.Minute)
+	deployment := app.Deployment{
+		ID:            "dep_0123456789abcdef0123456789abcdef",
+		AppID:         "my-app",
+		ReleaseID:     "rel_my-app_abcdef",
+		CommitSHA:     "abcdef",
+		Trigger:       app.DeploymentTriggerPush,
+		Status:        app.DeploymentStatusFailed,
+		StartedAt:     startedAt,
+		FinishedAt:    finishedAt,
+		FailureStage:  "build services",
+		FailureDetail: "Dockerfile line 7 failed",
+		RetryGuidance: "push the same commit after fixing the Dockerfile",
+	}
+
+	// When
+	if err := store.CreateDeployment(ctx, deployment); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	deployments, err := store.ListDeploymentsByApp(ctx, deployment.AppID)
+
+	// Then
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 1 || deployments[0] != deployment {
+		t.Fatalf("deployments = %#v, want [%#v]", deployments, deployment)
+	}
+}
+
+func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy database: %v", err)
+	}
+	statements := []string{
+		`create table apps (id text primary key, name text not null, node_id text not null, repo_path text not null, worktree_path text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`,
+		`create table releases (id text primary key, app_id text not null, commit_sha text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`,
+		`create table deployments (id text primary key, app_id text not null, release_id text not null, status text not null, started_at text not null, finished_at text not null, error_message text not null)`,
+		`create table domains (id text primary key, app_id text not null, service_name text not null, domain_name text not null, port integer not null, https integer not null, created_at text not null, updated_at text not null)`,
+		`create table events (id text primary key, app_id text not null, type text not null, message text not null, created_at text not null)`,
+		`create table server_config (key text primary key, value text not null, updated_at text not null)`,
+		`create table ssh_keys (name text primary key, public_key text not null, created_at text not null)`,
+		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
+		`insert into apps values ('my-app', 'my-app', 'local', '/apps/my-app/repo.git', '/apps/my-app/worktree', 'compose.yml', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
+		`insert into releases values ('rel_abcdef', 'my-app', 'abcdef', 'compose.yml', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
+		`insert into deployments values ('dep_abcdef', 'my-app', 'rel_abcdef', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'stage=build services; detail=legacy failure; retry=push again')`,
+		`insert into domains values ('dom_1', 'my-app', 'web', 'my-app.example.com', 3000, 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z')`,
+		`insert into events values ('evt_1', 'my-app', 'deploy.failed', 'legacy deploy failed', '2026-07-14T09:01:00Z')`,
+		`insert into app_config_values values ('my-app', 'SECRET', '', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`,
+	}
+	for _, statement := range statements {
+		if _, err := legacy.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare legacy database: %v\n%s", err, statement)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy database: %v", err)
+	}
+
+	// When
+	migrated, err := OpenSQLite(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := migrated.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	// Then
+	apps, err := migrated.ListApps(ctx)
+	if err != nil || len(apps) != 1 {
+		t.Fatalf("apps = %#v, err = %v", apps, err)
+	}
+	releases, err := migrated.ListReleasesByApp(ctx, "my-app")
+	if err != nil || len(releases) != 1 || releases[0].ID != "rel_abcdef" {
+		t.Fatalf("releases = %#v, err = %v", releases, err)
+	}
+	deployments, err := migrated.ListDeploymentsByApp(ctx, "my-app")
+	if err != nil || len(deployments) != 1 {
+		t.Fatalf("deployments = %#v, err = %v", deployments, err)
+	}
+	deployment := deployments[0]
+	if deployment.Trigger != app.DeploymentTriggerLegacy || deployment.CommitSHA != "abcdef" || deployment.FailureDetail == "" || deployment.RetryGuidance == "" {
+		t.Fatalf("migrated deployment = %#v", deployment)
+	}
+	domains, err := migrated.ListDomainsByApp(ctx, "my-app")
+	if err != nil || len(domains) != 1 {
+		t.Fatalf("domains = %#v, err = %v", domains, err)
+	}
+	events, err := migrated.ListEventsByApp(ctx, "my-app")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events = %#v, err = %v", events, err)
+	}
+	configValues, err := migrated.ListAppConfigValues(ctx, "my-app")
+	if err != nil || len(configValues) != 1 || configValues[0].Name != "SECRET" {
+		t.Fatalf("config = %#v, err = %v", configValues, err)
 	}
 }
 

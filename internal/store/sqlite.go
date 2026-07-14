@@ -144,6 +144,19 @@ func (s *SQLiteStore) GetRelease(ctx context.Context, id string) (app.Release, e
 	return model, err
 }
 
+func (s *SQLiteStore) GetReleaseByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Release, error) {
+	row := s.db.QueryRowContext(ctx, `
+		select id, app_id, commit_sha, compose_path, status, created_at, updated_at
+		from releases
+		where app_id = ? and commit_sha = ?`, appID, commitSHA)
+
+	model, err := scanRelease(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return app.Release{}, notFound("release for app commit", appID+"/"+commitSHA)
+	}
+	return model, err
+}
+
 func (s *SQLiteStore) ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		select id, app_id, commit_sha, compose_path, status, created_at, updated_at
@@ -191,16 +204,46 @@ func (s *SQLiteStore) UpdateReleaseStatus(ctx context.Context, id string, status
 	return nil
 }
 
+func (s *SQLiteStore) MarkReleaseFailedUnlessGood(ctx context.Context, id string, updatedAt time.Time) error {
+	return s.markReleaseStatusUnlessGood(ctx, id, app.ReleaseStatusFailed, updatedAt)
+}
+
+func (s *SQLiteStore) MarkReleaseDeployingUnlessGood(ctx context.Context, id string, updatedAt time.Time) error {
+	return s.markReleaseStatusUnlessGood(ctx, id, app.ReleaseStatusDeploying, updatedAt)
+}
+
+func (s *SQLiteStore) markReleaseStatusUnlessGood(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		update releases
+		set status = ?, updated_at = ?
+		where id = ? and status not in (?, ?)`,
+		string(status),
+		formatTime(updatedAt),
+		id,
+		string(app.ReleaseStatusSucceeded),
+		string(app.ReleaseStatusRolledBack),
+	)
+	return err
+}
+
 func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment) error {
 	_, err := s.db.ExecContext(ctx, `
-		insert into deployments (id, app_id, release_id, status, started_at, finished_at, error_message)
-		values (?, ?, ?, ?, ?, ?, ?)`,
+		insert into deployments (
+			id, app_id, release_id, commit_sha, trigger, status, started_at, finished_at,
+			failure_stage, failure_detail, retry_guidance, error_message
+		)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		model.ID,
 		model.AppID,
 		model.ReleaseID,
+		model.CommitSHA,
+		string(model.Trigger),
 		string(model.Status),
 		formatTime(model.StartedAt),
 		formatTime(model.FinishedAt),
+		model.FailureStage,
+		model.FailureDetail,
+		model.RetryGuidance,
 		model.ErrorMessage,
 	)
 	return err
@@ -208,7 +251,8 @@ func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment
 
 func (s *SQLiteStore) ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		select id, app_id, release_id, status, started_at, finished_at, error_message
+		select id, app_id, release_id, commit_sha, trigger, status, started_at, finished_at,
+		       failure_stage, failure_detail, retry_guidance, error_message
 		from deployments
 		where app_id = ?
 		order by started_at, id`, appID)
@@ -251,6 +295,32 @@ func (s *SQLiteStore) UpdateDeploymentStatus(ctx context.Context, id string, sta
 		return notFound("deployment", id)
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) UpdateDeploymentFailure(ctx context.Context, model app.Deployment) error {
+	result, err := s.db.ExecContext(ctx, `
+		update deployments
+		set status = ?, finished_at = ?, failure_stage = ?, failure_detail = ?, retry_guidance = ?, error_message = ?
+		where id = ?`,
+		string(app.DeploymentStatusFailed),
+		formatTime(model.FinishedAt),
+		model.FailureStage,
+		model.FailureDetail,
+		model.RetryGuidance,
+		model.FailureDetail,
+		model.ID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("deployment", model.ID)
+	}
 	return nil
 }
 
@@ -701,6 +771,7 @@ func scanRelease(s scanner) (app.Release, error) {
 
 func scanDeployment(s scanner) (app.Deployment, error) {
 	var model app.Deployment
+	var trigger string
 	var status string
 	var startedAt string
 	var finishedAt string
@@ -708,9 +779,14 @@ func scanDeployment(s scanner) (app.Deployment, error) {
 		&model.ID,
 		&model.AppID,
 		&model.ReleaseID,
+		&model.CommitSHA,
+		&trigger,
 		&status,
 		&startedAt,
 		&finishedAt,
+		&model.FailureStage,
+		&model.FailureDetail,
+		&model.RetryGuidance,
 		&model.ErrorMessage,
 	)
 	if err != nil {
@@ -718,6 +794,7 @@ func scanDeployment(s scanner) (app.Deployment, error) {
 	}
 
 	var parseErr error
+	model.Trigger = app.DeploymentTrigger(trigger)
 	model.Status = app.DeploymentStatus(status)
 	model.StartedAt, parseErr = parseTime(startedAt)
 	if parseErr != nil {

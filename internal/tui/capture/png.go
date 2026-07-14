@@ -47,6 +47,7 @@ func WritePNG(path string, screen Screen) error {
 			if fg.A == 0 {
 				fg = color.RGBA{R: 230, G: 235, B: 241, A: 255}
 			}
+			fg = readableForeground(fg, cell.BG)
 			drawer := font.Drawer{
 				Dst:  img,
 				Src:  image.NewUniform(fg),
@@ -63,6 +64,29 @@ func WritePNG(path string, screen Screen) error {
 	}
 	defer func() { _ = file.Close() }()
 	return png.Encode(file, img)
+}
+
+func readableForeground(fg, bg color.RGBA) color.RGBA {
+	contrast := colorDistance(fg.R, bg.R) + colorDistance(fg.G, bg.G) + colorDistance(fg.B, bg.B)
+	darkTextOnDarkBackground := maxColorChannel(bg) < 64 && maxColorChannel(fg) < 160
+	if contrast >= 96 && !darkTextOnDarkBackground {
+		return fg
+	}
+	if uint16(bg.R)+uint16(bg.G)+uint16(bg.B) > 384 {
+		return color.RGBA{R: 8, G: 12, B: 18, A: 255}
+	}
+	return color.RGBA{R: 230, G: 235, B: 241, A: 255}
+}
+
+func maxColorChannel(value color.RGBA) uint8 {
+	return max(value.R, max(value.G, value.B))
+}
+
+func colorDistance(a, b uint8) uint16 {
+	if a >= b {
+		return uint16(a - b)
+	}
+	return uint16(b - a)
 }
 
 func printableRune(ch rune) rune {

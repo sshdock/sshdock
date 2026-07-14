@@ -61,12 +61,17 @@ type ReleaseView struct {
 }
 
 type DeploymentView struct {
-	ID           string
-	ReleaseID    string
-	Status       string
-	StartedAt    time.Time
-	FinishedAt   time.Time
-	ErrorMessage string
+	ID            string
+	ReleaseID     string
+	CommitSHA     string
+	Trigger       string
+	Status        string
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	FailureStage  string
+	FailureDetail string
+	RetryGuidance string
+	ErrorMessage  string
 }
 
 type EventView struct {
@@ -181,12 +186,17 @@ func newDeploymentViews(deployments []app.Deployment) []DeploymentView {
 	views := make([]DeploymentView, 0, len(deployments))
 	for _, deployment := range deployments {
 		views = append(views, DeploymentView{
-			ID:           deployment.ID,
-			ReleaseID:    deployment.ReleaseID,
-			Status:       string(deployment.Status),
-			StartedAt:    deployment.StartedAt,
-			FinishedAt:   deployment.FinishedAt,
-			ErrorMessage: deployment.ErrorMessage,
+			ID:            deployment.ID,
+			ReleaseID:     deployment.ReleaseID,
+			CommitSHA:     deployment.CommitSHA,
+			Trigger:       string(deployment.Trigger),
+			Status:        string(deployment.Status),
+			StartedAt:     deployment.StartedAt,
+			FinishedAt:    deployment.FinishedAt,
+			FailureStage:  deployment.FailureStage,
+			FailureDetail: deployment.FailureDetail,
+			RetryGuidance: deployment.RetryGuidance,
+			ErrorMessage:  deployment.ErrorMessage,
 		})
 	}
 	return views
@@ -214,9 +224,10 @@ func newHealthSummary(services []compose.ServiceStatus, domains []app.Domain, de
 		summary.RouteStatus = "routed"
 	}
 	if len(deployments) > 0 {
-		latest := deployments[0]
+		latest := deployments[len(deployments)-1]
 		summary.LatestDeploymentStatus = string(latest.Status)
-		for _, deployment := range deployments {
+		for index := len(deployments) - 1; index >= 0; index-- {
+			deployment := deployments[index]
 			if deployment.ErrorMessage != "" {
 				summary.LastFailure = deployment.ErrorMessage
 				break

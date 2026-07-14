@@ -261,6 +261,9 @@ func commandNeedsStore(args []string) bool {
 	if len(args) == 3 && args[0] == "releases" && args[1] == "list" {
 		return true
 	}
+	if len(args) == 3 && args[0] == "deployments" && args[1] == "list" {
+		return true
+	}
 	if len(args) == 3 && args[0] == "events" && args[1] == "list" {
 		return true
 	}

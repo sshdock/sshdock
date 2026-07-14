@@ -281,6 +281,9 @@ func TestServiceRedeployLatestSuccessfulReleaseCreatesDeploymentAndUpdatesState(
 	if deployment.ReleaseID != "rel_new" {
 		t.Fatalf("deployment release = %q", deployment.ReleaseID)
 	}
+	if deployment.CommitSHA != "new" || deployment.Trigger != DeploymentTriggerRedeploy {
+		t.Fatalf("deployment identity metadata = %#v", deployment)
+	}
 	if len(runner.deploys) != 1 {
 		t.Fatalf("deploy requests = %#v", runner.deploys)
 	}
@@ -362,6 +365,10 @@ func TestServiceRedeployConfigFailureStopsBeforeCompose(t *testing.T) {
 	if store.deploymentStatuses["dep_redeploy_1"] != DeploymentStatusFailed {
 		t.Fatalf("deployment status = %q", store.deploymentStatuses["dep_redeploy_1"])
 	}
+	storedAttempt := store.deployments["dep_redeploy_1"]
+	if storedAttempt.FailureStage != "config" || storedAttempt.FailureDetail == "" || storedAttempt.RetryGuidance != "sudo sshdock apps redeploy app_1" {
+		t.Fatalf("deployment failure metadata = %#v", storedAttempt)
+	}
 	if store.deploymentErrors["dep_redeploy_1"] != "missing required config for app_1: SECRET" {
 		t.Fatalf("deployment error = %q", store.deploymentErrors["dep_redeploy_1"])
 	}
@@ -437,7 +444,15 @@ func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	runner := &fakeRecoveryRunner{}
 	checkout := &fakeWorktreeCheckout{}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithRecoveryRunner(runner), WithWorktreeCheckout(checkout))
+	service := NewService(
+		store,
+		WithClock(func() time.Time { return now }),
+		WithRecoveryRunner(runner),
+		WithWorktreeCheckout(checkout),
+		WithDeploymentIDGenerator(func() (string, error) {
+			return "dep_startup_attempt", nil
+		}),
+	)
 	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
 	store.apps["empty"] = App{ID: "empty", Name: "empty", RepoPath: "/apps/empty/repo.git", WorktreePath: "/apps/empty/worktree", Status: AppStatusCreated}
 	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour)}
@@ -458,8 +473,11 @@ func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
 	if runner.deploys[0].ReleaseID != "rel_old" || runner.deploys[0].CommitSHA != "old" {
 		t.Fatalf("deploy request = %#v", runner.deploys[0])
 	}
-	if store.deploymentStatuses["dep_startup_recover_app_1_20260702100000_000000000"] != DeploymentStatusSucceeded {
+	if store.deploymentStatuses["dep_startup_attempt"] != DeploymentStatusSucceeded {
 		t.Fatalf("deployment statuses = %#v", store.deploymentStatuses)
+	}
+	if store.deployments["dep_startup_attempt"].Trigger != DeploymentTriggerStartupRecovery {
+		t.Fatalf("startup deployment = %#v", store.deployments["dep_startup_attempt"])
 	}
 }
 
@@ -623,6 +641,26 @@ func (f *fakeServiceStore) UpdateDeploymentStatus(_ context.Context, id string, 
 	f.deploymentStatuses[id] = status
 	f.deploymentFinishedAt[id] = finishedAt
 	f.deploymentErrors[id] = errorMessage
+	model := f.deployments[id]
+	model.Status = status
+	model.FinishedAt = finishedAt
+	model.ErrorMessage = errorMessage
+	f.deployments[id] = model
+	return nil
+}
+
+func (f *fakeServiceStore) UpdateDeploymentFailure(_ context.Context, failure Deployment) error {
+	f.deploymentStatuses[failure.ID] = DeploymentStatusFailed
+	f.deploymentFinishedAt[failure.ID] = failure.FinishedAt
+	f.deploymentErrors[failure.ID] = failure.FailureDetail
+	model := f.deployments[failure.ID]
+	model.Status = DeploymentStatusFailed
+	model.FinishedAt = failure.FinishedAt
+	model.FailureStage = failure.FailureStage
+	model.FailureDetail = failure.FailureDetail
+	model.RetryGuidance = failure.RetryGuidance
+	model.ErrorMessage = failure.FailureDetail
+	f.deployments[failure.ID] = model
 	return nil
 }
 

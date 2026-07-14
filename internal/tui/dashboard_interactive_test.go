@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -196,7 +197,7 @@ func TestInteractiveDashboardModelDetailTabsRenderTables(t *testing.T) {
 		"Services": {"Service", "State", "web", "running"},
 		"Routes":   {"Domain", "Service", "Target", "HTTPS", "one.example.com"},
 		"Releases": {"Release", "Status", "Commit", "Created", "rel_one"},
-		"Deploys":  {"Deploy", "Status", "Release", "Started", "dep_one"},
+		"Deploys":  {"Deploy", "Status", "Trigger", "Commit", "Release", "Started", "dep_one"},
 		"Events":   {"Type", "Message", "deploy.succeeded", "Deploy succeeded"},
 		"Logs":     {"Service", "Line", "web", "first log"},
 	}
@@ -210,6 +211,31 @@ func TestInteractiveDashboardModelDetailTabsRenderTables(t *testing.T) {
 		}
 		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 		model = updated.(InteractiveDashboardModel)
+	}
+}
+
+func TestRenderDeployTableKeepsAttemptStatusAndStartReadable(t *testing.T) {
+	startedAt := time.Date(2026, time.July, 14, 9, 7, 0, 0, time.UTC)
+	view := renderDeployTable(70, []DeploymentView{{
+		ID:        "dep_0123456789abcdef0123456789abcdef",
+		Status:    "succeeded",
+		Trigger:   "push",
+		CommitSHA: "084cdef0123456789",
+		ReleaseID: "rel_app_084cdef0123456789",
+		StartedAt: startedAt,
+	}, {
+		ID:        "dep_abcdef0123456789abcdef0123456789",
+		Status:    "succeeded",
+		Trigger:   "redeploy",
+		CommitSHA: "084cdef0123456789",
+		ReleaseID: "rel_app_084cdef0123456789",
+		StartedAt: startedAt,
+	}})
+
+	for _, want := range []string{"succeeded", "push", "redeploy", "084cdef", "dep_…abcdef", "rel_…456789", "07-14 09:07"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("deployment table missing %q:\n%s", want, view)
+		}
 	}
 }
 

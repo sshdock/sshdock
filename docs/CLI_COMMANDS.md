@@ -335,14 +335,15 @@ Redeploy the latest good release.
 sudo sshdock apps redeploy my-app
 ```
 
-Redeploy checks out the selected release commit into the app worktree, runs the configured Compose runner, and records a recovery deployment and events in SQLite.
+Redeploy checks out the selected release commit into the app worktree, runs the configured Compose runner, and records a new deployment attempt and events in SQLite. Repeating a redeploy of the same release creates another attempt instead of overwriting its history.
 
 ### `sshdock apps rollback <name> <release-id>`
 
 Rollback an app to a selected release.
 
 ```bash
-sudo sshdock apps rollback my-app rel_<short-sha>
+sudo sshdock releases list my-app
+sudo sshdock apps rollback my-app <release-id>
 ```
 
 Rollback uses the stored release commit and Compose path, then records app, release, deployment, and event state.
@@ -370,7 +371,7 @@ Successful output includes a Docker-volume preservation note. Remove app-specifi
 
 ### `sshdock releases list <app>`
 
-List releases for an app so rollback ids are discoverable.
+List releases for an app so rollback ids are discoverable. A release is stable for one app and commit; pushing or redeploying that commit again records a separate deployment attempt against the same release.
 
 ```bash
 sudo sshdock releases list my-app
@@ -383,6 +384,22 @@ Output format:
 ```
 
 `failure-detail` is present when a failed deployment for that release has a persisted error. It uses the same `stage`, `detail`, `changed`, `fix`, and `retry` fields shown by failed push output.
+
+### `sshdock deployments list <app>`
+
+List every persisted deployment attempt for an app in chronological order. Repeated pushes and redeploys of one commit appear as separate rows that reference the same stable release.
+
+```bash
+sudo sshdock deployments list my-app
+```
+
+Output format:
+
+```text
+<attempt-id>	<status>	<trigger>	<commit-sha>	<release-id>	<started-at>	<finished-at>	<failure-stage>	<failure-detail>	<retry-guidance>
+```
+
+Empty values are printed as `-`. Config values are redacted from failure detail, and terminal control characters are replaced with spaces.
 
 ### `sshdock events list <app>`
 
@@ -512,7 +529,7 @@ With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain te
 ssh -T dashboard@server
 ```
 
-Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`.
+Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
 
 Useful keys:
 

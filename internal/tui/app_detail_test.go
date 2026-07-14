@@ -61,7 +61,7 @@ func TestAppDetailScreenLimitsLatestDeployments(t *testing.T) {
 	})
 
 	got := screen.LatestDeployments(2)
-	if len(got) != 2 || got[0].ID != "dep_1" || got[1].ID != "dep_2" {
+	if len(got) != 2 || got[0].ID != "dep_2" || got[1].ID != "dep_3" {
 		t.Fatalf("LatestDeployments = %#v", got)
 	}
 }

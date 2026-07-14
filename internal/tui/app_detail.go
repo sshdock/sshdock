@@ -29,7 +29,7 @@ func (s AppDetailScreen) LatestDeployments(limit int) []DeploymentView {
 		return s.view.Deployments
 	}
 
-	return s.view.Deployments[:limit]
+	return s.view.Deployments[len(s.view.Deployments)-limit:]
 }
 
 func (s AppDetailScreen) Events() []EventView {

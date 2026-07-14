@@ -45,7 +45,8 @@ func captureDashboardSSHSession(t *testing.T, options dashboardCaptureOptions) c
 			{Name: "services", Key: "\t", Wants: []string{"[Services]", "Service", "State", "web", "running"}},
 			{Name: "routes", Key: "\t", Wants: []string{"[Routes]", "- none"}},
 			{Name: "releases", Key: "\t", Wants: []string{"[Releases]", "Release", "succeeded"}},
-			{Name: "deploys", Key: "\t", Wants: []string{"[Deploys]", "Deploy", "succeeded"}},
+			{Name: "deploys", Key: "\t", Wants: []string{"[Deploys]", "Deploy", "Status", "Trigger", "Commit", "Release", "Started", "succeeded", "push"}},
+			{Name: "events", Key: "\t", Wants: []string{"[Events]", "deploy.succeeded"}},
 			{Name: "logs", Key: "\t", Wants: []string{"[Logs]", "first-dashboard-log"}},
 		},
 	})
@@ -171,6 +172,7 @@ func waitForDashboardTabChange(t *testing.T, terminal *capture.Terminal, mu *syn
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	var last string
+	var stableText string
 	for time.Now().Before(deadline) {
 		mu.Lock()
 		screen := terminal.Screen()
@@ -179,7 +181,12 @@ func waitForDashboardTabChange(t *testing.T, terminal *capture.Terminal, mu *syn
 		if strings.Contains(text, "SSHDock") {
 			tab := activeDashboardTab(text)
 			if (previousTab != "" && tab != previousTab) || (previousTab == "" && text != previousText) {
-				return screen
+				if text == stableText {
+					return screen
+				}
+				stableText = text
+			} else {
+				stableText = ""
 			}
 		}
 		last = text
@@ -252,13 +259,19 @@ func waitForDashboardScreen(t *testing.T, terminal *capture.Terminal, mu *sync.M
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	var last string
+	var stableText string
 	for time.Now().Before(deadline) {
 		mu.Lock()
 		screen := terminal.Screen()
 		text := screen.Text()
 		mu.Unlock()
 		if containsAll(text, wants) {
-			return screen
+			if text == stableText {
+				return screen
+			}
+			stableText = text
+		} else {
+			stableText = ""
 		}
 		last = text
 		time.Sleep(75 * time.Millisecond)

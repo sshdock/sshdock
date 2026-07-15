@@ -5,6 +5,7 @@ package e2e
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,8 +88,34 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"releases", "list", appName}, []string{releaseID, shortSHA(commitSHA)})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", appName}, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "list", appName}, []string{domain, "web", "3000"})
-	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "check", appName}, []string{domain, "web", "3000", "missing", "router route missing"})
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"domains", "check", appName}, []string{domain, "web", "3000", "unavailable", "check Caddy"})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"ssh-keys", "list"}, []string{"admin", "SHA256:"})
+
+	runCommand(t, root, env, sshdockPath, "apps", "stop", appName)
+	failingStartEnv := append(append([]string{}, env...), "SSHDOCK_FAKE_COMPOSE_START_ERROR=no containers to start")
+	startCmd := exec.Command(sshdockPath, "apps", "start", appName)
+	startCmd.Dir = root
+	startCmd.Env = failingStartEnv
+	failedStartOutput, startErr := startCmd.CombinedOutput()
+	if startErr == nil {
+		t.Fatalf("apps start with missing containers succeeded:\n%s", failedStartOutput)
+	}
+	if !strings.Contains(string(failedStartOutput), "sudo sshdock apps redeploy "+appName) {
+		t.Fatalf("apps start failure omitted redeploy guidance:\n%s", failedStartOutput)
+	}
+	runCommand(t, root, env, sshdockPath, "apps", "start", appName)
+	runCommand(t, root, env, sshdockPath, "apps", "restart", appName)
+	runCommand(t, root, env, sshdockPath, "apps", "redeploy", appName)
+	assertCLIOutputContains(t, root, env, sshdockPath, []string{"events", "list", appName}, []string{
+		"stop.started",
+		"stop.succeeded",
+		"start.failed",
+		"start.succeeded",
+		"restart.started",
+		"restart.succeeded",
+		"redeploy.started",
+		"redeploy.succeeded",
+	})
 
 	runCommand(t, root, env, sshdockPath, "domains", "detach", appName, domain)
 	domainsOutput := runCommand(t, root, env, sshdockPath, "domains", "list", appName)
@@ -159,7 +186,16 @@ func assertAppRemovedFromSQLite(t *testing.T, dbPath string, appID string) {
 	if domains, err := sqlite.ListDomainsByApp(t.Context(), appID); err != nil || len(domains) != 0 {
 		t.Fatalf("domains after remove = %#v, err = %v", domains, err)
 	}
-	if events, err := sqlite.ListEventsByApp(t.Context(), appID); err != nil || len(events) != 0 {
-		t.Fatalf("events after remove = %#v, err = %v", events, err)
+	if events, err := sqlite.ListEventsByApp(t.Context(), appID); err != nil || !hasLifecycleEvent(events, "remove.started") || !hasLifecycleEvent(events, "remove.succeeded") {
+		t.Fatalf("audit events after remove = %#v, err = %v", events, err)
 	}
+}
+
+func hasLifecycleEvent(events []app.Event, eventType string) bool {
+	for _, event := range events {
+		if event.Type == eventType {
+			return true
+		}
+	}
+	return false
 }

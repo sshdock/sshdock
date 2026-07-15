@@ -74,7 +74,7 @@ func TestFakeRunnerRestartStatusAndLogs(t *testing.T) {
 	if err := runner.Restart(ctx, restart); err != nil {
 		t.Fatalf("Restart: %v", err)
 	}
-	if runner.RestartRequests[0] != restart {
+	if !reflect.DeepEqual(runner.RestartRequests[0], restart) {
 		t.Fatalf("RestartRequests = %#v", runner.RestartRequests)
 	}
 

@@ -16,7 +16,7 @@ func eventID(subject string, eventType string) string {
 }
 
 func restartOperationID(appID string, serviceName string, now time.Time) string {
-	return appID + "_" + serviceName + "_" + now.UTC().Format("20060102150405_000000000")
+	return fmt.Sprintf("%s_%s_%d", appID, serviceName, now.UTC().UnixNano())
 }
 
 func sanitizeEventID(value string) string {

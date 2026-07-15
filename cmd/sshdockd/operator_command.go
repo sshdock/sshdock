@@ -102,16 +102,18 @@ type operatorCommandSpec struct {
 
 var operatorCommandSpecs = map[string]operatorCommandSpec{
 	"apps": {
-		allowed: func(args []string) bool {
-			return len(args) == 1 && args[0] == "list" ||
-				len(args) == 2 && (args[0] == "info" || args[0] == "health")
-		},
-		help: `Inspect apps over restricted SSH.
+		allowed: appOperatorCommandAllowed,
+		help: `Inspect and operate apps over restricted SSH.
 
 Usage:
   apps list
   apps info <app>
   apps health <app>
+  apps start <app>
+  apps stop <app>
+  apps restart <app> [service]
+  apps redeploy <app>
+  apps remove <app> --force
 `,
 	},
 	"config": {
@@ -156,6 +158,24 @@ Usage:
 		allowed: func(args []string) bool { return len(args) == 0 },
 		help:    "Usage:\n  version\n",
 	},
+}
+
+func appOperatorCommandAllowed(args []string) bool {
+	if len(args) == 1 {
+		return args[0] == "list"
+	}
+	if len(args) == 2 {
+		switch args[0] {
+		case "info", "health", "start", "stop", "restart", "redeploy":
+			return true
+		default:
+			return false
+		}
+	}
+	if len(args) == 3 {
+		return args[0] == "restart" || args[0] == "remove" && args[2] == "--force"
+	}
+	return false
 }
 
 func listOperatorCommandSpec(description string, usage string) operatorCommandSpec {
@@ -223,6 +243,13 @@ Inspection:
   deployments list <app>
   events list <app>
   logs <app> [service] [-f] [--tail <lines>]
+
+Lifecycle:
+  apps start <app>
+  apps stop <app>
+  apps restart <app> [service]
+  apps redeploy <app>
+  apps remove <app> --force
 
 Config:
   config set <app> <key>

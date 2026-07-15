@@ -912,8 +912,8 @@ func TestStoreBackendAppRemoveCleansRuntimeStateAndPreservesOtherRoutes(t *testi
 	if domains, err := sqlite.ListDomainsByApp(ctx, "my-app"); err != nil || len(domains) != 0 {
 		t.Fatalf("domains after remove = %#v, err = %v", domains, err)
 	}
-	if events, err := sqlite.ListEventsByApp(ctx, "my-app"); err != nil || len(events) != 0 {
-		t.Fatalf("events after remove = %#v, err = %v", events, err)
+	if events, err := sqlite.ListEventsByApp(ctx, "my-app"); err != nil || len(events) != 3 || events[1].Type != "remove.started" || events[2].Type != "remove.succeeded" {
+		t.Fatalf("audit events after remove = %#v, err = %v", events, err)
 	}
 	if len(routePublisher.Syncs) != 1 {
 		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
@@ -1128,7 +1128,7 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 	for _, event := range events {
 		gotTypes = append(gotTypes, event.Type)
 	}
-	wantTypes := "restart.triggered,restart.succeeded,service.restart.triggered,service.restart.succeeded,redeploy.started,redeploy.succeeded,rollback.triggered,rollback.succeeded"
+	wantTypes := "restart.started,restart.succeeded,service.restart.started,service.restart.succeeded,redeploy.started,redeploy.succeeded,rollback.triggered,rollback.succeeded"
 	if strings.Join(gotTypes, ",") != wantTypes {
 		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
 	}
@@ -1176,7 +1176,7 @@ func TestStoreBackendRestartAppCanRunRepeatedly(t *testing.T) {
 	for _, event := range events {
 		gotTypes = append(gotTypes, event.Type)
 	}
-	wantTypes := "restart.triggered,restart.succeeded,restart.triggered,restart.succeeded"
+	wantTypes := "restart.started,restart.succeeded,restart.started,restart.succeeded"
 	if strings.Join(gotTypes, ",") != wantTypes {
 		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
 	}

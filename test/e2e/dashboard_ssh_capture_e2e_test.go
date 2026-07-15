@@ -39,7 +39,7 @@ func TestRealDashboardSSHScreenCapture(t *testing.T) {
 	if manifest.Rows != 32 || manifest.Cols != 120 {
 		t.Fatalf("manifest size = %dx%d, want 32x120", manifest.Rows, manifest.Cols)
 	}
-	if len(manifest.Frames) != 7 {
+	if len(manifest.Frames) != 9 {
 		t.Fatalf("manifest frames = %#v", manifest.Frames)
 	}
 	for _, frame := range manifest.Frames {
@@ -61,6 +61,24 @@ func TestRealDashboardSSHScreenCapture(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(artifactDir, rel)); err != nil {
 			t.Fatalf("expected artifact %s: %v", rel, err)
 		}
+	}
+
+	compactManifest := captureDashboardSSHCommandSession(t, dashboardCommandCaptureOptions{
+		SSHPath:     sshPath,
+		Args:        dashboardSSHArgs(paths, server, true),
+		ArtifactDir: filepath.Join(artifactDir, "compact-actions"),
+		Rows:        22,
+		Cols:        60,
+		Timeout:     20 * time.Second,
+		FrameSpecs: []dashboardFrameSpec{
+			{Name: "summary", Wants: []string{"SSHDock", appName}},
+			{Name: "menu", Key: "a", Wants: []string{"Actions", "start app"}},
+			{Name: "remove-selected", Keys: []string{"j", "j", "j", "j", "j", "j", "j", "j"}, Wants: []string{">  remove app"}},
+		},
+		PostCaptureKey: "\x1b",
+	})
+	if compactManifest.Rows != 22 || compactManifest.Cols != 60 || len(compactManifest.Frames) != 3 {
+		t.Fatalf("compact manifest = %#v", compactManifest)
 	}
 	t.Logf("wrote real SSH dashboard screenshots to %s", artifactDir)
 }

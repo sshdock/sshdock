@@ -117,35 +117,6 @@ type LogRequest struct {
 	Lines       int
 }
 
-type Backend interface {
-	CreateApp(name string) (App, string, error)
-	ListApps() ([]App, error)
-	GetApp(name string) (App, error)
-	RestartApp(name string) error
-	RestartService(appName string, serviceName string) error
-	RedeployApp(name string) error
-	RollbackApp(name string, releaseID string) error
-	RemoveApp(name string) error
-	AppHealth(name string) (AppHealth, error)
-	Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error
-	ListReleases(appName string) ([]Release, error)
-	ListDeployments(appName string) ([]Deployment, error)
-	ListEvents(appName string) ([]Event, error)
-	ListDomains(appName string) ([]Domain, error)
-	CheckDomains(appName string) ([]DomainCheck, error)
-	AttachDomain(domain Domain) error
-	DetachDomain(appName string, domainName string) error
-	SetServerGitHost(host string) error
-	AddSSHKey(name string, publicKey string) error
-	ListSSHKeys() ([]SSHKey, error)
-	RemoveSSHKey(name string) error
-	SetConfig(appName string, name string, value []byte) error
-	ImportConfig(appName string, input io.Reader) (int, error)
-	ListConfig(appName string) ([]ConfigEntry, error)
-	GetConfig(appName string, name string) (string, error)
-	UnsetConfig(appName string, name string) error
-}
-
 type MemoryBackend struct {
 	gitHost     string
 	baseDomain  string
@@ -261,7 +232,6 @@ func (b *MemoryBackend) RemoveApp(name string) error {
 	delete(b.apps, name)
 	b.releases = filterReleases(b.releases, name)
 	b.deployments = filterDeployments(b.deployments, name)
-	b.events = filterEvents(b.events, name)
 	b.domains = filterDomains(b.domains, name)
 	return nil
 }
@@ -341,14 +311,14 @@ func (b *MemoryBackend) ListDeployments(appName string) ([]Deployment, error) {
 }
 
 func (b *MemoryBackend) ListEvents(appName string) ([]Event, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
-	}
 	var events []Event
 	for _, event := range b.events {
 		if event.AppName == appName {
 			events = append(events, event)
 		}
+	}
+	if _, ok := b.apps[appName]; !ok && len(events) == 0 {
+		return nil, fmt.Errorf("app %q not found", appName)
 	}
 	sort.Slice(events, func(i, j int) bool {
 		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
@@ -688,133 +658,6 @@ func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName stri
 	fmt.Fprintf(stderr, "  ssh sshdock@<host> %s\n", command)
 }
 
-func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	if len(args) == 2 && args[0] == "create" {
-		app, remoteURL, err := r.backend.CreateApp(args[1])
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-
-		fmt.Fprintf(stdout, "created app %s\n", app.Name)
-		fmt.Fprintf(stdout, "git remote add sshdock %s\n", remoteURL)
-		fmt.Fprintln(stdout, "git push sshdock main")
-		if app.DefaultURL != "" {
-			fmt.Fprintf(stdout, "default URL after first deploy: %s\n", app.DefaultURL)
-		}
-		return 0
-	}
-
-	if len(args) == 1 && args[0] == "list" {
-		apps, err := r.backend.ListApps()
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		if len(apps) == 0 {
-			fmt.Fprintln(stdout, "no apps")
-			return 0
-		}
-
-		for _, app := range apps {
-			fmt.Fprintf(stdout, "%s\t%s\t%s\n", app.Name, app.Status, app.NodeID)
-		}
-		return 0
-	}
-
-	if len(args) == 2 && args[0] == "info" {
-		app, err := r.backend.GetApp(args[1])
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-
-		fmt.Fprintf(stdout, "name: %s\n", app.Name)
-		fmt.Fprintf(stdout, "status: %s\n", app.Status)
-		fmt.Fprintf(stdout, "node: %s\n", app.NodeID)
-		return 0
-	}
-
-	if len(args) == 2 && args[0] == "health" {
-		report, err := r.backend.AppHealth(args[1])
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		printAppHealth(stdout, report)
-		return 0
-	}
-
-	if len(args) == 3 && args[0] == "restart" {
-		if err := r.backend.RestartService(args[1], args[2]); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "restarted %s/%s\n", args[1], args[2])
-		return 0
-	}
-
-	if len(args) == 2 && args[0] == "restart" {
-		if err := r.backend.RestartApp(args[1]); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "restarted app %s\n", args[1])
-		return 0
-	}
-
-	if len(args) >= 2 && args[0] == "remove" {
-		appName, force, ok := parseRemoveArgs(args[1:])
-		if !ok {
-			printInvalidUsage(stderr, "apps")
-			return 2
-		}
-		if !force {
-			if stdin == nil {
-				stdin = strings.NewReader("")
-			}
-			fmt.Fprintf(stderr, "type %s to confirm app removal: ", appName)
-			line, err := bufio.NewReader(stdin).ReadString('\n')
-			if err != nil && err != io.EOF {
-				fmt.Fprintf(stderr, "read confirmation: %v\n", err)
-				return 1
-			}
-			if strings.TrimSpace(line) != appName {
-				fmt.Fprintln(stderr, "app removal aborted")
-				return 1
-			}
-		}
-		if err := r.backend.RemoveApp(appName); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "removed app %s\n", appName)
-		fmt.Fprintln(stdout, "Docker volumes were not removed; remove app-specific volumes manually after backup if desired.")
-		return 0
-	}
-
-	if len(args) == 2 && args[0] == "redeploy" {
-		if err := r.backend.RedeployApp(args[1]); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "redeployed current main for %s\n", args[1])
-		return 0
-	}
-
-	if len(args) == 3 && args[0] == "rollback" {
-		if err := r.backend.RollbackApp(args[1], args[2]); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "rolled back %s to %s\n", args[1], args[2])
-		return 0
-	}
-
-	printInvalidUsage(stderr, "apps")
-	return 2
-}
-
 func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "list" {
 		domains, err := r.backend.ListDomains(args[1])
@@ -1077,201 +920,6 @@ func isHelpArg(arg string) bool {
 	return arg == "-h" || arg == "--help"
 }
 
-func printRootHelp(stdout io.Writer) {
-	fmt.Fprint(stdout, `SSHDock - Git push Compose apps. Operate over SSH.
-
-Usage:
-  sshdock <command> [arguments]
-  sshdock help [command]
-
-Core:
-  version                              Print CLI version
-  diagnostics                          Check runtime readiness
-
-Apps:
-  apps create <name>                   Create an app repo and print Git remote
-  apps list                            List apps
-  apps info <name>                     Show app details
-  apps health <name>                   Summarize app health and recovery state
-  apps restart <name> [service]        Restart an app or service
-  apps redeploy <name>                 Redeploy current remote main
-  apps rollback <name> <release-id>    Roll back to a release
-  apps remove <name> [--force]         Remove an app
-
-Config:
-  config set <app> <key>
-  config import <app>
-  config list <app>
-  config keys <app>
-  config get <app> <key>
-  config unset <app> <key>
-
-Domains:
-  domains attach <app> <service> <domain> --port <port>
-  domains list <app>
-  domains check <app>
-  domains detach <app> <domain>
-
-Operations:
-  backup create [--output <archive>]
-  backup inspect <archive>
-  backup restore <archive>
-  logs <app> [service] [-f] [--tail <lines>]
-  releases list <app>
-  deployments list <app>
-  events list <app>
-
-Access:
-  ssh-keys add <name>
-  ssh-keys list
-  ssh-keys remove <name>
-
-Server:
-  server domain set <domain>
-
-Use "sshdock help <command>" for details.
-`)
-}
-
-func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
-	switch topic {
-	case "apps":
-		printTopicHelp(stdout, "Apps manage Compose app records and lifecycle actions.", []string{
-			"sshdock apps create <name>",
-			"sshdock apps list",
-			"sshdock apps info <name>",
-			"sshdock apps health <name>",
-			"sshdock apps restart <name> [service]",
-			"sshdock apps redeploy <name>",
-			"sshdock apps rollback <name> <release-id>",
-			"sshdock apps remove <name> [--force]",
-		}, []string{
-			"sudo sshdock apps create my-app",
-			"sudo sshdock apps list",
-			"sudo sshdock apps health my-app",
-			"sudo sshdock apps restart my-app web",
-		})
-	case "config":
-		printTopicHelp(stdout, "Config commands store encrypted app config.", []string{
-			"sshdock config set <app> <key>",
-			"sshdock config import <app>",
-			"sshdock config list <app>",
-			"sshdock config keys <app>",
-			"sshdock config get <app> <key>",
-			"sshdock config unset <app> <key>",
-		}, []string{
-			`printf '%s' "$DATABASE_URL" | ssh sshdock@<host> config set my-app DATABASE_URL`,
-			"ssh sshdock@<host> config import my-app < .env.production",
-			"ssh sshdock@<host> config keys my-app",
-			"sudo sshdock config get my-app DATABASE_URL",
-		})
-	case "domains":
-		printTopicHelp(stdout, "Domain commands attach public hostnames to app services.", []string{
-			"sshdock domains attach <app> <service> <domain> --port <port>",
-			"sshdock domains list <app>",
-			"sshdock domains check <app>",
-			"sshdock domains detach <app> <domain>",
-		}, []string{
-			"sudo sshdock domains attach my-app web app.example.com --port 3000",
-			"sudo sshdock domains check my-app",
-		})
-	case "logs":
-		printTopicHelp(stdout, "Logs stream recent Compose logs for an app or service.", []string{
-			"sshdock logs <app> [service] [-f] [--tail <lines>]",
-		}, []string{
-			"sudo sshdock logs my-app",
-			"sudo sshdock logs my-app web --tail 200 -f",
-		})
-	case "backup":
-		printTopicHelp(stdout, "Backup commands create, inspect, and restore SSHDock state archives.", []string{
-			"sshdock backup create [--output <archive>]",
-			"sshdock backup inspect <archive>",
-			"sshdock backup restore <archive>",
-		}, []string{
-			"sudo sshdock backup create",
-			"sudo sshdock backup inspect /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",
-			"sudo systemctl stop sshdockd && sudo sshdock backup restore /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",
-		})
-	case "releases":
-		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{
-			"sshdock releases list <app>",
-		}, []string{
-			"sudo sshdock releases list my-app",
-		})
-	case "deployments":
-		printTopicHelp(stdout, "Deployment commands inspect every execution attempt.", []string{
-			"sshdock deployments list <app>",
-		}, []string{
-			"sudo sshdock deployments list my-app",
-		})
-	case "events":
-		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events.", []string{
-			"sshdock events list <app>",
-		}, []string{
-			"sudo sshdock events list my-app",
-		})
-	case "server":
-		printTopicHelp(stdout, "Server commands configure single-node SSHDock host behavior.", []string{
-			"sshdock server domain set <domain>",
-		}, []string{
-			"sudo sshdock server domain set example.com",
-		})
-	case "ssh-keys":
-		printTopicHelp(stdout, "SSH key commands manage deploy and operator access keys.", []string{
-			"sshdock ssh-keys add <name>",
-			"sshdock ssh-keys list",
-			"sshdock ssh-keys remove <name>",
-		}, []string{
-			"cat ~/.ssh/id_ed25519.pub | sudo sshdock ssh-keys add admin",
-			"sudo sshdock ssh-keys list",
-		})
-	case "version":
-		printTopicHelp(stdout, "Version prints the CLI version.", []string{
-			"sshdock version",
-		}, []string{
-			"sshdock version",
-		})
-	case "diagnostics":
-		printTopicHelp(stdout, "Diagnostics checks SSHDock runtime readiness.", []string{
-			"sshdock diagnostics",
-		}, []string{
-			"sudo sshdock diagnostics",
-		})
-	default:
-		fmt.Fprintf(stderr, "unknown help topic %q\n", topic)
-		fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)
-		return 2
-	}
-	return 0
-}
-
-func printTopicHelp(stdout io.Writer, description string, usage []string, examples []string) {
-	fmt.Fprintln(stdout, description)
-	fmt.Fprintln(stdout)
-	fmt.Fprintln(stdout, "Usage:")
-	for _, line := range usage {
-		fmt.Fprintf(stdout, "  %s\n", line)
-	}
-	if len(examples) == 0 {
-		return
-	}
-	fmt.Fprintln(stdout)
-	fmt.Fprintln(stdout, "Examples:")
-	for _, line := range examples {
-		fmt.Fprintf(stdout, "  %s\n", line)
-	}
-}
-
-func printUnknownCommand(stderr io.Writer, command string) {
-	fmt.Fprintf(stderr, "unknown command %q\n", command)
-	fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)
-}
-
-func printInvalidUsage(stderr io.Writer, topic string) {
-	fmt.Fprintf(stderr, "invalid %s command or arguments\n", topic)
-	fmt.Fprintf(stderr, "Run \"sshdock help %s\" for usage.\n", topic)
-}
-
 func validatePublicKey(publicKey string) error {
 	if publicKey == "" {
 		return fmt.Errorf("SSH public key is required on stdin")
@@ -1322,23 +970,6 @@ func parseLogsArgs(args []string) (LogRequest, bool) {
 		return LogRequest{}, false
 	}
 	return request, request.AppName != ""
-}
-
-func parseRemoveArgs(args []string) (string, bool, bool) {
-	var appName string
-	var force bool
-	for _, arg := range args {
-		if arg == "--force" {
-			force = true
-			continue
-		}
-		if appName == "" {
-			appName = arg
-			continue
-		}
-		return "", false, false
-	}
-	return appName, force, appName != ""
 }
 
 func formatCLITime(value time.Time) string {

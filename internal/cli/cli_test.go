@@ -53,6 +53,8 @@ func TestRootHelpPrintsGroupedCommands(t *testing.T) {
 				"  sshdock <command> [arguments]",
 				"Core:",
 				"Apps:",
+				"Start existing Compose containers",
+				"Stop and preserve Compose containers",
 				"Redeploy current remote main",
 				"Config:",
 				"Domains:",
@@ -537,6 +539,7 @@ func TestLifecycleMutationCommands(t *testing.T) {
 	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
 	backend.domains = []Domain{{AppName: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true}}
 	backend.deployments = []Deployment{{ID: "dep_1", AppName: "my-app"}}
+	backend.events = []Event{{AppName: "my-app", Type: "deploy.succeeded"}}
 	backend.keys["admin"] = SSHKey{Name: "admin", PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey admin@example.com"}
 	runner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -583,6 +586,9 @@ func TestLifecycleMutationCommands(t *testing.T) {
 	}
 	if len(backend.deployments) != 0 {
 		t.Fatalf("deployments after remove = %#v", backend.deployments)
+	}
+	if len(backend.events) != 1 {
+		t.Fatalf("audit events after remove = %#v, want retained history", backend.events)
 	}
 }
 

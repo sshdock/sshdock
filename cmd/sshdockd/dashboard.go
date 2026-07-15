@@ -101,6 +101,8 @@ func dashboardHasInteractiveTerminal(stdin io.Reader, stdout io.Writer) bool {
 }
 
 type dashboardCLIBackend interface {
+	StartApp(appName string) error
+	StopApp(appName string) error
 	RestartApp(appName string) error
 	RestartService(appName string, serviceName string) error
 	RedeployApp(appName string) error
@@ -138,6 +140,14 @@ func newDashboardBackend(persistentStore store.Store, cfg config.Config, runner 
 
 func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
 	return dashboardActionBackend{backend: newDashboardBackend(persistentStore, cfg, runner, configService)}
+}
+
+func (b dashboardActionBackend) StartApp(appName string) error {
+	return b.backend.StartApp(appName)
+}
+
+func (b dashboardActionBackend) StopApp(appName string) error {
+	return b.backend.StopApp(appName)
 }
 
 func (b dashboardActionBackend) RestartApp(appName string) error {

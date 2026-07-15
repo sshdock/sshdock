@@ -10,6 +10,8 @@ type FakeRunner struct {
 
 	ValidateErr error
 	DeployErr   error
+	StartErr    error
+	StopErr     error
 	RestartErr  error
 	RemoveErr   error
 	StatusErr   error
@@ -18,6 +20,8 @@ type FakeRunner struct {
 	ValidatedPath    string
 	ValidatedAppName string
 	DeployRequests   []DeployRequest
+	StartRequests    []LifecycleRequest
+	StopRequests     []LifecycleRequest
 	RestartRequests  []RestartRequest
 	RemoveRequests   []RemoveRequest
 	StatusRequests   []StatusRequest
@@ -37,6 +41,16 @@ func (f *FakeRunner) Validate(_ context.Context, appName string, composePath str
 func (f *FakeRunner) Deploy(_ context.Context, request DeployRequest) (DeployResult, error) {
 	f.DeployRequests = append(f.DeployRequests, request)
 	return f.DeployResult, f.DeployErr
+}
+
+func (f *FakeRunner) Start(_ context.Context, request LifecycleRequest) error {
+	f.StartRequests = append(f.StartRequests, request)
+	return f.StartErr
+}
+
+func (f *FakeRunner) Stop(_ context.Context, request LifecycleRequest) error {
+	f.StopRequests = append(f.StopRequests, request)
+	return f.StopErr
 }
 
 func (f *FakeRunner) Restart(_ context.Context, request RestartRequest) error {

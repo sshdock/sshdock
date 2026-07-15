@@ -66,18 +66,24 @@ func (b *StoreBackend) ListDeployments(appName string) ([]Deployment, error) {
 
 func (b *StoreBackend) ListEvents(appName string) ([]Event, error) {
 	ctx := context.Background()
-	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("app %q not found", appName)
-	} else if err != nil {
-		return nil, fmt.Errorf("get app %q: %w", appName, err)
+	_, appErr := b.store.GetApp(ctx, appName)
+	if appErr != nil && !errors.Is(appErr, store.ErrNotFound) {
+		return nil, fmt.Errorf("get app %q: %w", appName, appErr)
 	}
 	models, err := b.store.ListEventsByApp(ctx, appName)
 	if err != nil {
 		return nil, fmt.Errorf("list events for app %q: %w", appName, err)
 	}
-	redactionValues, err := b.configRedactionValues(ctx, appName)
-	if err != nil {
-		return nil, err
+	if errors.Is(appErr, store.ErrNotFound) && len(models) == 0 {
+		return nil, fmt.Errorf("app %q not found", appName)
+	}
+
+	var redactionValues map[string]string
+	if appErr == nil {
+		redactionValues, err = b.configRedactionValues(ctx, appName)
+		if err != nil {
+			return nil, err
+		}
 	}
 	events := make([]Event, 0, len(models))
 	for _, model := range models {

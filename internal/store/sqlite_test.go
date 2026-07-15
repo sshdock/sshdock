@@ -861,8 +861,8 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if domains, err := store.ListDomainsByApp(ctx, model.ID); err != nil || len(domains) != 0 {
 		t.Fatalf("domains after DeleteApp = %#v, err = %v", domains, err)
 	}
-	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 0 {
-		t.Fatalf("events after DeleteApp = %#v, err = %v", events, err)
+	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 1 || events[0].Type != "deploy.succeeded" {
+		t.Fatalf("audit events after DeleteApp = %#v, err = %v", events, err)
 	}
 	if values, err := store.ListAppConfigValues(ctx, model.ID); err != nil || len(values) != 0 {
 		t.Fatalf("config values after DeleteApp = %#v, err = %v", values, err)

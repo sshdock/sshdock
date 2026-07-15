@@ -250,7 +250,7 @@ Expected operator entry point:
 ssh sshdock@server
 ```
 
-The production operator surface uses host `sshd` on port `22`, like the Git receive path. Each authorized key for the `sshdock` account is restricted to one forced command. A commandless PTY session opens the interactive TUI; a commandless non-PTY session renders a plain snapshot. Supplied commands are parsed into argv without a host shell and are limited to app inspection and config management. Host setup and administration remain local `sudo sshdock` operations.
+The production operator surface uses host `sshd` on port `22`, like the Git receive path. Each authorized key for the `sshdock` account is restricted to one forced command. A commandless PTY session opens the interactive TUI; a commandless non-PTY session renders a plain snapshot. Supplied commands are parsed into argv without a host shell and are limited to app inspection, config management, and explicit app lifecycle commands. Host setup and administration remain local `sudo sshdock` operations.
 
 Interactive dashboard controls:
 
@@ -260,7 +260,7 @@ Interactive dashboard controls:
 [j/k] select   select apps
 [g/G] jump     first or last app
 [tab] tabs     Summary, Services, Routes, Releases, Deploys, Events, Logs
-[a] actions    restart, redeploy, rollback, domains, remove
+[a] actions    start, stop, restart, redeploy, rollback, domains, remove
 [u/d] logs     scroll logs
 [f] follow     periodic refresh on Logs tab
 [r] refresh    refresh snapshot
@@ -269,7 +269,7 @@ Interactive dashboard controls:
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
-The dashboard is the v0 operator surface for deployed apps. It can restart apps or services, redeploy current remote main, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
+The dashboard is the v0 operator surface for deployed apps. It can start or stop existing containers, restart apps or services, redeploy current remote main, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
 
 Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 

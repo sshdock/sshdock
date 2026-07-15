@@ -14,6 +14,22 @@ import (
 	"github.com/sshdock/sshdock/internal/store"
 )
 
+func (b *StoreBackend) StartApp(name string) error {
+	ctx := context.Background()
+	if err := b.recoveryService().StartApp(ctx, name); err != nil {
+		return fmt.Errorf("start app %q: %w", name, err)
+	}
+	return nil
+}
+
+func (b *StoreBackend) StopApp(name string) error {
+	ctx := context.Background()
+	if err := b.recoveryService().StopApp(ctx, name); err != nil {
+		return fmt.Errorf("stop app %q: %w", name, err)
+	}
+	return nil
+}
+
 func (b *StoreBackend) RestartApp(name string) error {
 	ctx := context.Background()
 	if err := b.recoveryService().RestartApp(ctx, name); err != nil {
@@ -58,49 +74,89 @@ func (b *StoreBackend) RemoveApp(name string) error {
 	ctx := context.Background()
 	model, err := b.store.GetApp(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("app %q not found", name)
+		return b.resumeRemoval(ctx, name)
 	}
 	if err != nil {
 		return fmt.Errorf("get app %q: %w", name, err)
 	}
+	audit, err := b.beginRemovalAudit(ctx, name)
+	if err != nil {
+		return err
+	}
+	if err := b.scrubRetainedEventMessages(ctx, name); err != nil {
+		return audit.fail("redact retained events", err)
+	}
 
 	if b.recoveryRunner != nil {
 		if release, ok, err := b.latestRuntimeRelease(ctx, name); err != nil {
-			return fmt.Errorf("list releases for app removal: %w", err)
+			return audit.fail("list Compose releases", err)
 		} else if ok && release.ComposePath != "" {
+			projectDir := projectDirFromModel(model, release)
+			env, err := b.configEnv(ctx, name, projectDir)
+			if err != nil {
+				return audit.fail("load app config", err)
+			}
 			if err := b.recoveryRunner.Remove(ctx, compose.RemoveRequest{
 				AppName:     name,
-				ProjectDir:  projectDirFromModel(model, release),
+				ProjectDir:  projectDir,
 				ComposePath: release.ComposePath,
+				Env:         env,
 			}); err != nil {
-				return fmt.Errorf("remove Compose project for app %q: %w", name, err)
+				return audit.fail("stop and remove Compose project", err)
 			}
 		}
 	}
 
 	if err := b.removeManagedPath(model.RepoPath, "repo"); err != nil {
-		return err
+		return audit.fail("remove repository", err)
 	}
 	if err := b.removeManagedPath(model.WorktreePath, "worktree"); err != nil {
-		return err
+		return audit.fail("remove worktree", err)
 	}
 	if b.appsDir != "" {
 		if err := b.removeManagedPath(filepath.Join(b.appsDir, name), "app directory"); err != nil {
-			return err
+			return audit.fail("remove app directory", err)
 		}
 	}
 
 	if err := b.store.DeleteApp(ctx, name); err != nil {
-		return fmt.Errorf("delete app %q state: %w", name, err)
+		return audit.fail("delete app state", err)
 	}
 	if err := b.syncRoutesFromStore(ctx); err != nil {
-		return fmt.Errorf("reload Caddy routes after app removal: %w", err)
+		return audit.fail("reload Caddy routes", err)
 	}
 	if err := b.store.ClearRouteApplyFailures(ctx); err != nil {
-		return fmt.Errorf("Caddy routes reloaded after app removal, but clear resolved route failures: %w", err)
+		return audit.fail("clear resolved route failures", err)
 	}
 
-	return nil
+	return audit.succeed()
+}
+
+func (b *StoreBackend) resumeRemoval(ctx context.Context, name string) error {
+	events, err := b.store.ListEventsByApp(ctx, name)
+	if err != nil {
+		return fmt.Errorf("list removal events for app %q: %w", name, err)
+	}
+	lastRemovalType := ""
+	for _, event := range events {
+		if strings.HasPrefix(event.Type, "remove.") {
+			lastRemovalType = event.Type
+		}
+	}
+	if lastRemovalType != "remove.started" && lastRemovalType != "remove.failed" {
+		return fmt.Errorf("app %q not found", name)
+	}
+	audit, err := b.beginRemovalAudit(ctx, name)
+	if err != nil {
+		return err
+	}
+	if err := b.syncRoutesFromStore(ctx); err != nil {
+		return audit.fail("reload Caddy routes", err)
+	}
+	if err := b.store.ClearRouteApplyFailures(ctx); err != nil {
+		return audit.fail("clear resolved route failures", err)
+	}
+	return audit.succeed()
 }
 
 func (b *StoreBackend) recoveryService() *appmodel.Service {

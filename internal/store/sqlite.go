@@ -458,6 +458,21 @@ func (s *SQLiteStore) ListEventsByApp(ctx context.Context, appID string) ([]app.
 	return models, rows.Err()
 }
 
+func (s *SQLiteStore) UpdateEventMessage(ctx context.Context, id string, message string) error {
+	result, err := s.db.ExecContext(ctx, `update events set message = ? where id = ?`, message, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("event", id)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) SetServerConfig(ctx context.Context, config ServerConfig) error {
 	if config.BaseDomain == "" && config.GitHost == "" {
 		return fmt.Errorf("server config requires base domain or Git host")
@@ -681,7 +696,6 @@ func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {
 	}
 
 	for _, statement := range []string{
-		`delete from events where app_id = ?`,
 		`delete from deployments where app_id = ?`,
 		`delete from releases where app_id = ?`,
 		`delete from domains where app_id = ?`,

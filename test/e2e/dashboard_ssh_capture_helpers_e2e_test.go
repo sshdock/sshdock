@@ -48,20 +48,23 @@ func captureDashboardSSHSession(t *testing.T, options dashboardCaptureOptions) c
 			{Name: "deploys", Key: "\t", Wants: []string{"[Deploys]", "Deploy", "Status", "Trigger", "Commit", "Release", "Started", "succeeded", "push"}},
 			{Name: "events", Key: "\t", Wants: []string{"[Events]", "deploy.succeeded"}},
 			{Name: "logs", Key: "\t", Wants: []string{"[Logs]", "first-dashboard-log"}},
+			{Name: "actions", Key: "a", Wants: []string{"Actions", "start app", "stop app", "remove app"}},
+			{Name: "action-start-succeeded", Key: "\r", Wants: []string{"start app complete"}},
 		},
 	})
 }
 
 type dashboardCommandCaptureOptions struct {
-	SSHPath     string
-	Args        []string
-	ArtifactDir string
-	Rows        int
-	Cols        int
-	Timeout     time.Duration
-	FrameSpecs  []dashboardFrameSpec
-	CaptureTabs bool
-	MaxTabs     int
+	SSHPath        string
+	Args           []string
+	ArtifactDir    string
+	Rows           int
+	Cols           int
+	Timeout        time.Duration
+	FrameSpecs     []dashboardFrameSpec
+	PostCaptureKey string
+	CaptureTabs    bool
+	MaxTabs        int
 }
 
 func captureDashboardSSHCommandSession(t *testing.T, options dashboardCommandCaptureOptions) capture.Manifest {
@@ -112,11 +115,24 @@ func captureDashboardSSHCommandSession(t *testing.T, options dashboardCommandCap
 					t.Fatalf("write key for %s: %v", spec.Name, err)
 				}
 			}
+			for _, key := range spec.Keys {
+				if _, err := io.WriteString(ptmx, key); err != nil {
+					t.Fatalf("write key for %s: %v", spec.Name, err)
+				}
+				time.Sleep(75 * time.Millisecond)
+			}
 			screen := waitForDashboardScreen(t, terminal, &mu, options.Timeout, spec.Name, spec.Wants)
 			frames = append(frames, capture.Frame{Name: spec.Name, Screen: screen})
 		}
 	}
 
+	if options.PostCaptureKey != "" {
+		if _, err := io.WriteString(ptmx, options.PostCaptureKey); err != nil {
+			t.Fatalf("write post-capture key: %v", err)
+		}
+		time.Sleep(75 * time.Millisecond)
+		waitForDashboardTextAbsent(t, terminal, &mu, options.Timeout, "Actions")
+	}
 	if _, err := io.WriteString(ptmx, "q"); err != nil {
 		t.Fatalf("write quit key: %v", err)
 	}
@@ -138,6 +154,21 @@ func captureDashboardSSHCommandSession(t *testing.T, options dashboardCommandCap
 		t.Fatalf("write dashboard screenshot artifacts: %v", err)
 	}
 	return manifest
+}
+
+func waitForDashboardTextAbsent(t *testing.T, terminal *capture.Terminal, mu *sync.Mutex, timeout time.Duration, unwanted string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		text := terminal.Screen().Text()
+		mu.Unlock()
+		if !strings.Contains(text, unwanted) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("dashboard still contains %q after post-capture key", unwanted)
 }
 
 func captureDashboardTabFrames(t *testing.T, ptmx *os.File, terminal *capture.Terminal, mu *sync.Mutex, timeout time.Duration, maxTabs int) []capture.Frame {
@@ -232,6 +263,7 @@ func dashboardFrameName(activeTab string, fallback string) string {
 type dashboardFrameSpec struct {
 	Name  string
 	Key   string
+	Keys  []string
 	Wants []string
 }
 

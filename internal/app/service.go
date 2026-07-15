@@ -49,6 +49,8 @@ type deployRunner interface {
 
 type recoveryRunner interface {
 	Deploy(ctx context.Context, request compose.DeployRequest) (compose.DeployResult, error)
+	Start(ctx context.Context, request compose.LifecycleRequest) error
+	Stop(ctx context.Context, request compose.LifecycleRequest) error
 	Restart(ctx context.Context, request compose.RestartRequest) error
 }
 

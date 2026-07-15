@@ -16,14 +16,14 @@ type restartRequest struct {
 }
 
 func (s *Service) RestartApp(ctx context.Context, appID string) error {
-	return s.restart(ctx, restartRequest{appID: appID, startedType: "restart.triggered", succeededType: "restart.succeeded", failedType: "restart.failed"})
+	return s.restart(ctx, restartRequest{appID: appID, startedType: "restart.started", succeededType: "restart.succeeded", failedType: "restart.failed"})
 }
 
 func (s *Service) RestartService(ctx context.Context, appID string, serviceName string) error {
 	if serviceName == "" {
 		return fmt.Errorf("service name is required")
 	}
-	return s.restart(ctx, restartRequest{appID: appID, serviceName: serviceName, startedType: "service.restart.triggered", succeededType: "service.restart.succeeded", failedType: "service.restart.failed"})
+	return s.restart(ctx, restartRequest{appID: appID, serviceName: serviceName, startedType: "service.restart.started", succeededType: "service.restart.succeeded", failedType: "service.restart.failed"})
 }
 
 func (s *Service) restart(ctx context.Context, request restartRequest) error {
@@ -40,7 +40,13 @@ func (s *Service) restart(ctx context.Context, request restartRequest) error {
 		return err
 	}
 
-	err = s.recover.Restart(ctx, compose.RestartRequest{AppName: request.appID, ProjectDir: projectDir(model, release), ComposePath: release.ComposePath, ServiceName: request.serviceName})
+	worktreePath := projectDir(model, release)
+	env, err := s.resolveDeployEnv(ctx, request.appID, worktreePath)
+	if err != nil {
+		err = fmt.Errorf("resolve app config: %w", err)
+	} else {
+		err = s.recover.Restart(ctx, compose.RestartRequest{AppName: request.appID, ProjectDir: worktreePath, ComposePath: release.ComposePath, ServiceName: request.serviceName, Env: env})
+	}
 	if err != nil {
 		_ = s.store.CreateEvent(ctx, Event{ID: eventID(operationID, request.failedType), AppID: request.appID, Type: request.failedType, Message: restartMessage("Restart failed", request.appID, request.serviceName) + ": " + err.Error(), CreatedAt: s.now()})
 		return err

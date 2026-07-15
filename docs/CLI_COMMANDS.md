@@ -333,6 +333,30 @@ sudo sshdock logs my-app web --tail 200 -f
 
 The Docker runner maps this to `docker compose logs --tail <lines>` for the app's latest deployed Compose project. The default tail is `100`. `-f` adds Compose `--follow`.
 
+### `sshdock apps stop <name>`
+
+Stop an app's existing Compose containers without removing its containers, networks, or volumes.
+
+```bash
+sudo sshdock apps stop my-app
+ssh sshdock@server apps stop my-app
+```
+
+The Docker runner maps this literally to `docker compose stop` for the app's stable Compose project.
+
+SSHDock supplies the app's stored config as the Compose process environment for stop, start, restart, and remove so native interpolation can parse the deployed file. These literal lifecycle commands still do not recreate containers or apply changed config values; use redeploy when changes should take effect.
+
+### `sshdock apps start <name>`
+
+Start an app's existing Compose containers without recreating them or applying changed Compose/config values.
+
+```bash
+sudo sshdock apps start my-app
+ssh sshdock@server apps start my-app
+```
+
+The Docker runner maps this literally to `docker compose start`. If the required containers no longer exist, the error directs you to `sudo sshdock apps redeploy <name>`.
+
 ### `sshdock apps restart <name> [service]`
 
 Restart a whole app or one Compose service through the configured Compose runner.
@@ -342,7 +366,7 @@ sudo sshdock apps restart my-app
 sudo sshdock apps restart my-app web
 ```
 
-Whole-app restart maps to `docker compose restart` for the project when using the default Docker runner. Service restart targets only the selected Compose service.
+Whole-app restart maps to `docker compose restart` for the project when using the default Docker runner. Service restart targets only the selected Compose service. Restart uses the existing containers and does not apply changed Compose or config values.
 
 ### `sshdock apps redeploy <name>`
 
@@ -382,7 +406,7 @@ When a deployed release exists, the Docker runner first runs the equivalent of:
 docker compose down --remove-orphans
 ```
 
-It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It leaves image and build-cache garbage collection to Docker, deletes the app repo/worktree, removes app metadata, releases, deployments, domains, and events from SQLite, and rebuilds Caddy routes from remaining domains.
+It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It leaves image and build-cache garbage collection to Docker, deletes the app repo/worktree, removes live app metadata, releases, deployments, and domains from SQLite, and rebuilds Caddy routes from remaining domains. Removal audit events remain queryable with `events list <name>`; recreating the same app name keeps that earlier audit history.
 
 Successful output includes a Docker-volume preservation note. Remove app-specific Docker volumes manually only after backing up any data you need.
 
@@ -546,7 +570,7 @@ With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain te
 ssh -T sshdock@server
 ```
 
-When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, domain inspection, logs, release/deployment/event inspection, and config commands. It preserves quoted argv boundaries, rejects local administration and lifecycle mutations that are not yet part of the restricted surface, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
+When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lifecycle operations, domain inspection, logs, release/deployment/event inspection, and config commands. Lifecycle forms are restricted to `apps start`, `apps stop`, `apps restart`, `apps redeploy`, and `apps remove <name> --force`. It preserves quoted argv boundaries, rejects local administration and unsupported arguments, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
 
@@ -562,7 +586,7 @@ Useful keys:
 - `r` refreshes the dashboard snapshot.
 - `q` quits.
 
-TUI app actions cover restart app, restart service, redeploy current main, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as `sshdock apps restart`, `sshdock apps redeploy`, `sshdock apps rollback`, `sshdock domains attach`, `sshdock domains detach`, and `sshdock apps remove`.
+TUI app actions cover start app, stop app, restart app, restart service, redeploy current main, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as the corresponding CLI commands.
 
 The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
 

@@ -177,6 +177,14 @@ This Git push records a normal deployment attempt for the selected commit. Use `
 
 `apps health` reports the newest failed release/deployment and failure detail while checking Compose service status against the latest runnable release when one exists.
 
+## App Start Says Containers Are Missing
+
+`apps start` maps literally to Compose start and never changes into a deployment. If the app's containers were removed, apply the commit currently at remote `main` again:
+
+```bash
+sudo sshdock apps redeploy <app>
+```
+
 ## Removing An App Did Not Remove Data
 
 This is expected. SSHDock removes app metadata, app repo/worktree, and containers, but it does not pass Compose `--volumes` or prune Docker images and build cache.

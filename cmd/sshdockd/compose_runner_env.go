@@ -45,6 +45,8 @@ func fakeRunnerFromEnv() *compose.FakeRunner {
 	return &compose.FakeRunner{
 		DeployResult: deployResult,
 		DeployErr:    errors.Join(envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"), routeErr),
+		StartErr:     envError("SSHDOCK_FAKE_COMPOSE_START_ERROR"),
+		StopErr:      envError("SSHDOCK_FAKE_COMPOSE_STOP_ERROR"),
 		RestartErr:   envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
 		RemoveErr:    envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 	}

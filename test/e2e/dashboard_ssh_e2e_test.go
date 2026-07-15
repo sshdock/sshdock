@@ -119,6 +119,26 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 		sshPath,
 		append(dashboardSSHArgs(paths, server, false), "help")...,
 	)
+	stopOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "stop", appName)...,
+	)
+	startOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "start", appName)...,
+	)
+	restartOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "restart", appName)...,
+	)
+	redeployOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "redeploy", appName)...,
+	)
+	eventsOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "events", "list", appName)...,
+	)
 
 	// Then
 	if !strings.Contains(inspectionOutput, appName) {
@@ -133,11 +153,26 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	if !strings.Contains(logsOutput, "first-dashboard-log") {
 		t.Fatalf("logs output missing Compose logs:\n%s", logsOutput)
 	}
-	if !strings.Contains(domainsOutput, "missing") || strings.Contains(domainsOutput, "router check unavailable") {
-		t.Fatalf("domains check output did not use the router backend:\n%s", domainsOutput)
+	if !strings.Contains(domainsOutput, "unavailable") || !strings.Contains(domainsOutput, "check Caddy") {
+		t.Fatalf("domains check output did not report unavailable active Caddy state:\n%s", domainsOutput)
 	}
-	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") {
+	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") || !strings.Contains(helpOutput, "apps start") || !strings.Contains(helpOutput, "apps remove") {
 		t.Fatalf("restricted help exposes local commands or omits inspection commands:\n%s", helpOutput)
+	}
+	for label, output := range map[string]string{
+		"stop":     stopOutput,
+		"start":    startOutput,
+		"restart":  restartOutput,
+		"redeploy": redeployOutput,
+	} {
+		if !strings.Contains(output, appName) {
+			t.Fatalf("apps %s output missing app name:\n%s", label, output)
+		}
+	}
+	for _, eventType := range []string{"stop.started", "stop.succeeded", "start.started", "start.succeeded", "restart.started", "restart.succeeded", "redeploy.started", "redeploy.succeeded"} {
+		if !strings.Contains(eventsOutput, eventType) {
+			t.Fatalf("events output missing %q:\n%s", eventType, eventsOutput)
+		}
 	}
 
 	markerPath := filepath.Join(paths.tmp, "host-shell-ran")
@@ -154,6 +189,21 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	}
 	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
 		t.Fatalf("host shell marker exists: %v", statErr)
+	}
+
+	removeOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "remove", appName, "--force")...,
+	)
+	if !strings.Contains(removeOutput, "Docker volumes were not removed") {
+		t.Fatalf("restricted app removal omitted volume-preservation copy:\n%s", removeOutput)
+	}
+	removedEventsOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "events", "list", appName)...,
+	)
+	if !strings.Contains(removedEventsOutput, "remove.started") || !strings.Contains(removedEventsOutput, "remove.succeeded") {
+		t.Fatalf("removed app audit history missing lifecycle events:\n%s", removedEventsOutput)
 	}
 }
 

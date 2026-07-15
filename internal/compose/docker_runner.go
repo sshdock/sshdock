@@ -74,13 +74,13 @@ func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) erro
 		args = append(args, request.ServiceName)
 	}
 
-	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args})
+	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }
 
 func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error {
 	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "down", "--remove-orphans")
-	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args})
+	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }
 

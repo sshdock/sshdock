@@ -16,6 +16,8 @@ type CommandExecutor interface {
 type Runner interface {
 	Validate(ctx context.Context, appName string, composePath string) (ValidationResult, error)
 	Deploy(ctx context.Context, request DeployRequest) (DeployResult, error)
+	Start(ctx context.Context, request LifecycleRequest) error
+	Stop(ctx context.Context, request LifecycleRequest) error
 	Restart(ctx context.Context, request RestartRequest) error
 	Remove(ctx context.Context, request RemoveRequest) error
 	Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error)
@@ -43,12 +45,21 @@ type RestartRequest struct {
 	ProjectDir  string
 	ComposePath string
 	ServiceName string
+	Env         map[string]string
+}
+
+type LifecycleRequest struct {
+	AppName     string
+	ProjectDir  string
+	ComposePath string
+	Env         map[string]string
 }
 
 type RemoveRequest struct {
 	AppName     string
 	ProjectDir  string
 	ComposePath string
+	Env         map[string]string
 }
 
 type StatusRequest struct {

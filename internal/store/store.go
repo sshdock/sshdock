@@ -80,6 +80,7 @@ type Store interface {
 	ClearRouteApplyFailures(ctx context.Context) error
 	CreateEvent(ctx context.Context, model app.Event) error
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
+	UpdateEventMessage(ctx context.Context, id string, message string) error
 	SetServerConfig(ctx context.Context, config ServerConfig) error
 	GetServerConfig(ctx context.Context) (ServerConfig, error)
 	UpsertSSHKey(ctx context.Context, key SSHKey) error

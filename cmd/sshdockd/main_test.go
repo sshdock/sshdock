@@ -180,12 +180,12 @@ func TestRunOperatorHelpListsOnlyRemoteCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	for _, want := range []string{"apps list", "apps health", "config set", "domains check", "logs"} {
+	for _, want := range []string{"apps list", "apps health", "apps start", "apps stop", "apps restart", "apps redeploy", "apps remove", "config set", "domains check", "logs"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
 		}
 	}
-	for _, unwanted := range []string{"apps create", "apps remove", "server domain", "ssh-keys"} {
+	for _, unwanted := range []string{"apps create", "server domain", "ssh-keys"} {
 		if strings.Contains(stdout.String(), unwanted) {
 			t.Fatalf("stdout contains local-only command %q:\n%s", unwanted, stdout.String())
 		}
@@ -209,6 +209,36 @@ func TestOperatorOriginalCommandArgs(t *testing.T) {
 			name:    "preserves quoted argv boundaries",
 			command: `config get "my app" 'DATABASE URL'`,
 			want:    []string{"config", "get", "my app", "DATABASE URL"},
+		},
+		{
+			name:    "allows app start",
+			command: `apps start my-app`,
+			want:    []string{"apps", "start", "my-app"},
+		},
+		{
+			name:    "allows app stop",
+			command: `apps stop my-app`,
+			want:    []string{"apps", "stop", "my-app"},
+		},
+		{
+			name:    "allows app restart",
+			command: `apps restart my-app web`,
+			want:    []string{"apps", "restart", "my-app", "web"},
+		},
+		{
+			name:    "allows current main redeploy",
+			command: `apps redeploy my-app`,
+			want:    []string{"apps", "redeploy", "my-app"},
+		},
+		{
+			name:    "allows forced app removal",
+			command: `apps remove my-app --force`,
+			want:    []string{"apps", "remove", "my-app", "--force"},
+		},
+		{
+			name:         "rejects interactive app removal",
+			command:      `apps remove my-app`,
+			errorMessage: "not available over SSH",
 		},
 		{
 			name:         "rejects host shell syntax",
@@ -306,6 +336,16 @@ func TestRunDaemonValidatesConfig(t *testing.T) {
 
 type fakeDashboardCLIBackend struct {
 	calls []string
+}
+
+func (f *fakeDashboardCLIBackend) StartApp(appName string) error {
+	f.calls = append(f.calls, "start "+appName)
+	return nil
+}
+
+func (f *fakeDashboardCLIBackend) StopApp(appName string) error {
+	f.calls = append(f.calls, "stop "+appName)
+	return nil
 }
 
 func (f *fakeDashboardCLIBackend) RestartApp(appName string) error {

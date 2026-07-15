@@ -148,7 +148,13 @@ TUI app action coverage is separate:
 make tui-actions-e2e
 ```
 
-That target drives the interactive dashboard model against SQLite state, the shared CLI lifecycle backend, a fake Compose runner, and a fake router. It covers restart app, restart service, redeploy, rollback, domain attach, domain detach, app removal, and persisted event visibility. App removal is verified through the shared backend path and the fake Compose remove request, preserving the same volume-preserving contract as `sshdock apps remove`.
+That target drives the interactive dashboard model against SQLite state, the shared CLI lifecycle backend, a fake Compose runner, and a fake router. It covers start app, stop app, restart app, restart service, redeploy, rollback, domain attach, domain detach, app removal, and persisted event visibility. App removal is verified through the shared backend path and the fake Compose remove request.
+
+Docker-backed lifecycle acceptance proves that stop/start/restart keep existing container configuration and that remove preserves named-volume data:
+
+```bash
+make lifecycle-volume-e2e
+```
 
 Focused CLI tests cover `sshdock apps health <app>`, `sshdock domains check <app>`, and `sshdock logs --tail <lines>`:
 
@@ -178,10 +184,10 @@ This target uses the same real dashboard path as `make tui-e2e`:
 4. Starts a temporary local OpenSSH server using the operator `authorized_keys` file.
 5. Runs `ssh -tt` inside a fixed-size local PTY so OpenSSH allocates a real remote PTY for `sshdockd operator`.
 6. Replays the PTY output through a headless terminal model and captures the live alternate-screen dashboard before quitting.
-7. Writes artifacts to `_artifacts/tui-screenshots-real/`:
+7. Writes full-size and compact action artifacts to `_artifacts/tui-screenshots-real/`:
    - `session.ansi`: raw PTY output stream
-   - `summary|services|routes|releases|deploys|logs.txt`: plain screen text for each captured tab
-   - `summary|services|routes|releases|deploys|logs.png`: PNG screenshots for each captured tab
+   - tab, action-menu, and settled-action `.txt`/`.png` screen captures
+   - `compact-actions/`: 60-column action-menu captures proving the selected row stays visible
    - `manifest.json`: command, terminal size, and artifact index
 
 The capture uses the fake Compose runner for service status/log data, but the operator access path is real OpenSSH forced-command access.

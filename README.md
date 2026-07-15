@@ -109,10 +109,15 @@ Each app commit has one stable release while every push or redeploy records a se
 Operate an app:
 
 ```bash
-sudo sshdock apps restart my-app
-sudo sshdock apps redeploy my-app
+ssh sshdock@sshdock.example.com apps stop my-app
+ssh sshdock@sshdock.example.com apps start my-app
+ssh sshdock@sshdock.example.com apps restart my-app
+ssh sshdock@sshdock.example.com apps redeploy my-app
+ssh sshdock@sshdock.example.com apps remove my-app --force
 sudo sshdock apps rollback my-app <release-id>
 ```
+
+`apps stop` preserves the existing Compose containers, networks, and volumes. `apps start` starts those existing containers; if they no longer exist, SSHDock tells you to redeploy current remote `main`. `apps restart` uses Compose restart and does not apply changed Compose or config values.
 
 `apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older revision with Git, push it to remote `main`:
 
@@ -134,6 +139,8 @@ Remove an app without deleting Docker volumes:
 ```bash
 sudo sshdock apps remove my-app
 ```
+
+Removal deletes live app state but retains its started, failed, and succeeded audit events. Reusing the same app name keeps that earlier audit history visible.
 
 Create and inspect a host-state backup:
 

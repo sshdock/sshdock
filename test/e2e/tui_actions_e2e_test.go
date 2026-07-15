@@ -88,26 +88,36 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 	}
 
 	model = runTUIAction(t, model, []string{"a", "enter"})
+	if got := composeRunner.StartRequests[0]; got.AppName != appName || got.ComposePath != composePath {
+		t.Fatalf("start app request = %#v", got)
+	}
+
+	model = runTUIAction(t, model, []string{"a", "down", "enter"})
+	if got := composeRunner.StopRequests[0]; got.AppName != appName || got.ComposePath != composePath {
+		t.Fatalf("stop app request = %#v", got)
+	}
+
+	model = runTUIAction(t, model, []string{"a", "down", "down", "enter"})
 	if got := composeRunner.RestartRequests[0]; got.AppName != appName || got.ServiceName != "" || got.ComposePath != composePath {
 		t.Fatalf("restart app request = %#v", got)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "enter", "enter"})
+	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "enter", "enter"})
 	if got := composeRunner.RestartRequests[1]; got.AppName != appName || got.ServiceName != "web" {
 		t.Fatalf("restart service request = %#v", got)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "down", "enter"})
+	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "enter"})
 	if len(composeRunner.DeployRequests) != 1 || composeRunner.DeployRequests[0].ReleaseID != "rel_new" {
 		t.Fatalf("redeploy requests = %#v", composeRunner.DeployRequests)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "enter", "enter"})
+	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "enter", "enter"})
 	if len(composeRunner.DeployRequests) != 2 || composeRunner.DeployRequests[1].ReleaseID != "rel_old" {
 		t.Fatalf("rollback requests = %#v", composeRunner.DeployRequests)
 	}
 
-	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys("web new.example.com 8080"), "enter")...))
+	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys("web new.example.com 8080"), "enter")...))
 	domains, err := sqlite.ListDomainsByApp(ctx, appName)
 	if err != nil {
 		t.Fatalf("ListDomainsByApp: %v", err)
@@ -116,7 +126,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("domains after attach = %#v", domains)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "enter", "enter"})
+	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "down", "down", "enter", "enter"})
 	domains, err = sqlite.ListDomainsByApp(ctx, appName)
 	if err != nil {
 		t.Fatalf("ListDomainsByApp after detach: %v", err)
@@ -125,7 +135,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("initial domain still present after detach: %#v", domains)
 	}
 
-	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys(appName), "enter")...))
+	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys(appName), "enter")...))
 	_ = model
 	if _, err := sqlite.GetApp(ctx, appName); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetApp after remove error = %v, want ErrNotFound", err)
@@ -256,6 +266,14 @@ func hasDomain(domains []app.Domain, domainName string) bool {
 
 type tuiCLIActionAdapter struct {
 	backend *cli.StoreBackend
+}
+
+func (a tuiCLIActionAdapter) StartApp(appName string) error {
+	return a.backend.StartApp(appName)
+}
+
+func (a tuiCLIActionAdapter) StopApp(appName string) error {
+	return a.backend.StopApp(appName)
 }
 
 func (a tuiCLIActionAdapter) RestartApp(appName string) error {

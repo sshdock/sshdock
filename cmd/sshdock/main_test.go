@@ -362,6 +362,8 @@ func TestCLIRunnerFromEnvCanSelectFakeForTests(t *testing.T) {
 func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
 	tests := [][]string{
 		{"apps", "health", "my-app"},
+		{"apps", "start", "my-app"},
+		{"apps", "stop", "my-app"},
 		{"apps", "restart", "my-app"},
 		{"apps", "restart", "my-app", "web"},
 		{"apps", "redeploy", "my-app"},

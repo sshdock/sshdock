@@ -284,6 +284,8 @@ func TestInteractiveDashboardActionMenuListsAndCloses(t *testing.T) {
 	view := model.View()
 	for _, want := range []string{
 		"Actions",
+		"start app",
+		"stop app",
 		"restart app",
 		"restart service",
 		"redeploy current main",
@@ -303,6 +305,23 @@ func TestInteractiveDashboardActionMenuListsAndCloses(t *testing.T) {
 	}
 }
 
+func TestInteractiveDashboardCompactActionMenuKeepsSelectionVisible(t *testing.T) {
+	model := NewInteractiveDashboardModelWithActions(testDashboardSnapshot(), nil, &fakeDashboardActions{})
+	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 60, Height: 22})
+	model = pressDashboardKey(t, model, "a")
+	for range len(dashboardActionItems) - 1 {
+		model = pressDashboardKey(t, model, "down")
+	}
+
+	view := model.View()
+	if !strings.Contains(view, ">  remove app") {
+		t.Fatalf("compact action menu hid selected action:\n%s", view)
+	}
+	if strings.Contains(view, "│   start app") {
+		t.Fatalf("compact action menu did not window rows around selection:\n%s", view)
+	}
+}
+
 func TestInteractiveDashboardActionsCallBackendWithSelectedArguments(t *testing.T) {
 	tests := []struct {
 		name string
@@ -310,33 +329,43 @@ func TestInteractiveDashboardActionsCallBackendWithSelectedArguments(t *testing.
 		want string
 	}{
 		{
-			name: "restart app",
+			name: "start app",
 			keys: []string{"a", "enter"},
+			want: "start one",
+		},
+		{
+			name: "stop app",
+			keys: []string{"a", "down", "enter"},
+			want: "stop one",
+		},
+		{
+			name: "restart app",
+			keys: []string{"a", "down", "down", "enter"},
 			want: "restart-app one",
 		},
 		{
 			name: "restart service",
-			keys: []string{"a", "down", "enter", "enter"},
+			keys: []string{"a", "down", "down", "down", "enter", "enter"},
 			want: "restart-service one web",
 		},
 		{
 			name: "redeploy current main",
-			keys: []string{"a", "down", "down", "enter"},
+			keys: []string{"a", "down", "down", "down", "down", "enter"},
 			want: "redeploy one",
 		},
 		{
 			name: "rollback release",
-			keys: []string{"a", "down", "down", "down", "enter", "enter"},
+			keys: []string{"a", "down", "down", "down", "down", "down", "enter", "enter"},
 			want: "rollback one rel_one",
 		},
 		{
 			name: "attach domain",
-			keys: append([]string{"a", "down", "down", "down", "down", "enter"}, append(dashboardRuneKeys("web two.example.com 8080"), "enter")...),
+			keys: append([]string{"a", "down", "down", "down", "down", "down", "down", "enter"}, append(dashboardRuneKeys("web two.example.com 8080"), "enter")...),
 			want: "attach one web two.example.com 8080",
 		},
 		{
 			name: "detach domain",
-			keys: []string{"a", "down", "down", "down", "down", "down", "enter", "enter"},
+			keys: []string{"a", "down", "down", "down", "down", "down", "down", "down", "enter", "enter"},
 			want: "detach one one.example.com",
 		},
 	}
@@ -381,7 +410,7 @@ func TestInteractiveDashboardRemoveRequiresExactAppName(t *testing.T) {
 	}, actions)
 	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 30})
 
-	for _, key := range []string{"a", "down", "down", "down", "down", "down", "down", "enter"} {
+	for _, key := range []string{"a", "down", "down", "down", "down", "down", "down", "down", "down", "enter"} {
 		model = pressDashboardKey(t, model, key)
 	}
 	for _, key := range dashboardRuneKeys("wrong") {
@@ -411,6 +440,37 @@ func TestInteractiveDashboardRemoveRequiresExactAppName(t *testing.T) {
 	}
 }
 
+func TestInteractiveDashboardRemoveConfirmationAcceptsQInAppName(t *testing.T) {
+	snapshot := testDashboardSnapshot()
+	quick := snapshot.AppsByID["one"]
+	quick.Detail = NewAppDetailScreen(AppDetailView{
+		App: AppSummary{ID: "quick-app", Name: "quick-app", NodeID: "local", Status: "healthy"},
+	})
+	delete(snapshot.AppsByID, "one")
+	snapshot.AppsByID["quick-app"] = quick
+	snapshot.AppOrder[0] = "quick-app"
+	snapshot.Apps.view.Items[0].ID = "quick-app"
+	snapshot.Apps.view.Items[0].Name = "quick-app"
+
+	actions := &fakeDashboardActions{}
+	model := NewInteractiveDashboardModelWithActions(snapshot, nil, actions)
+	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 30})
+	for _, key := range []string{"a", "down", "down", "down", "down", "down", "down", "down", "down", "enter"} {
+		model = pressDashboardKey(t, model, key)
+	}
+	for _, key := range dashboardRuneKeys("quick-app") {
+		model = pressDashboardKey(t, model, key)
+	}
+	model, cmd := pressDashboardKeyWithCmd(t, model, "enter")
+	if cmd == nil {
+		t.Fatal("app name containing q did not return removal command")
+	}
+	model = updateDashboardModel(t, model, cmd())
+	if got := strings.Join(actions.calls, "\n"); got != "remove quick-app" {
+		t.Fatalf("calls = %q, want remove quick-app", got)
+	}
+}
+
 func TestInteractiveDashboardFailedActionPreservesSnapshotAndShowsError(t *testing.T) {
 	actions := &fakeDashboardActions{errByCall: map[string]error{"restart-app one": errors.New("compose restart failed")}}
 	refreshCount := 0
@@ -420,7 +480,7 @@ func TestInteractiveDashboardFailedActionPreservesSnapshotAndShowsError(t *testi
 	}, actions)
 	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 30})
 
-	model, cmd := pressDashboardKeysWithFinalCmd(t, model, []string{"a", "enter"})
+	model, cmd := pressDashboardKeysWithFinalCmd(t, model, []string{"a", "down", "down", "enter"})
 	if cmd == nil {
 		t.Fatal("restart app returned nil command")
 	}
@@ -594,6 +654,14 @@ func (f *fakeDashboardActions) record(call string) error {
 		return nil
 	}
 	return f.errByCall[call]
+}
+
+func (f *fakeDashboardActions) StartApp(appName string) error {
+	return f.record(fmt.Sprintf("start %s", appName))
+}
+
+func (f *fakeDashboardActions) StopApp(appName string) error {
+	return f.record(fmt.Sprintf("stop %s", appName))
 }
 
 func (f *fakeDashboardActions) RestartApp(appName string) error {

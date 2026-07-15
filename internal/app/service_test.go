@@ -261,7 +261,7 @@ func TestServiceRestartAppAndServiceUseLatestSuccessfulRelease(t *testing.T) {
 	if serviceRestart.ServiceName != "web" {
 		t.Fatalf("service restart request = %#v", serviceRestart)
 	}
-	assertEventTypes(t, store.events["app_1"], []string{"restart.triggered", "restart.succeeded", "service.restart.triggered", "service.restart.succeeded"})
+	assertEventTypes(t, store.events["app_1"], []string{"restart.started", "restart.succeeded", "service.restart.started", "service.restart.succeeded"})
 }
 
 func TestServiceRedeployCurrentMainUsesFailedCurrentCommitInsteadOfLatestGood(t *testing.T) {
@@ -573,9 +573,13 @@ func withCurrentMain(commitSHA string) ServiceOption {
 
 type fakeRecoveryRunner struct {
 	deploys  []compose.DeployRequest
+	starts   []compose.LifecycleRequest
+	stops    []compose.LifecycleRequest
 	restarts []compose.RestartRequest
 
 	deployErr  error
+	startErr   error
+	stopErr    error
 	restartErr error
 }
 
@@ -612,6 +616,16 @@ func (f *fakeWorktreeCheckout) Checkout(_ context.Context, repoPath string, work
 func (f *fakeRecoveryRunner) Deploy(_ context.Context, request compose.DeployRequest) (compose.DeployResult, error) {
 	f.deploys = append(f.deploys, request)
 	return compose.DeployResult{}, f.deployErr
+}
+
+func (f *fakeRecoveryRunner) Start(_ context.Context, request compose.LifecycleRequest) error {
+	f.starts = append(f.starts, request)
+	return f.startErr
+}
+
+func (f *fakeRecoveryRunner) Stop(_ context.Context, request compose.LifecycleRequest) error {
+	f.stops = append(f.stops, request)
+	return f.stopErr
 }
 
 func (f *fakeRecoveryRunner) Restart(_ context.Context, request compose.RestartRequest) error {

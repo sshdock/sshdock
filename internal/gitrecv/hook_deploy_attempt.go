@@ -104,7 +104,7 @@ func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName strin
 	if h.configResolver == nil {
 		return nil, nil
 	}
-	return h.configResolver.ResolveAppConfig(ctx, appName, projectDir)
+	return h.configResolver.ResolveAppConfig(ctx, appName)
 }
 
 func (h *PostReceiveHandler) resolveDeployRedactionValues(ctx context.Context, appName string, env map[string]string) (map[string]string, error) {

@@ -360,7 +360,7 @@ func TestServiceRedeployCurrentMainPassesResolvedConfigEnvironment(t *testing.T)
 	if len(resolver.requests) != 1 {
 		t.Fatalf("resolver requests = %#v", resolver.requests)
 	}
-	if resolver.requests[0] != (configResolveRequest{appID: "app_1", projectDir: "/apps/app_1/worktree"}) {
+	if resolver.requests[0] != (configResolveRequest{appID: "app_1"}) {
 		t.Fatalf("resolver request = %#v", resolver.requests[0])
 	}
 	if len(runner.deploys) != 1 || runner.deploys[0].Env["DATABASE_URL"] != "postgres://secret" {
@@ -580,8 +580,7 @@ type fakeRecoveryRunner struct {
 }
 
 type configResolveRequest struct {
-	appID      string
-	projectDir string
+	appID string
 }
 
 type fakeConfigResolver struct {
@@ -590,8 +589,8 @@ type fakeConfigResolver struct {
 	requests []configResolveRequest
 }
 
-func (f *fakeConfigResolver) ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
-	f.requests = append(f.requests, configResolveRequest{appID: appID, projectDir: projectDir})
+func (f *fakeConfigResolver) ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error) {
+	f.requests = append(f.requests, configResolveRequest{appID: appID})
 	return f.env, f.err
 }
 

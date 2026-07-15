@@ -189,7 +189,7 @@ Path:
 examples/config-app
 ```
 
-This example proves app-scoped config without committing values: `.sshdock.yml` declares `APP_MESSAGE`, Compose references `${APP_MESSAGE}`, the first push fails before Compose starts, and the second push succeeds after the value is stored over SSH.
+This example proves app config without committing values: Compose requires `APP_MESSAGE` with native interpolation, the first push fails before containers start, and the second push succeeds after the value is stored over SSH.
 
 The app renders `APP_MESSAGE` publicly, so use a non-secret demo value for this example. The same config feature can store secrets, but applications should not return real secrets in HTTP responses.
 
@@ -199,7 +199,6 @@ Deploy:
 mkdir config-app
 cd config-app
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/Dockerfile
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/README.md
@@ -213,8 +212,7 @@ git push sshdock main
 Expected first-push evidence:
 
 - The remote creates `config-app`.
-- Deploy fails with `missing required config for config-app: APP_MESSAGE`.
-- The error includes `ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE`.
+- Deploy fails with `required variable APP_MESSAGE is missing a value`.
 - Docker Compose does not start.
 
 Set the missing value:

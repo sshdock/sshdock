@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -399,6 +400,108 @@ func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 	}
 }
 
+func TestOpenSQLiteMigratesUnambiguousScopedConfigToFlatSchema(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "legacy-config.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy database: %v", err)
+	}
+	statements := []string{
+		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
+		`insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'dashboard')`,
+	}
+	for _, statement := range statements {
+		if _, err := legacy.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare legacy config database: %v\n%s", err, statement)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy database: %v", err)
+	}
+
+	// When
+	migrated, err := OpenSQLite(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := migrated.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	// Then
+	value, err := migrated.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"})
+	if err != nil {
+		t.Fatalf("GetAppConfigValue: %v", err)
+	}
+	if value.Name != "API_TOKEN" || string(value.Ciphertext) == string([]byte{0x01, 0x02}) {
+		t.Fatalf("migrated config value = %#v", value)
+	}
+	hasScope, err := tableColumnExists(ctx, migrated.db, "app_config_values", "scope")
+	if err != nil {
+		t.Fatalf("inspect migrated config schema: %v", err)
+	}
+	if hasScope {
+		t.Fatal("migrated app_config_values still has scope column")
+	}
+}
+
+func TestOpenSQLiteRejectsConflictingScopedConfigWithoutMutatingLegacyRows(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "conflicting-config.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy database: %v", err)
+	}
+	statements := []string{
+		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
+		`insert into app_config_values values ('my-app', 'API_TOKEN', '', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`,
+		`insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', x'0506', x'0708', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'dashboard')`,
+	}
+	for _, statement := range statements {
+		if _, err := legacy.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare conflicting config database: %v\n%s", err, statement)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy database: %v", err)
+	}
+
+	// When
+	_, err = OpenSQLite(ctx, path)
+
+	// Then
+	if err == nil {
+		t.Fatal("OpenSQLite error = nil, want conflicting config migration error")
+	}
+	for _, want := range []string{
+		`app config migration blocked for app "my-app" key "API_TOKEN"`,
+		`scopes: <flat>, worker`,
+		`remove all but one value with the previous SSHDock version, then retry`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("OpenSQLite error missing %q:\n%v", want, err)
+		}
+	}
+
+	legacy, err = sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("reopen legacy database: %v", err)
+	}
+	defer legacy.Close()
+	var count int
+	if err := legacy.QueryRowContext(ctx, `select count(*) from app_config_values where app_id = 'my-app' and name = 'API_TOKEN'`).Scan(&count); err != nil {
+		t.Fatalf("count legacy config rows: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("legacy config row count = %d, want 2", count)
+	}
+}
+
 func TestSQLiteStoreDomains(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
@@ -657,10 +760,9 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 		t.Fatalf("UpsertAppConfigValue: %v", err)
 	}
 
-	scoped := AppConfigValue{
+	second := AppConfigValue{
 		AppID:      "my-app",
 		Name:       "API_TOKEN",
-		Scope:      "worker",
 		Ciphertext: []byte("ciphertext-2"),
 		Nonce:      []byte("nonce-7654321"),
 		KeyVersion: 1,
@@ -668,8 +770,8 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 		UpdatedAt:  createdAt,
 		MutatedBy:  "dashboard",
 	}
-	if err := store.UpsertAppConfigValue(ctx, scoped); err != nil {
-		t.Fatalf("UpsertAppConfigValue scoped: %v", err)
+	if err := store.UpsertAppConfigValue(ctx, second); err != nil {
+		t.Fatalf("UpsertAppConfigValue second: %v", err)
 	}
 
 	replacement := first
@@ -695,17 +797,17 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 	if len(values) != 2 {
 		t.Fatalf("values = %#v, want two", values)
 	}
-	if values[0].Name != "DATABASE_URL" || values[0].Scope != "" || values[1].Name != "API_TOKEN" || values[1].Scope != "worker" {
+	if values[0].Name != "API_TOKEN" || values[1].Name != "DATABASE_URL" {
 		t.Fatalf("values ordering/content = %#v", values)
 	}
 
-	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); err != nil {
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); err != nil {
 		t.Fatalf("DeleteAppConfigValue: %v", err)
 	}
-	if _, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); !errors.Is(err, ErrNotFound) {
+	if _, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetAppConfigValue deleted error = %v, want ErrNotFound", err)
 	}
-	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"}); !errors.Is(err, ErrNotFound) {
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("DeleteAppConfigValue missing error = %v, want ErrNotFound", err)
 	}
 }

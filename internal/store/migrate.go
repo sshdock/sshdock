@@ -72,14 +72,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		`create table if not exists app_config_values (
 			app_id text not null,
 			name text not null,
-			scope text not null default '',
 			ciphertext blob not null,
 			nonce blob not null,
 			key_version integer not null,
 			created_at text not null,
 			updated_at text not null,
 			mutated_by text not null,
-			primary key (app_id, name, scope)
+			primary key (app_id, name)
 		)`,
 		`create index if not exists idx_releases_app_id on releases(app_id)`,
 		`create unique index if not exists idx_releases_app_commit on releases(app_id, commit_sha)`,
@@ -95,7 +94,10 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	return migrateLegacyDeployments(ctx, db)
+	if err := migrateLegacyDeployments(ctx, db); err != nil {
+		return err
+	}
+	return migrateLegacyAppConfig(ctx, db)
 }
 
 func migrateLegacyDeployments(ctx context.Context, db *sql.DB) error {

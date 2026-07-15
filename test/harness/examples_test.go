@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
@@ -16,7 +15,6 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 	tests := []struct {
 		name          string
 		dir           string
-		wantConfig    []appconfig.RequiredKey
 		requiredFiles []string
 	}{
 		{
@@ -49,21 +47,20 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 		{
 			name: "config app",
 			dir:  filepath.Join(root, "examples", "config-app"),
-			wantConfig: []appconfig.RequiredKey{
-				{Name: "APP_MESSAGE"},
-			},
 			requiredFiles: []string{
 				"README.md",
 				"compose.yml",
 				"Dockerfile",
 				"server.py",
-				".sshdock.yml",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "config app" {
+				t.Setenv("APP_MESSAGE", "example")
+			}
 			for _, requiredFile := range tt.requiredFiles {
 				path := filepath.Join(tt.dir, requiredFile)
 				if !fileExists(path) {
@@ -74,21 +71,6 @@ func TestExamplesAreRunnableDocsContracts(t *testing.T) {
 			composePath := filepath.Join(tt.dir, "compose.yml")
 			if _, err := compose.ValidateFile(composePath); err != nil {
 				t.Fatalf("ValidateFile(%s): %v", composePath, err)
-			}
-
-			if len(tt.wantConfig) > 0 {
-				manifest, err := appconfig.LoadManifest(tt.dir)
-				if err != nil {
-					t.Fatalf("LoadManifest(%s): %v", tt.dir, err)
-				}
-				if len(manifest.Required) != len(tt.wantConfig) {
-					t.Fatalf("manifest required keys = %#v, want %#v", manifest.Required, tt.wantConfig)
-				}
-				for i, want := range tt.wantConfig {
-					if manifest.Required[i] != want {
-						t.Fatalf("manifest required key %d = %#v, want %#v", i, manifest.Required[i], want)
-					}
-				}
 			}
 		})
 	}
@@ -101,13 +83,16 @@ func TestConfigExampleDocumentsConfigWorkflow(t *testing.T) {
 	if fileExists(filepath.Join(dir, ".env")) {
 		t.Fatalf("config-app must not commit .env")
 	}
+	if fileExists(filepath.Join(dir, ".sshdock.yml")) {
+		t.Fatalf("config-app must use Compose-native required interpolation, not .sshdock.yml")
+	}
 
 	composePath := filepath.Join(dir, "compose.yml")
 	composeContents, err := os.ReadFile(composePath)
 	if err != nil {
 		t.Fatalf("ReadFile(%s): %v", composePath, err)
 	}
-	if !strings.Contains(string(composeContents), "APP_MESSAGE=${APP_MESSAGE}") {
+	if !strings.Contains(string(composeContents), "APP_MESSAGE=${APP_MESSAGE:?") {
 		t.Fatalf("compose file must pass APP_MESSAGE from SSHDock config")
 	}
 
@@ -119,7 +104,7 @@ func TestConfigExampleDocumentsConfigWorkflow(t *testing.T) {
 	readme := string(readmeContents)
 	for _, want := range []string{
 		"git push sshdock main",
-		"missing required config",
+		"required variable APP_MESSAGE is missing a value",
 		"ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE",
 		"ssh dashboard@sshdock.example.com config list config-app",
 		"ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE",
@@ -290,7 +275,6 @@ func TestExamplesDocumentGitHubCopy(t *testing.T) {
 				"curl -fsSLo public/index.html https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/static-site/public/index.html",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/Dockerfile",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/build-service/server.py",
-				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py",
 				"git init -b main",
 			},
@@ -337,7 +321,6 @@ func TestExamplesDocumentGitHubCopy(t *testing.T) {
 				"mkdir config-app",
 				"raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/compose.yml",
-				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/Dockerfile",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py",
 				"curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/README.md",

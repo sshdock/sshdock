@@ -66,7 +66,7 @@ These warnings make host coupling visible; they do not sandbox the workload. A t
 
 SSHDock resolves the app's flat encrypted config map before Compose starts and passes it only through the Compose process environment. Compose sends values to containers only where the committed model references them; SSHDock does not blanket-inject stored values into every service. Use native required interpolation such as `${DATABASE_URL:?set DATABASE_URL}` so Docker Compose remains the requirement authority.
 
-Operational names beginning with `SSHDOCK_`, `COMPOSE_`, `DOCKER_`, `SSH_`, `LD_`, `BUILDKIT_`, or `BUILDX_`, plus `PATH` and `HOME`, are reserved so app config cannot redirect SSHDock or Compose execution. Existing scoped values and `.sshdock.yml` declarations remain readable during the compatibility window.
+Operational names beginning with `SSHDOCK_`, `COMPOSE_`, `DOCKER_`, `SSH_`, `LD_`, `BUILDKIT_`, or `BUILDX_`, plus `PATH` and `HOME`, are reserved so app config cannot redirect SSHDock or Compose execution.
 
 Compose `configs` and `secrets` fields are passed to Docker Compose normally. The external-file boundary above applies to Compose definitions loaded through `include` or `extends.file`, not ordinary files referenced by application fields.
 

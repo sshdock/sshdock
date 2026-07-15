@@ -18,7 +18,6 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/diagnostics"
-	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
@@ -66,7 +65,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(context.Background(), sqlite, cfg)))
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 
 	var recoveryRunner compose.Runner
 	if commandNeedsRecoveryRunner(args) {
@@ -327,18 +326,6 @@ func commandNeedsRecoveryRunner(args []string) bool {
 		return true
 	}
 	return false
-}
-
-func configRecoveryHost(ctx context.Context, persistentStore store.Store, cfg config.Config) string {
-	if serverConfig, err := persistentStore.GetServerConfig(ctx); err == nil {
-		if serverConfig.BaseDomain != "" {
-			return domaincfg.ControlHost(serverConfig.BaseDomain)
-		}
-		if serverConfig.GitHost != "" {
-			return serverConfig.GitHost
-		}
-	}
-	return cfg.GitHost
 }
 
 func cliRunnerFromEnv() (compose.Runner, error) {

@@ -11,14 +11,14 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
-func TestPostReceiveHandlerRedactsUnusedLegacyScopedValuesFromDeployFailures(t *testing.T) {
+func TestPostReceiveHandlerRedactsStoredValuesFromDeployFailures(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	secret := "legacy-scoped-secret"
+	secret := "stored-secret"
 	configService := appconfig.NewService(sqlite, filepath.Join(t.TempDir(), "config.key"))
-	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "TOKEN", Scope: "worker", Value: []byte(secret)}); err != nil {
-		t.Fatalf("Set scoped config: %v", err)
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "TOKEN", Value: []byte(secret)}); err != nil {
+		t.Fatalf("Set config: %v", err)
 	}
 	runner := &compose.FakeRunner{DeployErr: errors.New("deploy output contained " + secret)}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{

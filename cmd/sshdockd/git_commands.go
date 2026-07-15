@@ -75,7 +75,7 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
 		return 1
 	}
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(context.Background(), sqlite, cfg)))
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 
 	handler := gitrecv.NewPostReceiveHandler(gitrecv.PostReceiveHandlerConfig{
 		Store:          sqlite,

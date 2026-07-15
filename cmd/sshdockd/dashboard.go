@@ -44,7 +44,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(ctx, sqlite, cfg)))
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
 		args, ok := dashboardOriginalCommandArgs(originalCommand)
 		if !ok {

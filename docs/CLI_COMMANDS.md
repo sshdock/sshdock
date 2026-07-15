@@ -103,7 +103,7 @@ Restore extracts to a temporary directory first, validates the manifest format, 
 
 Run restore as a user that can preserve SSHDock state ownership and modes. v0 backup archives are intended for compatible single-node SSHDock installs, not cross-host migration guarantees.
 
-### `sshdock config set <app> <key> [--scope <scope>]`
+### `sshdock config set <app> <key>`
 
 Read one config value from stdin and store it for an existing app. SSHDock does not create apps from config commands, so typos do not create secret-bearing app rows.
 
@@ -117,7 +117,7 @@ Flat app config is the default. SSHDock supplies flat stored values only to the 
 
 If the app is already running, deploy or redeploy it after changing config so containers receive the new value.
 
-### `sshdock config import <app> [--scope <scope>]`
+### `sshdock config import <app>`
 
 Read `KEY=VALUE` lines from stdin and store each value for an existing app.
 
@@ -131,7 +131,7 @@ If one or more values are imported for a running app, deploy or redeploy it so c
 
 ### `sshdock config list <app>`
 
-List key names, optional scopes, status, update time, and mutation source without revealing values.
+List key names, status, update time, and mutation source without revealing values.
 
 ```bash
 ssh dashboard@sshdock.example.com config list my-app
@@ -140,18 +140,18 @@ ssh dashboard@sshdock.example.com config list my-app
 Output format:
 
 ```text
-<key>	<scope-or->	<status>	<redacted>	<updated-at>	<mutated-by>
+<key>	<status>	<redacted>	<updated-at>	<mutated-by>
 ```
 
 ### `sshdock config keys <app>`
 
-Print only configured key names, one per line, without values or metadata. Scoped keys use `<scope>/<key>`.
+Print only configured key names, one per line, without values or metadata.
 
 ```bash
 ssh dashboard@sshdock.example.com config keys my-app
 ```
 
-### `sshdock config get <app> <key> [--scope <scope>]`
+### `sshdock config get <app> <key>`
 
 Explicitly reveal one config value.
 
@@ -163,7 +163,7 @@ Use this sparingly; normal list, dashboard, event, deployment-error, and log pat
 
 When running locally as a non-root user on the server, use `sudo sshdock config get ...` or the dashboard SSH command. SSHDock keeps the host-local encryption key readable only by privileged runtime users.
 
-### `sshdock config unset <app> <key> [--scope <scope>]`
+### `sshdock config unset <app> <key>`
 
 Remove one stored config value.
 
@@ -188,19 +188,11 @@ services:
 
 Missing required interpolation fails Compose validation before containers start. The failure names the missing key and remains redacted in deploy output, deployment history, events, logs, health output, and the TUI. Config mutation never starts, restarts, or redeploys an app; run `apps redeploy` explicitly when the new value should take effect.
 
-### Legacy `.sshdock.yml` Compatibility
+### Migrating Existing Scoped Config
 
-Existing apps may continue to use `.sshdock.yml` declarations and scoped config during the compatibility window:
+When SSHDock first opens an older database, it migrates a single existing value for each app/key to the flat config model. The ciphertext stays encrypted, remains bound to the same host-local key, and is not written to a plaintext migration file.
 
-```yaml
-config:
-  required:
-    - DATABASE_URL
-    - name: API_TOKEN
-      scope: worker
-```
-
-On deploy, SSHDock still resolves these legacy declarations and includes exact `ssh dashboard@<host> config set ...` recovery commands for missing values. New apps should use flat config and native Compose interpolation instead.
+If an app/key has values in more than one old scope, startup stops instead of choosing one. The error names the app, key, and conflicting scopes. Run the previous SSHDock version, remove all but the intended value for that app/key, then retry the upgrade.
 
 This local encryption model protects against database-only leaks and ordinary SQLite backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up the SQLite database and the host-local config key together.
 

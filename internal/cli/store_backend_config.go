@@ -19,37 +19,36 @@ type configManager interface {
 	List(ctx context.Context, appID string) ([]appconfig.Entry, error)
 	Reveal(ctx context.Context, ref appconfig.ConfigRef) (string, error)
 	Unset(ctx context.Context, ref appconfig.ConfigRef) error
-	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
+	ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error)
 	RedactionValues(ctx context.Context, appID string) (map[string]string, error)
 }
 
 type configMutationEventRequest struct {
 	appName   string
 	name      string
-	scope     string
 	eventType string
 	message   string
 }
 
-func (b *StoreBackend) SetConfig(appName string, name string, scope string, value []byte) error {
+func (b *StoreBackend) SetConfig(appName string, name string, value []byte) error {
 	if b.configManager == nil {
 		return fmt.Errorf("config manager is not configured")
 	}
 	ctx := context.Background()
 	event, err := b.configMutationEvent(configMutationEventRequest{
-		appName: appName, name: name, scope: scope,
+		appName: appName, name: name,
 		eventType: "config.set", message: "Config value set",
 	})
 	if err != nil {
 		return err
 	}
-	if err := b.configManager.Set(ctx, appconfig.SetRequest{AppID: appName, Name: name, Scope: scope, Value: value, MutatedBy: "dashboard"}); err != nil {
+	if err := b.configManager.Set(ctx, appconfig.SetRequest{AppID: appName, Name: name, Value: value, MutatedBy: "dashboard"}); err != nil {
 		return err
 	}
 	return b.recordConfigMutation(ctx, event)
 }
 
-func (b *StoreBackend) ImportConfig(appName string, scope string, input io.Reader) (int, error) {
+func (b *StoreBackend) ImportConfig(appName string, input io.Reader) (int, error) {
 	if b.configManager == nil {
 		return 0, fmt.Errorf("config manager is not configured")
 	}
@@ -69,7 +68,7 @@ func (b *StoreBackend) ImportConfig(appName string, scope string, input io.Reade
 		if !ok {
 			return count, fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
 		}
-		if err := b.SetConfig(appName, strings.TrimSpace(name), scope, []byte(value)); err != nil {
+		if err := b.SetConfig(appName, strings.TrimSpace(name), []byte(value)); err != nil {
 			return count, err
 		}
 		count++
@@ -87,31 +86,31 @@ func (b *StoreBackend) ListConfig(appName string) ([]ConfigEntry, error) {
 	}
 	result := make([]ConfigEntry, 0, len(entries))
 	for _, entry := range entries {
-		result = append(result, ConfigEntry{Name: entry.Name, Scope: entry.Scope, Status: entry.Status, RedactedValue: entry.RedactedValue, UpdatedAt: entry.UpdatedAt, MutatedBy: entry.MutatedBy})
+		result = append(result, ConfigEntry{Name: entry.Name, Status: entry.Status, RedactedValue: entry.RedactedValue, UpdatedAt: entry.UpdatedAt, MutatedBy: entry.MutatedBy})
 	}
 	return result, nil
 }
 
-func (b *StoreBackend) GetConfig(appName string, name string, scope string) (string, error) {
+func (b *StoreBackend) GetConfig(appName string, name string) (string, error) {
 	if b.configManager == nil {
 		return "", fmt.Errorf("config manager is not configured")
 	}
-	return b.configManager.Reveal(context.Background(), appconfig.ConfigRef{AppID: appName, Name: name, Scope: scope})
+	return b.configManager.Reveal(context.Background(), appconfig.ConfigRef{AppID: appName, Name: name})
 }
 
-func (b *StoreBackend) UnsetConfig(appName string, name string, scope string) error {
+func (b *StoreBackend) UnsetConfig(appName string, name string) error {
 	if b.configManager == nil {
 		return fmt.Errorf("config manager is not configured")
 	}
 	ctx := context.Background()
 	event, err := b.configMutationEvent(configMutationEventRequest{
-		appName: appName, name: name, scope: scope,
+		appName: appName, name: name,
 		eventType: "config.unset", message: "Config value unset",
 	})
 	if err != nil {
 		return err
 	}
-	if err := b.configManager.Unset(ctx, appconfig.ConfigRef{AppID: appName, Name: name, Scope: scope}); err != nil {
+	if err := b.configManager.Unset(ctx, appconfig.ConfigRef{AppID: appName, Name: name}); err != nil {
 		return err
 	}
 	return b.recordConfigMutation(ctx, event)
@@ -122,13 +121,9 @@ func (b *StoreBackend) configMutationEvent(request configMutationEventRequest) (
 	if err != nil {
 		return appmodel.Event{}, fmt.Errorf("create config mutation event ID: %w", err)
 	}
-	key := request.name
-	if request.scope != "" {
-		key = request.scope + "/" + request.name
-	}
 	return appmodel.Event{
 		ID: eventID(operationID, request.eventType), AppID: request.appName,
-		Type: request.eventType, Message: request.message + " for " + key, CreatedAt: b.now(),
+		Type: request.eventType, Message: request.message + " for " + request.name, CreatedAt: b.now(),
 	}, nil
 }
 
@@ -154,7 +149,7 @@ func (b *StoreBackend) configEnv(ctx context.Context, appName string, projectDir
 	if b.configManager == nil {
 		return nil, nil
 	}
-	env, err := b.configManager.ResolveAppConfig(ctx, appName, projectDir)
+	env, err := b.configManager.ResolveAppConfig(ctx, appName)
 	if err != nil {
 		return nil, fmt.Errorf("resolve config for app %q: %w", appName, err)
 	}

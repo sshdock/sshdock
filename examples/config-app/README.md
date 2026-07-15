@@ -1,6 +1,6 @@
 # Config App
 
-Minimal Python example that declares required SSHDock config in `.sshdock.yml` and passes it into Docker Compose as `APP_MESSAGE`. SSHDock should infer `web:18082` from `127.0.0.1:18082:8080`.
+Minimal Python example that declares required config with native Compose interpolation and passes it into the container as `APP_MESSAGE`. SSHDock should infer `web:18082` from `127.0.0.1:18082:8080`.
 
 For the fuller walkthrough, see [`../../docs/EXAMPLES.md`](../../docs/EXAMPLES.md).
 
@@ -14,7 +14,6 @@ Replace `example.com` with your SSHDock base domain.
 mkdir config-app
 cd config-app
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/compose.yml
-curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/.sshdock.yml
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/Dockerfile
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/server.py
 curl -fsSLO https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/examples/config-app/README.md
@@ -28,7 +27,7 @@ git push sshdock main
 The first push is expected to create the app and fail before Docker Compose starts:
 
 ```text
-missing required config for config-app: APP_MESSAGE
+required variable APP_MESSAGE is missing a value
 ```
 
 Set the missing value over SSH. `config list` stays redacted, while `config get` is an explicit reveal:

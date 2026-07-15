@@ -26,13 +26,11 @@ type SSHKey struct {
 type AppConfigRef struct {
 	AppID string
 	Name  string
-	Scope string
 }
 
 type AppConfigValue struct {
 	AppID      string
 	Name       string
-	Scope      string
 	Ciphertext []byte
 	Nonce      []byte
 	KeyVersion int

@@ -202,7 +202,7 @@ type fakeDashboardConfigResolver struct {
 	redactionValues map[string]string
 }
 
-func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string, _ string) (map[string]string, error) {
+func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string) (map[string]string, error) {
 	result := make(map[string]string, len(f.env))
 	for key, value := range f.env {
 		result[key] = value

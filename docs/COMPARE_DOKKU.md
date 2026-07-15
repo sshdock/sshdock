@@ -30,7 +30,7 @@ Stay on Dokku, or evaluate it first, when you need:
 | Build path | Compose `image` or `build` in `compose.yml` | Buildpacks, Dockerfile, cloud native buildpacks, and other builders |
 | Operations | `sudo sshdock ...` and SSH dashboard | `dokku ...` CLI and plugin commands |
 | Web UI | None | None in core Dokku |
-| Config/secrets | `.sshdock.yml` declares required keys; values are stored encrypted and set through SSH or local CLI | `dokku config:set` and related config commands |
+| Config/secrets | Compose interpolation declares requirements; flat values are stored encrypted and set through SSH or local CLI | `dokku config:set` and related config commands |
 | Domains | Base-domain default route, `domains attach`, `domains list`, `domains check` | Domains plugin and proxy/SSL configuration |
 | Logs | `sshdock logs <app> [service] --tail <n>` | Dokku log commands |
 | Rollback | Release list plus `sshdock apps rollback <app> <release-id>` | Dokku release and rollback tooling |
@@ -59,7 +59,7 @@ Poor candidates:
 Use [`MIGRATE_FROM_DOKKU.md`](MIGRATE_FROM_DOKKU.md) for a practical migration path. The short version:
 
 1. Convert the app shape to `compose.yml`.
-2. Commit `.sshdock.yml` for required config names, not values.
+2. Declare required config with native Compose interpolation, not committed values.
 3. Set config through `ssh dashboard@sshdock.<domain> config ...`.
 4. Push to SSHDock.
 5. Verify health, route, logs, events, rollback, and backup before DNS cutover.

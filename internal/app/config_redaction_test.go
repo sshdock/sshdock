@@ -52,7 +52,7 @@ type allValueConfigResolver struct {
 	redactionValues map[string]string
 }
 
-func (r allValueConfigResolver) ResolveAppConfig(context.Context, string, string) (map[string]string, error) {
+func (r allValueConfigResolver) ResolveAppConfig(context.Context, string) (map[string]string, error) {
 	return r.env, nil
 }
 

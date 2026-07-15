@@ -19,7 +19,7 @@ type DashboardStore interface {
 }
 
 type DashboardConfigResolver interface {
-	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
+	ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error)
 }
 
 type DashboardHandler struct {

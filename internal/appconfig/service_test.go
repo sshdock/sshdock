@@ -1,7 +1,9 @@
 package appconfig
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,7 +27,6 @@ func TestServiceSetListRevealUnsetAndImport(t *testing.T) {
 	}
 	if err := service.Import(ctx, ImportRequest{
 		AppID:     "my-app",
-		Scope:     "worker",
 		Input:     strings.NewReader("API_TOKEN=worker-secret\n# comment\nEMPTY=\n"),
 		MutatedBy: "dashboard",
 	}); err != nil {
@@ -39,7 +40,7 @@ func TestServiceSetListRevealUnsetAndImport(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("entries = %#v, want three", entries)
 	}
-	if entries[0].Name != "DATABASE_URL" || entries[0].Status != "set" || entries[0].RedactedValue != "<redacted>" {
+	if entries[0].Name != "API_TOKEN" || entries[0].Status != "set" || entries[0].RedactedValue != "<redacted>" {
 		t.Fatalf("first entry = %#v", entries[0])
 	}
 	if entries[0].Value != "" {
@@ -101,7 +102,7 @@ func TestServiceRevealReportsMissingHostKey(t *testing.T) {
 	}
 }
 
-func TestServiceResolveEnvChecksManifestRequirements(t *testing.T) {
+func TestServiceResolveEnvIgnoresLegacyManifestRequirements(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newConfigTestStore(t, ctx)
 	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
@@ -115,37 +116,21 @@ func TestServiceResolveEnvChecksManifestRequirements(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 
-	service := NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), WithRecoveryHost("sshdock.example.com"), WithClock(func() time.Time { return now }))
+	service := NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), WithClock(func() time.Time { return now }))
 	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
-	_, err := service.ResolveEnv(ctx, ResolveRequest{AppID: "my-app", ProjectDir: projectDir})
-	if err == nil {
-		t.Fatal("ResolveEnv error = nil, want missing key error")
-	}
-	for _, want := range []string{
-		"missing required config for my-app: API_TOKEN",
-		"ssh dashboard@sshdock.example.com config set my-app API_TOKEN",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("ResolveEnv error missing %q:\n%v", want, err)
-		}
-	}
-
-	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "API_TOKEN", Value: []byte("api-secret")}); err != nil {
-		t.Fatalf("Set API_TOKEN: %v", err)
-	}
-	env, err := service.ResolveEnv(ctx, ResolveRequest{AppID: "my-app", ProjectDir: projectDir})
+	env, err := service.ResolveEnv(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ResolveEnv: %v", err)
 	}
-	if env["DATABASE_URL"] != "postgres://secret" || env["API_TOKEN"] != "api-secret" {
+	if env["DATABASE_URL"] != "postgres://secret" || len(env) != 1 {
 		t.Fatalf("env = %#v", env)
 	}
 }
 
-func TestServiceResolveEnvSuppliesFlatValuesWithoutManifest(t *testing.T) {
+func TestServiceResolveEnvSuppliesAllFlatValues(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	sqlite := newConfigTestStore(t, ctx)
@@ -155,12 +140,12 @@ func TestServiceResolveEnvSuppliesFlatValuesWithoutManifest(t *testing.T) {
 	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
 		t.Fatalf("Set flat config: %v", err)
 	}
-	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "API_TOKEN", Scope: "worker", Value: []byte("legacy-secret")}); err != nil {
-		t.Fatalf("Set scoped config: %v", err)
+	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "API_TOKEN", Value: []byte("api-secret")}); err != nil {
+		t.Fatalf("Set API_TOKEN: %v", err)
 	}
 
 	// When
-	env, err := service.ResolveEnv(ctx, ResolveRequest{AppID: "my-app", ProjectDir: t.TempDir()})
+	env, err := service.ResolveEnv(ctx, "my-app")
 
 	// Then
 	if err != nil {
@@ -169,15 +154,77 @@ func TestServiceResolveEnvSuppliesFlatValuesWithoutManifest(t *testing.T) {
 	if env["DATABASE_URL"] != "postgres://secret" {
 		t.Fatalf("env = %#v, want flat DATABASE_URL", env)
 	}
-	if _, found := env["API_TOKEN"]; found {
-		t.Fatalf("env = %#v, scoped API_TOKEN must not be injected without a legacy manifest declaration", env)
+	if env["API_TOKEN"] != "api-secret" {
+		t.Fatalf("env = %#v, want flat API_TOKEN", env)
 	}
-	value, err := service.Reveal(ctx, ConfigRef{AppID: "my-app", Name: "API_TOKEN", Scope: "worker"})
+}
+
+func TestServiceRevealsMigratedLegacyScopedValueWithExistingHostKey(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+	keyPath := filepath.Join(dir, "config.key")
+	key, err := LoadOrCreateHostKey(keyPath)
 	if err != nil {
-		t.Fatalf("Reveal legacy scoped config: %v", err)
+		t.Fatalf("LoadOrCreateHostKey: %v", err)
+	}
+	ref := ConfigRef{AppID: "my-app", Name: "API_TOKEN"}
+	aead, err := newAEAD(key)
+	if err != nil {
+		t.Fatalf("newAEAD: %v", err)
+	}
+	nonce := bytes.Repeat([]byte{0x03}, aead.NonceSize())
+	legacyCiphertext := aead.Seal(nil, nonce, []byte("legacy-secret"), additionalData(ref, "worker", currentKeyVersion))
+
+	legacy, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy database: %v", err)
+	}
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{query: `create table apps (id text primary key, name text not null, node_id text not null, repo_path text not null, worktree_path text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`},
+		{query: `create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`},
+		{query: `insert into apps values ('my-app', 'my-app', 'local', '/apps/my-app/repo.git', '/apps/my-app/worktree', 'compose.yml', 'created', '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z')`},
+		{query: `insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', ?, ?, 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`, args: []any{legacyCiphertext, nonce}},
+	}
+	for _, statement := range statements {
+		if _, err := legacy.ExecContext(ctx, statement.query, statement.args...); err != nil {
+			t.Fatalf("prepare legacy database: %v\n%s", err, statement.query)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy database: %v", err)
+	}
+
+	// When
+	sqlite, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlite.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+	service := NewService(sqlite, keyPath)
+	value, err := service.Reveal(ctx, ref)
+
+	// Then
+	if err != nil {
+		t.Fatalf("Reveal migrated value: %v", err)
 	}
 	if value != "legacy-secret" {
-		t.Fatalf("Reveal legacy scoped config = %q", value)
+		t.Fatalf("Reveal migrated value = %q", value)
+	}
+	database, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatalf("ReadFile database: %v", err)
+	}
+	if bytes.Contains(database, []byte("legacy-secret")) {
+		t.Fatal("migrated database contains plaintext config value")
 	}
 }
 
@@ -203,7 +250,7 @@ func TestServiceSetRejectsOperationalEnvironmentNames(t *testing.T) {
 	}
 }
 
-func TestServiceRedactionValuesIncludesFlatAndLegacyScopedValues(t *testing.T) {
+func TestServiceRedactionValuesIncludesAllFlatValues(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	sqlite := newConfigTestStore(t, ctx)
@@ -213,8 +260,8 @@ func TestServiceRedactionValuesIncludesFlatAndLegacyScopedValues(t *testing.T) {
 	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "TOKEN", Value: []byte("flat-secret")}); err != nil {
 		t.Fatalf("Set flat config: %v", err)
 	}
-	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "TOKEN", Scope: "worker", Value: []byte("scoped-secret")}); err != nil {
-		t.Fatalf("Set scoped config: %v", err)
+	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("database-secret")}); err != nil {
+		t.Fatalf("Set DATABASE_URL: %v", err)
 	}
 
 	// When
@@ -228,7 +275,7 @@ func TestServiceRedactionValuesIncludesFlatAndLegacyScopedValues(t *testing.T) {
 	for _, value := range values {
 		got[value] = true
 	}
-	if !got["flat-secret"] || !got["scoped-secret"] || len(got) != 2 {
+	if !got["flat-secret"] || !got["database-secret"] || len(got) != 2 {
 		t.Fatalf("redaction values = %#v", values)
 	}
 }

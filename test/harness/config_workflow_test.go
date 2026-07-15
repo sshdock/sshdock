@@ -40,7 +40,7 @@ func TestConfigImportAndGitPushDeployUsesProcessEnvironment(t *testing.T) {
 		t.Fatalf("CreateApp: %v", err)
 	}
 
-	configService := appconfig.NewService(sqlite, filepath.Join(root, "config.key"), appconfig.WithRecoveryHost("sshdock.example.com"), appconfig.WithClock(func() time.Time { return now }))
+	configService := appconfig.NewService(sqlite, filepath.Join(root, "config.key"), appconfig.WithClock(func() time.Time { return now }))
 	if err := configService.Import(ctx, appconfig.ImportRequest{
 		AppID: appName,
 		Input: strings.NewReader("DATABASE_URL=postgres://secret\n"),

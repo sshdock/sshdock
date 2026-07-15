@@ -2,10 +2,13 @@ package appconfig
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/sshdock/sshdock/internal/store"
 )
+
+var configKeyPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 func validateConfigMutationRef(ref ConfigRef) (ConfigRef, error) {
 	ref, err := validateConfigRef(ref)
@@ -37,19 +40,15 @@ func reservedConfigNameError(name string) error {
 func validateConfigRef(ref ConfigRef) (ConfigRef, error) {
 	ref.AppID = strings.TrimSpace(ref.AppID)
 	ref.Name = strings.TrimSpace(ref.Name)
-	ref.Scope = strings.TrimSpace(ref.Scope)
 	if ref.AppID == "" {
 		return ConfigRef{}, fmt.Errorf("app name is required")
 	}
-	key, err := validateRequiredKey(RequiredKey{Name: ref.Name, Scope: ref.Scope})
-	if err != nil {
-		return ConfigRef{}, err
+	if !configKeyPattern.MatchString(ref.Name) {
+		return ConfigRef{}, fmt.Errorf("invalid config key %q: use uppercase letters, digits, and underscores", ref.Name)
 	}
-	ref.Name = key.Name
-	ref.Scope = key.Scope
 	return ref, nil
 }
 
 func storeRef(ref ConfigRef) store.AppConfigRef {
-	return store.AppConfigRef{AppID: ref.AppID, Name: ref.Name, Scope: ref.Scope}
+	return store.AppConfigRef{AppID: ref.AppID, Name: ref.Name}
 }

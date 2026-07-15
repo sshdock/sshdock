@@ -443,7 +443,7 @@ services:
 	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(resolver.requests) != 1 || resolver.requests[0] != (hookConfigResolveRequest{appID: "my-app", projectDir: worktreePath}) {
+	if len(resolver.requests) != 1 || resolver.requests[0] != (hookConfigResolveRequest{appID: "my-app"}) {
 		t.Fatalf("resolver requests = %#v", resolver.requests)
 	}
 	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].Env["DATABASE_URL"] != "postgres://secret" {
@@ -1161,8 +1161,7 @@ func (w failingWriter) Write([]byte) (int, error) {
 }
 
 type hookConfigResolveRequest struct {
-	appID      string
-	projectDir string
+	appID string
 }
 
 type fakeHookConfigResolver struct {
@@ -1171,8 +1170,8 @@ type fakeHookConfigResolver struct {
 	requests []hookConfigResolveRequest
 }
 
-func (f *fakeHookConfigResolver) ResolveAppConfig(_ context.Context, appID string, projectDir string) (map[string]string, error) {
-	f.requests = append(f.requests, hookConfigResolveRequest{appID: appID, projectDir: projectDir})
+func (f *fakeHookConfigResolver) ResolveAppConfig(_ context.Context, appID string) (map[string]string, error) {
+	f.requests = append(f.requests, hookConfigResolveRequest{appID: appID})
 	return f.env, f.err
 }
 

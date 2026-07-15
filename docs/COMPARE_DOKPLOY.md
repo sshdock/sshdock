@@ -29,7 +29,7 @@ Use Dokploy when you want:
 | Runtime | Single-node Docker Compose | Docker Compose and Docker Stack workflows |
 | Operations | `sudo sshdock ...` and `ssh dashboard@<host>` | Browser UI plus configured provider/server workflows |
 | Web UI | None | Core part of the product |
-| Config/secrets | `.sshdock.yml` declares required keys; encrypted values are stored by SSHDock | UI-defined environment variables for applications and Docker Compose |
+| Config/secrets | Compose interpolation declares requirements; flat encrypted values are stored by SSHDock | UI-defined environment variables for applications and Docker Compose |
 | Domains | Base-domain defaults plus `sshdock domains attach/list/check` | UI-managed domains for applications and Docker Compose |
 | Logs and deploy history | CLI and SSH dashboard show logs, releases, deployments, events, and failure detail | UI log viewer and deployment history |
 | Multi-server | Not in v0 | Documented remote-server and cluster-oriented surfaces |

@@ -49,7 +49,7 @@ func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, p
 	if h.configResolver == nil {
 		return nil, nil
 	}
-	return h.configResolver.ResolveAppConfig(ctx, appID, projectDir)
+	return h.configResolver.ResolveAppConfig(ctx, appID)
 }
 
 func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App, releases []app.Release) (map[string]string, error) {

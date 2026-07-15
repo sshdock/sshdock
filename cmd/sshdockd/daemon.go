@@ -46,7 +46,7 @@ func runDaemon(stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath, appconfig.WithRecoveryHost(configRecoveryHost(ctx, sqlite, cfg)))
+	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	service := appmodel.NewService(sqlite, appmodel.WithRecoveryRunner(runner), appmodel.WithWorktreeCheckout(gitrecv.LocalWorktreeCheckout{}), appmodel.WithConfigResolver(configService))
 	if err := service.RecoverDeployedApps(ctx); err != nil {
 		fmt.Fprintf(stderr, "recover deployed apps: %v\n", err)

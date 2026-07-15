@@ -649,9 +649,6 @@ func TestStoreBackendLogsRedactStoredConfigValues(t *testing.T) {
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll project dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".sshdock.yml"), []byte("config:\n  required:\n    - DATABASE_URL\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile manifest: %v", err)
-	}
 
 	runner := &compose.FakeRunner{LogOutput: "connecting to postgres://secret\n"}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{

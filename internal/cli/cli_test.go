@@ -89,7 +89,7 @@ func TestGroupHelpPrintsUsageAndExamples(t *testing.T) {
 	for _, want := range []string{
 		"Config commands store encrypted app config.",
 		"Usage:",
-		"  sshdock config set <app> <key> [--scope <scope>]",
+		"  sshdock config set <app> <key>",
 		"  sshdock config keys <app>",
 		"Examples:",
 		`  printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
@@ -313,7 +313,7 @@ func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
 		t.Fatalf("config list exit code = %d, stderr = %q", code, stderr.String())
 	}
 	listOutput := stdout.String()
-	if !strings.Contains(listOutput, "DATABASE_URL\t-\tset\t<redacted>") {
+	if !strings.Contains(listOutput, "DATABASE_URL\tset\t<redacted>") {
 		t.Fatalf("config list stdout = %q", listOutput)
 	}
 	if strings.Contains(listOutput, "postgres://secret") {
@@ -354,57 +354,32 @@ func TestConfigCommandsRedactListAndRevealOnlyOnGet(t *testing.T) {
 	}
 }
 
-func TestConfigImportSupportsScope(t *testing.T) {
+func TestConfigCommandsRejectScopeOption(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["my-app"] = App{Name: "my-app", Status: "created", NodeID: "local"}
 	runner := NewRunner(backend, "dev")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
 
-	code := runner.RunWithInput(
-		[]string{"config", "import", "my-app", "--scope", "worker"},
-		strings.NewReader("API_TOKEN=worker-secret\n"),
-		&stdout,
-		&stderr,
-	)
-	if code != 0 {
-		t.Fatalf("config import exit code = %d, stderr = %q", code, stderr.String())
+	tests := []struct {
+		name  string
+		args  []string
+		input string
+	}{
+		{name: "set", args: []string{"config", "set", "my-app", "API_TOKEN", "--scope", "worker"}, input: "secret\n"},
+		{name: "import", args: []string{"config", "import", "my-app", "--scope", "worker"}, input: "API_TOKEN=secret\n"},
+		{name: "get", args: []string{"config", "get", "my-app", "API_TOKEN", "--scope", "worker"}},
+		{name: "unset", args: []string{"config", "unset", "my-app", "API_TOKEN", "--scope", "worker"}},
 	}
-	if strings.Contains(stdout.String(), "worker-secret") || strings.Contains(stderr.String(), "worker-secret") {
-		t.Fatalf("config import leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "redeploy required for running containers") || !strings.Contains(stdout.String(), "sudo sshdock apps redeploy my-app") {
-		t.Fatalf("config import stdout missing redeploy hint:\n%s", stdout.String())
-	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
 
-	stdout.Reset()
-	stderr.Reset()
-	code = runner.Run([]string{"config", "list", "my-app"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("config list exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "API_TOKEN\tworker\tset\t<redacted>") {
-		t.Fatalf("config list stdout = %q", stdout.String())
-	}
+			code := runner.RunWithInput(test.args, strings.NewReader(test.input), &stdout, &stderr)
 
-	stdout.Reset()
-	stderr.Reset()
-	code = runner.Run([]string{"config", "keys", "my-app"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("config keys scoped exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if stdout.String() != "worker/API_TOKEN\n" {
-		t.Fatalf("config keys scoped stdout = %q", stdout.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-	code = runner.Run([]string{"config", "get", "my-app", "API_TOKEN", "--scope", "worker"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("config get scoped exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if stdout.String() != "worker-secret\n" {
-		t.Fatalf("config get scoped stdout = %q", stdout.String())
+			if code != 2 || !strings.Contains(stderr.String(), "invalid config command or arguments") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+			}
+		})
 	}
 }
 
@@ -418,7 +393,7 @@ func TestConfigGetPermissionDeniedPrintsRevealGuidance(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := runner.Run([]string{"config", "get", "my-app", "DATABASE_URL", "--scope", "worker"}, &stdout, &stderr)
+	code := runner.Run([]string{"config", "get", "my-app", "DATABASE_URL"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("config get exit code = %d, want 1", code)
 	}
@@ -428,8 +403,8 @@ func TestConfigGetPermissionDeniedPrintsRevealGuidance(t *testing.T) {
 	output := stderr.String()
 	for _, want := range []string{
 		"config get requires access to SSHDock's config encryption key",
-		"sudo sshdock config get my-app DATABASE_URL --scope worker",
-		"ssh dashboard@<host> config get my-app DATABASE_URL --scope worker",
+		"sudo sshdock config get my-app DATABASE_URL",
+		"ssh dashboard@<host> config get my-app DATABASE_URL",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stderr missing %q:\n%s", want, output)
@@ -447,7 +422,7 @@ type configGetErrorBackend struct {
 	err error
 }
 
-func (b *configGetErrorBackend) GetConfig(appName string, name string, scope string) (string, error) {
+func (b *configGetErrorBackend) GetConfig(appName string, name string) (string, error) {
 	return "", b.err
 }
 

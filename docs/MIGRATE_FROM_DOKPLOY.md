@@ -55,25 +55,15 @@ Check [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) before pushing. Docker Compose 
 
 Dokploy can store Docker Compose environment variables in a `.env` file next to the compose file. SSHDock stores values in encrypted host state and passes them to Compose at deploy time.
 
-Commit required key names:
-
-```yaml
-# .sshdock.yml
-config:
-  required:
-    - DATABASE_URL
-    - API_KEY
-```
-
-Reference the variables from Compose:
+Declare required values where Compose uses them:
 
 ```yaml
 services:
   web:
     image: ghcr.io/example/my-app:latest
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      API_KEY: ${API_KEY}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL with sshdock config set}
+      API_KEY: ${API_KEY:?set API_KEY with sshdock config set}
     ports:
       - "127.0.0.1:3000:3000"
 ```

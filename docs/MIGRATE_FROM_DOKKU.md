@@ -67,25 +67,15 @@ Check [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) before pushing. Docker Compose 
 
 Do not commit `.env` files with secret values.
 
-Commit only required key names:
-
-```yaml
-# .sshdock.yml
-config:
-  required:
-    - DATABASE_URL
-    - SECRET_KEY_BASE
-```
-
-Reference values from Compose:
+Declare required values where Compose uses them:
 
 ```yaml
 services:
   web:
     build: .
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL with sshdock config set}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE with sshdock config set}
     ports:
       - "127.0.0.1:3000:3000"
 ```
@@ -98,7 +88,7 @@ ssh dashboard@sshdock.example.com config set my-app SECRET_KEY_BASE < secret-key
 ssh dashboard@sshdock.example.com config list my-app
 ```
 
-If you push before setting required config, SSHDock fails before Compose starts and prints recovery commands.
+If you push before setting required config, Docker Compose validation fails before containers start and names the missing variable.
 
 ## 4. Prepare The SSHDock Server
 

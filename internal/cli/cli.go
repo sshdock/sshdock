@@ -103,7 +103,6 @@ type DomainCheck struct {
 
 type ConfigEntry struct {
 	Name          string
-	Scope         string
 	Status        string
 	RedactedValue string
 	Value         string
@@ -140,11 +139,11 @@ type Backend interface {
 	AddSSHKey(name string, publicKey string) error
 	ListSSHKeys() ([]SSHKey, error)
 	RemoveSSHKey(name string) error
-	SetConfig(appName string, name string, scope string, value []byte) error
-	ImportConfig(appName string, scope string, input io.Reader) (int, error)
+	SetConfig(appName string, name string, value []byte) error
+	ImportConfig(appName string, input io.Reader) (int, error)
 	ListConfig(appName string) ([]ConfigEntry, error)
-	GetConfig(appName string, name string, scope string) (string, error)
-	UnsetConfig(appName string, name string, scope string) error
+	GetConfig(appName string, name string) (string, error)
+	UnsetConfig(appName string, name string) error
 }
 
 type MemoryBackend struct {
@@ -156,7 +155,7 @@ type MemoryBackend struct {
 	events      []Event
 	domains     []Domain
 	keys        map[string]SSHKey
-	config      map[string]map[configKey]string
+	config      map[string]map[string]string
 	logOutput   string
 	logRequests []LogRequest
 }
@@ -170,7 +169,7 @@ func NewMemoryBackend(gitHost string) *MemoryBackend {
 		gitHost: gitHost,
 		apps:    map[string]App{},
 		keys:    map[string]SSHKey{},
-		config:  map[string]map[configKey]string{},
+		config:  map[string]map[string]string{},
 	}
 }
 
@@ -441,7 +440,7 @@ func (b *MemoryBackend) RemoveSSHKey(name string) error {
 	return nil
 }
 
-func (b *MemoryBackend) SetConfig(appName string, name string, scope string, value []byte) error {
+func (b *MemoryBackend) SetConfig(appName string, name string, value []byte) error {
 	if _, ok := b.apps[appName]; !ok {
 		return fmt.Errorf("app %q not found", appName)
 	}
@@ -449,13 +448,13 @@ func (b *MemoryBackend) SetConfig(appName string, name string, scope string, val
 		return fmt.Errorf("config key name is required")
 	}
 	if b.config[appName] == nil {
-		b.config[appName] = map[configKey]string{}
+		b.config[appName] = map[string]string{}
 	}
-	b.config[appName][configKey{name: name, scope: scope}] = string(value)
+	b.config[appName][name] = string(value)
 	return nil
 }
 
-func (b *MemoryBackend) ImportConfig(appName string, scope string, input io.Reader) (int, error) {
+func (b *MemoryBackend) ImportConfig(appName string, input io.Reader) (int, error) {
 	if input == nil {
 		input = strings.NewReader("")
 	}
@@ -472,7 +471,7 @@ func (b *MemoryBackend) ImportConfig(appName string, scope string, input io.Read
 		if !ok {
 			return count, fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
 		}
-		if err := b.SetConfig(appName, strings.TrimSpace(name), scope, []byte(value)); err != nil {
+		if err := b.SetConfig(appName, strings.TrimSpace(name), []byte(value)); err != nil {
 			return count, err
 		}
 		count++
@@ -486,43 +485,33 @@ func (b *MemoryBackend) ListConfig(appName string) ([]ConfigEntry, error) {
 	}
 	values := b.config[appName]
 	entries := make([]ConfigEntry, 0, len(values))
-	for key := range values {
-		entries = append(entries, ConfigEntry{Name: key.name, Scope: key.scope, Status: "set", RedactedValue: "<redacted>"})
+	for name := range values {
+		entries = append(entries, ConfigEntry{Name: name, Status: "set", RedactedValue: "<redacted>"})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Scope == entries[j].Scope {
-			return entries[i].Name < entries[j].Name
-		}
-		return entries[i].Scope < entries[j].Scope
-	})
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
 }
 
-func (b *MemoryBackend) GetConfig(appName string, name string, scope string) (string, error) {
+func (b *MemoryBackend) GetConfig(appName string, name string) (string, error) {
 	if _, ok := b.apps[appName]; !ok {
 		return "", fmt.Errorf("app %q not found", appName)
 	}
-	value, ok := b.config[appName][configKey{name: name, scope: scope}]
+	value, ok := b.config[appName][name]
 	if !ok {
 		return "", fmt.Errorf("config %q not found for app %q", name, appName)
 	}
 	return value, nil
 }
 
-func (b *MemoryBackend) UnsetConfig(appName string, name string, scope string) error {
+func (b *MemoryBackend) UnsetConfig(appName string, name string) error {
 	if _, ok := b.apps[appName]; !ok {
 		return fmt.Errorf("app %q not found", appName)
 	}
-	if _, ok := b.config[appName][configKey{name: name, scope: scope}]; !ok {
+	if _, ok := b.config[appName][name]; !ok {
 		return fmt.Errorf("config %q not found for app %q", name, appName)
 	}
-	delete(b.config[appName], configKey{name: name, scope: scope})
+	delete(b.config[appName], name)
 	return nil
-}
-
-type configKey struct {
-	name  string
-	scope string
 }
 
 type Runner struct {
@@ -593,12 +582,7 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 }
 
 func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	if len(args) >= 3 && args[0] == "set" {
-		remaining, scope, ok := parseScopeOption(args[3:])
-		if !ok || len(remaining) != 0 {
-			printInvalidUsage(stderr, "config")
-			return 2
-		}
+	if len(args) == 3 && args[0] == "set" {
 		if stdin == nil {
 			stdin = strings.NewReader("")
 		}
@@ -608,7 +592,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 1
 		}
 		value := strings.TrimRight(string(data), "\r\n")
-		if err := r.backend.SetConfig(args[1], args[2], scope, []byte(value)); err != nil {
+		if err := r.backend.SetConfig(args[1], args[2], []byte(value)); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -617,13 +601,8 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 		return 0
 	}
 
-	if len(args) >= 2 && args[0] == "import" {
-		remaining, scope, ok := parseScopeOption(args[2:])
-		if !ok || len(remaining) != 0 {
-			printInvalidUsage(stderr, "config")
-			return 2
-		}
-		count, err := r.backend.ImportConfig(args[1], scope, stdin)
+	if len(args) == 2 && args[0] == "import" {
+		count, err := r.backend.ImportConfig(args[1], stdin)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -646,11 +625,7 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 0
 		}
 		for _, entry := range entries {
-			scope := entry.Scope
-			if scope == "" {
-				scope = "-"
-			}
-			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Name, scope, entry.Status, entry.RedactedValue, formatCLITime(entry.UpdatedAt), entry.MutatedBy)
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\n", entry.Name, entry.Status, entry.RedactedValue, formatCLITime(entry.UpdatedAt), entry.MutatedBy)
 		}
 		return 0
 	}
@@ -662,21 +637,16 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 			return 1
 		}
 		for _, entry := range entries {
-			fmt.Fprintln(stdout, configEntryKey(entry))
+			fmt.Fprintln(stdout, entry.Name)
 		}
 		return 0
 	}
 
-	if len(args) >= 3 && args[0] == "get" {
-		remaining, scope, ok := parseScopeOption(args[3:])
-		if !ok || len(remaining) != 0 {
-			printInvalidUsage(stderr, "config")
-			return 2
-		}
-		value, err := r.backend.GetConfig(args[1], args[2], scope)
+	if len(args) == 3 && args[0] == "get" {
+		value, err := r.backend.GetConfig(args[1], args[2])
 		if err != nil {
 			if isConfigKeyPermissionDenied(err) {
-				printConfigGetAccessGuidance(stderr, args[1], args[2], scope)
+				printConfigGetAccessGuidance(stderr, args[1], args[2])
 				return 1
 			}
 			fmt.Fprintln(stderr, err)
@@ -686,13 +656,8 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 		return 0
 	}
 
-	if len(args) >= 3 && args[0] == "unset" {
-		remaining, scope, ok := parseScopeOption(args[3:])
-		if !ok || len(remaining) != 0 {
-			printInvalidUsage(stderr, "config")
-			return 2
-		}
-		if err := r.backend.UnsetConfig(args[1], args[2], scope); err != nil {
+	if len(args) == 3 && args[0] == "unset" {
+		if err := r.backend.UnsetConfig(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -710,22 +675,12 @@ func printConfigRedeployHint(stdout io.Writer, appName string) {
 	fmt.Fprintf(stdout, "  sudo sshdock apps redeploy %s\n", appName)
 }
 
-func configEntryKey(entry ConfigEntry) string {
-	if entry.Scope == "" {
-		return entry.Name
-	}
-	return entry.Scope + "/" + entry.Name
-}
-
 func isConfigKeyPermissionDenied(err error) bool {
 	return errors.Is(err, os.ErrPermission) && strings.Contains(err.Error(), "config encryption key")
 }
 
-func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName string, scope string) {
+func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName string) {
 	args := []string{"config", "get", appName, keyName}
-	if scope != "" {
-		args = append(args, "--scope", scope)
-	}
 	command := strings.Join(args, " ")
 	fmt.Fprintln(stderr, "config get requires access to SSHDock's config encryption key.")
 	fmt.Fprintln(stderr, "Run one of:")
@@ -1144,12 +1099,12 @@ Apps:
   apps remove <name> [--force]         Remove an app
 
 Config:
-  config set <app> <key> [--scope <scope>]
-  config import <app> [--scope <scope>]
+  config set <app> <key>
+  config import <app>
   config list <app>
   config keys <app>
-  config get <app> <key> [--scope <scope>]
-  config unset <app> <key> [--scope <scope>]
+  config get <app> <key>
+  config unset <app> <key>
 
 Domains:
   domains attach <app> <service> <domain> --port <port>
@@ -1198,12 +1153,12 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 		})
 	case "config":
 		printTopicHelp(stdout, "Config commands store encrypted app config.", []string{
-			"sshdock config set <app> <key> [--scope <scope>]",
-			"sshdock config import <app> [--scope <scope>]",
+			"sshdock config set <app> <key>",
+			"sshdock config import <app>",
 			"sshdock config list <app>",
 			"sshdock config keys <app>",
-			"sshdock config get <app> <key> [--scope <scope>]",
-			"sshdock config unset <app> <key> [--scope <scope>]",
+			"sshdock config get <app> <key>",
+			"sshdock config unset <app> <key>",
 		}, []string{
 			`printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
 			"ssh dashboard@<host> config import my-app < .env.production",
@@ -1384,23 +1339,6 @@ func parseRemoveArgs(args []string) (string, bool, bool) {
 		return "", false, false
 	}
 	return appName, force, appName != ""
-}
-
-func parseScopeOption(args []string) ([]string, string, bool) {
-	remaining := make([]string, 0, len(args))
-	var scope string
-	for i := 0; i < len(args); i++ {
-		if args[i] != "--scope" {
-			remaining = append(remaining, args[i])
-			continue
-		}
-		if i+1 >= len(args) || scope != "" {
-			return nil, "", false
-		}
-		scope = args[i+1]
-		i++
-	}
-	return remaining, scope, true
 }
 
 func formatCLITime(value time.Time) string {

@@ -57,7 +57,7 @@ func (s *Service) resolveDeployEnv(ctx context.Context, appID string, projectDir
 	if s.configResolver == nil {
 		return nil, nil
 	}
-	return s.configResolver.ResolveAppConfig(ctx, appID, projectDir)
+	return s.configResolver.ResolveAppConfig(ctx, appID)
 }
 
 func (s *Service) resolveRedactionValues(ctx context.Context, appID string, env map[string]string) (map[string]string, error) {

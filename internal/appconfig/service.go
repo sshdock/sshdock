@@ -23,10 +23,9 @@ type configStore interface {
 }
 
 type Service struct {
-	store        configStore
-	keyPath      string
-	now          func() time.Time
-	recoveryHost string
+	store   configStore
+	keyPath string
+	now     func() time.Time
 }
 
 type ServiceOption func(*Service)
@@ -34,21 +33,18 @@ type ServiceOption func(*Service)
 type SetRequest struct {
 	AppID     string
 	Name      string
-	Scope     string
 	Value     []byte
 	MutatedBy string
 }
 
 type ImportRequest struct {
 	AppID     string
-	Scope     string
 	Input     io.Reader
 	MutatedBy string
 }
 
 type Entry struct {
 	Name          string
-	Scope         string
 	Status        string
 	RedactedValue string
 	Value         string
@@ -63,7 +59,6 @@ func NewService(persistentStore configStore, keyPath string, options ...ServiceO
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
-		recoveryHost: "server",
 	}
 	for _, option := range options {
 		option(service)
@@ -77,16 +72,8 @@ func WithClock(clock func() time.Time) ServiceOption {
 	}
 }
 
-func WithRecoveryHost(host string) ServiceOption {
-	return func(service *Service) {
-		if strings.TrimSpace(host) != "" {
-			service.recoveryHost = strings.TrimSpace(host)
-		}
-	}
-}
-
 func (s *Service) Set(ctx context.Context, request SetRequest) error {
-	ref, err := validateConfigMutationRef(ConfigRef{AppID: request.AppID, Name: request.Name, Scope: request.Scope})
+	ref, err := validateConfigMutationRef(ConfigRef{AppID: request.AppID, Name: request.Name})
 	if err != nil {
 		return err
 	}
@@ -117,7 +104,6 @@ func (s *Service) Set(ctx context.Context, request SetRequest) error {
 	return s.store.UpsertAppConfigValue(ctx, store.AppConfigValue{
 		AppID:      ref.AppID,
 		Name:       ref.Name,
-		Scope:      ref.Scope,
 		Ciphertext: box.Ciphertext,
 		Nonce:      box.Nonce,
 		KeyVersion: box.KeyVersion,
@@ -146,7 +132,6 @@ func (s *Service) Import(ctx context.Context, request ImportRequest) error {
 		if err := s.Set(ctx, SetRequest{
 			AppID:     request.AppID,
 			Name:      strings.TrimSpace(name),
-			Scope:     request.Scope,
 			Value:     []byte(value),
 			MutatedBy: request.MutatedBy,
 		}); err != nil {
@@ -168,19 +153,13 @@ func (s *Service) List(ctx context.Context, appID string) ([]Entry, error) {
 	for _, value := range values {
 		entries = append(entries, Entry{
 			Name:          value.Name,
-			Scope:         value.Scope,
 			Status:        "set",
 			RedactedValue: "<redacted>",
 			UpdatedAt:     value.UpdatedAt,
 			MutatedBy:     value.MutatedBy,
 		})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Scope == entries[j].Scope {
-			return entries[i].Name < entries[j].Name
-		}
-		return entries[i].Scope < entries[j].Scope
-	})
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
 }
 

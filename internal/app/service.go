@@ -67,7 +67,7 @@ func (f CurrentMainResolverFunc) ResolveCurrentMain(ctx context.Context, repoPat
 }
 
 type configResolver interface {
-	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
+	ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error)
 }
 
 type configRedactor interface {

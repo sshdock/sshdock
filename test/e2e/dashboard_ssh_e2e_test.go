@@ -82,6 +82,16 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	pushComposeAppThroughSSH(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
+	operatorEnv := append(os.Environ(),
+		"PATH="+filepath.Join(paths.tmp, "fake-bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"SSHDOCK_DATA_DIR="+paths.dataDir,
+		"SSHDOCK_COMPOSE_RUNNER=fake",
+		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(paths.tmp, "operator.caddyfile"),
+	)
+	runCommand(t, paths.tmp, operatorEnv,
+		filepath.Join(paths.installBinDir, "sshdock"),
+		"domains", "attach", appName, "web", "operator.example.com", "--port", "3000",
+	)
 	server := startDashboardSSHServer(t, paths, sshdPath, sshKeygenPath)
 
 	// When
@@ -92,6 +102,18 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	configOutput := runCommand(t, paths.tmp, nil,
 		sshPath,
 		append(dashboardSSHArgs(paths, server, false), "config", "list", appName)...,
+	)
+	healthOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "health", appName)...,
+	)
+	logsOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "logs", appName)...,
+	)
+	domainsOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "domains", "check", appName)...,
 	)
 	helpOutput := runCommand(t, paths.tmp, nil,
 		sshPath,
@@ -104,6 +126,15 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(configOutput, "no config") {
 		t.Fatalf("config list output missing empty state:\n%s", configOutput)
+	}
+	if !strings.Contains(healthOutput, "services: 1 running, 0 attention") {
+		t.Fatalf("apps health output missing Compose service state:\n%s", healthOutput)
+	}
+	if !strings.Contains(logsOutput, "first-dashboard-log") {
+		t.Fatalf("logs output missing Compose logs:\n%s", logsOutput)
+	}
+	if !strings.Contains(domainsOutput, "missing") || strings.Contains(domainsOutput, "router check unavailable") {
+		t.Fatalf("domains check output did not use the router backend:\n%s", domainsOutput)
 	}
 	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") {
 		t.Fatalf("restricted help exposes local commands or omits inspection commands:\n%s", helpOutput)

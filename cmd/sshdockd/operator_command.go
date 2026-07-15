@@ -95,6 +95,76 @@ func splitSSHOriginalCommand(command string) ([]string, error) {
 	return args, nil
 }
 
+type operatorCommandSpec struct {
+	allowed func(args []string) bool
+	help    string
+}
+
+var operatorCommandSpecs = map[string]operatorCommandSpec{
+	"apps": {
+		allowed: func(args []string) bool {
+			return len(args) == 1 && args[0] == "list" ||
+				len(args) == 2 && (args[0] == "info" || args[0] == "health")
+		},
+		help: `Inspect apps over restricted SSH.
+
+Usage:
+  apps list
+  apps info <app>
+  apps health <app>
+`,
+	},
+	"config": {
+		allowed: func(args []string) bool {
+			return len(args) == 2 && (args[0] == "import" || args[0] == "list" || args[0] == "keys") ||
+				len(args) == 3 && (args[0] == "set" || args[0] == "get" || args[0] == "unset")
+		},
+		help: `Manage encrypted app config over restricted SSH.
+
+Usage:
+  config set <app> <key>
+  config import <app>
+  config list <app>
+  config keys <app>
+  config get <app> <key>
+  config unset <app> <key>
+`,
+	},
+	"domains": {
+		allowed: func(args []string) bool {
+			return len(args) == 2 && (args[0] == "list" || args[0] == "check")
+		},
+		help: `Inspect app domains over restricted SSH.
+
+Usage:
+  domains list <app>
+  domains check <app>
+`,
+	},
+	"deployments": listOperatorCommandSpec("deployment attempts", "deployments list <app>"),
+	"events":      listOperatorCommandSpec("app events", "events list <app>"),
+	"logs": {
+		allowed: func(args []string) bool { return len(args) >= 1 },
+		help: `Inspect Compose logs over restricted SSH.
+
+Usage:
+  logs <app> [service] [-f] [--tail <lines>]
+`,
+	},
+	"releases": listOperatorCommandSpec("release records", "releases list <app>"),
+	"version": {
+		allowed: func(args []string) bool { return len(args) == 0 },
+		help:    "Usage:\n  version\n",
+	},
+}
+
+func listOperatorCommandSpec(description string, usage string) operatorCommandSpec {
+	return operatorCommandSpec{
+		allowed: func(args []string) bool { return len(args) == 2 && args[0] == "list" },
+		help:    fmt.Sprintf("Inspect %s over restricted SSH.\n\nUsage:\n  %s\n", description, usage),
+	}
+}
+
 func operatorCommandAllowed(args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -109,31 +179,13 @@ func operatorCommandAllowed(args []string) bool {
 		return operatorHelpTopicAllowed(args[0])
 	}
 
-	switch args[0] {
-	case "apps":
-		return len(args) == 2 && args[1] == "list" ||
-			len(args) == 3 && (args[1] == "info" || args[1] == "health")
-	case "config":
-		return len(args) == 3 && (args[1] == "import" || args[1] == "list" || args[1] == "keys") ||
-			len(args) == 4 && (args[1] == "set" || args[1] == "get" || args[1] == "unset")
-	case "domains":
-		return len(args) == 3 && (args[1] == "list" || args[1] == "check")
-	case "deployments", "events", "releases":
-		return len(args) == 3 && args[1] == "list"
-	case "logs":
-		return len(args) >= 2
-	default:
-		return false
-	}
+	spec, ok := operatorCommandSpecs[args[0]]
+	return ok && spec.allowed(args[1:])
 }
 
 func operatorHelpTopicAllowed(topic string) bool {
-	switch topic {
-	case "apps", "config", "domains", "deployments", "events", "logs", "releases", "version":
-		return true
-	default:
-		return false
-	}
+	_, ok := operatorCommandSpecs[topic]
+	return ok
 }
 
 func operatorHelpRequested(args []string) bool {
@@ -151,37 +203,12 @@ func printOperatorHelp(stdout io.Writer, args []string) {
 		}
 	}
 
-	switch topic {
-	case "apps":
-		fmt.Fprint(stdout, `Inspect apps over restricted SSH.
+	if spec, ok := operatorCommandSpecs[topic]; ok {
+		fmt.Fprint(stdout, spec.help)
+		return
+	}
 
-Usage:
-  apps list
-  apps info <app>
-  apps health <app>
-`)
-	case "config":
-		fmt.Fprint(stdout, `Manage encrypted app config over restricted SSH.
-
-Usage:
-  config set <app> <key>
-  config import <app>
-  config list <app>
-  config keys <app>
-  config get <app> <key>
-  config unset <app> <key>
-`)
-	case "domains":
-		fmt.Fprint(stdout, `Inspect app domains over restricted SSH.
-
-Usage:
-  domains list <app>
-  domains check <app>
-`)
-	case "deployments", "events", "logs", "releases", "version":
-		fmt.Fprintf(stdout, "Run `ssh sshdock@<host> %s ...` for restricted %s access.\n", topic, topic)
-	default:
-		fmt.Fprint(stdout, `SSHDock restricted SSH commands
+	fmt.Fprint(stdout, `SSHDock restricted SSH commands
 
 Usage:
   ssh sshdock@<host> [command]
@@ -207,5 +234,4 @@ Config:
 
 Host administration remains local through sudo sshdock.
 `)
-	}
 }

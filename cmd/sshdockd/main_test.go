@@ -198,36 +198,52 @@ func TestDashboardHasInteractiveTerminalRejectsNonTTYWriters(t *testing.T) {
 	}
 }
 
-func TestOperatorOriginalCommandArgsPreserveQuotedArgvBoundaries(t *testing.T) {
-	// Given
-	originalCommand := `config get "my app" 'DATABASE URL'`
-
-	// When
-	args, err := operatorOriginalCommandArgs(originalCommand)
-
-	// Then
-	if err != nil {
-		t.Fatalf("operatorOriginalCommandArgs: %v", err)
+func TestOperatorOriginalCommandArgs(t *testing.T) {
+	tests := []struct {
+		name         string
+		command      string
+		want         []string
+		errorMessage string
+	}{
+		{
+			name:    "preserves quoted argv boundaries",
+			command: `config get "my app" 'DATABASE URL'`,
+			want:    []string{"config", "get", "my app", "DATABASE URL"},
+		},
+		{
+			name:         "rejects host shell syntax",
+			command:      `apps list; id`,
+			errorMessage: "not available over SSH",
+		},
+		{
+			name:         "reports unterminated quotes",
+			command:      `config get my-app "DATABASE_URL`,
+			errorMessage: "unterminated quote",
+		},
 	}
-	want := []string{"config", "get", "my app", "DATABASE URL"}
-	if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
-		t.Fatalf("args = %#v, want %#v", args, want)
-	}
-}
 
-func TestOperatorOriginalCommandArgsRejectHostShellSyntax(t *testing.T) {
-	// Given
-	originalCommand := `apps list; id`
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			originalCommand := test.command
 
-	// When
-	_, err := operatorOriginalCommandArgs(originalCommand)
+			// When
+			args, err := operatorOriginalCommandArgs(originalCommand)
 
-	// Then
-	if err == nil {
-		t.Fatal("operatorOriginalCommandArgs error = nil, want restricted-command error")
-	}
-	if !strings.Contains(err.Error(), "not available over SSH") {
-		t.Fatalf("error = %q, want restricted-command guidance", err)
+			// Then
+			if test.errorMessage != "" {
+				if err == nil || !strings.Contains(err.Error(), test.errorMessage) {
+					t.Fatalf("error = %v, want message containing %q", err, test.errorMessage)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("operatorOriginalCommandArgs: %v", err)
+			}
+			if strings.Join(args, "\x00") != strings.Join(test.want, "\x00") {
+				t.Fatalf("args = %#v, want %#v", args, test.want)
+			}
+		})
 	}
 }
 

@@ -213,8 +213,9 @@ func TestBootstrapUpgradeMovesKeysAndRetiresDashboardAccess(t *testing.T) {
 	legacyKeysPath := filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh/authorized_keys")
 	legacyWrapperPath := filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard")
 	legacySudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")
+	legacyAuthorizedKey := `command="exec sudo -n -u sshdock /usr/local/bin/sshdock-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc ssh-ed25519 AAAAlegacy sshdock-key:admin` + "\n"
 	for path, content := range map[string]string{
-		legacyKeysPath:    "ssh-ed25519 legacy-key\n",
+		legacyKeysPath:    legacyAuthorizedKey,
 		legacyWrapperPath: "legacy wrapper\n",
 		legacySudoersPath: "legacy sudoers\n",
 	} {
@@ -241,8 +242,9 @@ func TestBootstrapUpgradeMovesKeysAndRetiresDashboardAccess(t *testing.T) {
 
 	// Then
 	operatorKeysPath := filepath.Join(installRoot, "var/lib/sshdock/.ssh/authorized_keys")
-	if got := readFile(t, operatorKeysPath); got != "ssh-ed25519 legacy-key\n" {
-		t.Fatalf("operator authorized_keys = %q, want migrated legacy key", got)
+	wantOperatorKey := `command="exec /usr/local/bin/sshdock-operator",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc ssh-ed25519 AAAAlegacy sshdock-key:admin` + "\n"
+	if got := readFile(t, operatorKeysPath); got != wantOperatorKey {
+		t.Fatalf("operator authorized_keys = %q, want %q", got, wantOperatorKey)
 	}
 	for _, path := range []string{legacyKeysPath, legacyWrapperPath, legacySudoersPath} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {

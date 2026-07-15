@@ -352,14 +352,14 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	authorizedKeysPath := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
-	dashboardAuthorizedKeysPath := filepath.Join(t.TempDir(), "dashboard", ".ssh", "authorized_keys")
+	operatorAuthorizedKeysPath := filepath.Join(t.TempDir(), ".ssh", "authorized_keys")
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
 		NodeID:                     "node-a",
 		AppsDir:                    filepath.Join(t.TempDir(), "apps"),
 		AuthorizedKeysPath:         authorizedKeysPath,
 		GitReceiveCommand:          "/usr/local/bin/sshdockd git-receive",
-		OperatorAuthorizedKeysPath: dashboardAuthorizedKeysPath,
+		OperatorAuthorizedKeysPath: operatorAuthorizedKeysPath,
 		OperatorCommand:            "/usr/local/bin/sshdockd operator",
 		Now:                        func() time.Time { return now },
 	})
@@ -404,7 +404,7 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		}
 	}
 
-	renderedDashboard, err := os.ReadFile(dashboardAuthorizedKeysPath)
+	renderedOperator, err := os.ReadFile(operatorAuthorizedKeysPath)
 	if err != nil {
 		t.Fatalf("ReadFile operator authorized_keys: %v", err)
 	}
@@ -415,12 +415,12 @@ func TestStoreBackendAddsSSHKeyAndRendersAuthorizedKeys(t *testing.T) {
 		`no-X11-forwarding`,
 		strings.TrimSpace(publicKey),
 	} {
-		if !strings.Contains(string(renderedDashboard), want) {
-			t.Fatalf("operator authorized_keys missing %q:\n%s", want, renderedDashboard)
+		if !strings.Contains(string(renderedOperator), want) {
+			t.Fatalf("operator authorized_keys missing %q:\n%s", want, renderedOperator)
 		}
 	}
-	if strings.Contains(string(renderedDashboard), "no-pty") {
-		t.Fatalf("operator authorized_keys should allow PTY:\n%s", renderedDashboard)
+	if strings.Contains(string(renderedOperator), "no-pty") {
+		t.Fatalf("operator authorized_keys should allow PTY:\n%s", renderedOperator)
 	}
 }
 
@@ -773,13 +773,13 @@ func TestStoreBackendSSHKeyRemoveRevokesKeyAndRendersAuthorizedKeys(t *testing.T
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	authorizedKeysPath := filepath.Join(t.TempDir(), "git", ".ssh", "authorized_keys")
-	dashboardAuthorizedKeysPath := filepath.Join(t.TempDir(), "dashboard", ".ssh", "authorized_keys")
+	operatorAuthorizedKeysPath := filepath.Join(t.TempDir(), ".ssh", "authorized_keys")
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
 		NodeID:                     "node-a",
 		AppsDir:                    filepath.Join(t.TempDir(), "apps"),
 		AuthorizedKeysPath:         authorizedKeysPath,
 		GitReceiveCommand:          "/usr/local/bin/sshdockd git-receive",
-		OperatorAuthorizedKeysPath: dashboardAuthorizedKeysPath,
+		OperatorAuthorizedKeysPath: operatorAuthorizedKeysPath,
 		OperatorCommand:            "/usr/local/bin/sshdockd operator",
 	})
 	cliRunner := NewRunner(backend, "dev")
@@ -817,12 +817,12 @@ func TestStoreBackendSSHKeyRemoveRevokesKeyAndRendersAuthorizedKeys(t *testing.T
 	if !strings.Contains(renderedGit, strings.TrimSpace(opsKey)) {
 		t.Fatalf("git authorized_keys missing remaining key:\n%s", renderedGit)
 	}
-	renderedDashboard := readTextFile(t, dashboardAuthorizedKeysPath)
-	if strings.Contains(renderedDashboard, strings.TrimSpace(adminKey)) {
-		t.Fatalf("operator authorized_keys still contains removed key:\n%s", renderedDashboard)
+	renderedOperator := readTextFile(t, operatorAuthorizedKeysPath)
+	if strings.Contains(renderedOperator, strings.TrimSpace(adminKey)) {
+		t.Fatalf("operator authorized_keys still contains removed key:\n%s", renderedOperator)
 	}
-	if !strings.Contains(renderedDashboard, strings.TrimSpace(opsKey)) {
-		t.Fatalf("operator authorized_keys missing remaining key:\n%s", renderedDashboard)
+	if !strings.Contains(renderedOperator, strings.TrimSpace(opsKey)) {
+		t.Fatalf("operator authorized_keys missing remaining key:\n%s", renderedOperator)
 	}
 }
 

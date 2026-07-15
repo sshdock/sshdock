@@ -45,7 +45,7 @@ PubkeyAuthentication yes
 StrictModes no
 AllowUsers %s
 LogLevel ERROR
-`, port, hostKeyPath, filepath.Join(paths.tmp, "dashboard_sshd.pid"), paths.dashboardAuthorizedKeysPath, currentUser.Username)
+`, port, hostKeyPath, filepath.Join(paths.tmp, "dashboard_sshd.pid"), paths.operatorAuthorizedKeysPath, currentUser.Username)
 	if err := os.WriteFile(sshdConfigPath, []byte(sshdConfig), 0o600); err != nil {
 		t.Fatalf("WriteFile dashboard sshd_config: %v", err)
 	}

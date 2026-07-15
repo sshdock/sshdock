@@ -336,12 +336,32 @@ normalize_runtime_ownership() {
 }
 
 migrate_legacy_dashboard_keys() {
-	local legacy_keys_actual operator_keys_actual
+	local legacy_keys_actual operator_keys_actual migrated_keys_tmp line migrated_line suffix
 	legacy_keys_actual="$(prefix_path "$LEGACY_DASHBOARD_AUTHORIZED_KEYS_PATH")"
 	operator_keys_actual="$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")"
-	if [ -s "$legacy_keys_actual" ] && [ ! -s "$operator_keys_actual" ]; then
-		run cp "$legacy_keys_actual" "$operator_keys_actual"
+	if [ ! -s "$legacy_keys_actual" ]; then
+		return
 	fi
+
+	migrated_keys_tmp="${operator_keys_actual}.migrate.$$"
+	if [ -s "$operator_keys_actual" ]; then
+		run cp "$operator_keys_actual" "$migrated_keys_tmp"
+	else
+		: > "$migrated_keys_tmp"
+	fi
+	while IFS= read -r line || [ -n "$line" ]; do
+		migrated_line="$line"
+		case "$line" in
+			command=\"*\",*)
+				suffix="${line#*\",}"
+				migrated_line="command=\"exec $OPERATOR_WRAPPER_PATH\",$suffix"
+				;;
+		esac
+		if ! grep -Fqx "$migrated_line" "$migrated_keys_tmp"; then
+			printf '%s\n' "$migrated_line" >> "$migrated_keys_tmp"
+		fi
+	done < "$legacy_keys_actual"
+	run mv -f "$migrated_keys_tmp" "$operator_keys_actual"
 }
 
 prepare_directories() {

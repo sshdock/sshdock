@@ -44,6 +44,12 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
+	runner, err := dashboardRunnerFromEnv()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
 		args, err := operatorOriginalCommandArgs(originalCommand)
@@ -51,24 +57,13 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
-		backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
-			NodeID:        cfg.NodeID,
-			AppsDir:       cfg.AppsDir,
-			GitHost:       cfg.GitHost,
-			ConfigManager: configService,
-		})
+		backend := newDashboardBackend(sqlite, cfg, runner, configService)
 		runner := cli.NewRunner(backend, version.String())
 		if operatorHelpRequested(args) {
 			printOperatorHelp(stdout, args)
 			return 0
 		}
 		return runner.RunWithInput(args, stdin, stdout, stderr)
-	}
-
-	runner, err := dashboardRunnerFromEnv()
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
 	}
 
 	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
@@ -119,8 +114,8 @@ type dashboardActionBackend struct {
 	backend dashboardCLIBackend
 }
 
-func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
-	backend := cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
+func newDashboardBackend(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) *cli.StoreBackend {
+	return cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
 		NodeID:                     cfg.NodeID,
 		AppsDir:                    cfg.AppsDir,
 		GitHost:                    cfg.GitHost,
@@ -139,7 +134,10 @@ func newDashboardActions(persistentStore store.Store, cfg config.Config, runner 
 		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
 		ConfigManager:       configService,
 	})
-	return dashboardActionBackend{backend: backend}
+}
+
+func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
+	return dashboardActionBackend{backend: newDashboardBackend(persistentStore, cfg, runner, configService)}
 }
 
 func (b dashboardActionBackend) RestartApp(appName string) error {

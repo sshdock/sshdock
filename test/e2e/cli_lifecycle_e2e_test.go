@@ -36,7 +36,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	caddyConfigPath := filepath.Join(tmp, "Caddyfile")
 	authorizedKeysPath := filepath.Join(tmp, "git", ".ssh", "authorized_keys")
-	dashboardAuthorizedKeysPath := filepath.Join(tmp, "dashboard", ".ssh", "authorized_keys")
+	operatorAuthorizedKeysPath := filepath.Join(tmp, ".ssh", "authorized_keys")
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
@@ -45,7 +45,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		"SSHDOCK_FAKE_COMPOSE_LOGS=web log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
+		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+operatorAuthorizedKeysPath,
 		"SSHDOCK_GIT_RECEIVE_COMMAND="+sshdockdPath+" git-receive",
 		"SSHDOCK_OPERATOR_COMMAND="+sshdockdPath+" operator",
 	)

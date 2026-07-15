@@ -38,6 +38,10 @@ type configResolver interface {
 	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
 }
 
+type configRedactor interface {
+	RedactionValues(ctx context.Context, appID string) (map[string]string, error)
+}
+
 type WorktreeCheckout interface {
 	Checkout(ctx context.Context, repoPath string, worktreePath string, commitSHA string) error
 }

@@ -38,7 +38,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		deploymentsByApp: map[string][]app.Deployment{
 			"my-app": {
 				{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now},
-				{ID: "dep_2", AppID: "my-app", ReleaseID: "rel_old", CommitSHA: "old", Trigger: app.DeploymentTriggerRedeploy, Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), FailureStage: "build services", FailureDetail: "build services failed: docker output included postgres://secret", RetryGuidance: "sudo sshdock apps redeploy my-app", ErrorMessage: "stage=build services; detail=build services failed: docker output included postgres://secret"},
+				{ID: "dep_2", AppID: "my-app", ReleaseID: "rel_old", CommitSHA: "old", Trigger: app.DeploymentTriggerRedeploy, Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), FailureStage: "build services", FailureDetail: "build services failed: docker output included postgres://secret and legacy-secret", RetryGuidance: "sudo sshdock apps redeploy my-app", ErrorMessage: "stage=build services; detail=build services failed: docker output included postgres://secret and legacy-secret"},
 			},
 		},
 		eventsByApp: map[string][]app.Event{
@@ -49,10 +49,13 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 	}
 	runner := &compose.FakeRunner{
 		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
-		LogOutput: "first log\npostgres://secret\n",
+		LogOutput: "first log\npostgres://secret\nlegacy-secret\n",
 	}
 	var output bytes.Buffer
-	config := &fakeDashboardConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
+	config := &fakeDashboardConfigResolver{
+		env:             map[string]string{"DATABASE_URL": "postgres://secret"},
+		redactionValues: map[string]string{"my-app/DATABASE_URL": "postgres://secret", "my-app/worker/API_TOKEN": "legacy-secret"},
+	}
 	handler := NewDashboardHandlerWithConfig(store, runner, config)
 
 	if err := handler.Render(ctx, &output); err != nil {
@@ -95,7 +98,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 			t.Fatalf("dashboard output missing %q:\n%s", want, rendered)
 		}
 	}
-	if strings.Contains(rendered, "postgres://secret") {
+	if strings.Contains(rendered, "postgres://secret") || strings.Contains(rendered, "legacy-secret") {
 		t.Fatalf("dashboard output leaked config value:\n%s", rendered)
 	}
 	if len(runner.StatusRequests) != 1 {
@@ -195,12 +198,21 @@ type fakeDashboardStore struct {
 }
 
 type fakeDashboardConfigResolver struct {
-	env map[string]string
+	env             map[string]string
+	redactionValues map[string]string
 }
 
 func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string, _ string) (map[string]string, error) {
 	result := make(map[string]string, len(f.env))
 	for key, value := range f.env {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (f *fakeDashboardConfigResolver) RedactionValues(_ context.Context, _ string) (map[string]string, error) {
+	result := make(map[string]string, len(f.redactionValues))
+	for key, value := range f.redactionValues {
 		result[key] = value
 	}
 	return result, nil

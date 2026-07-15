@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"sort"
 
 	"github.com/sshdock/sshdock/internal/app"
@@ -137,94 +136,6 @@ func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error
 	}
 
 	return nil
-}
-
-func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.App, releases []app.Release) ([]compose.ServiceStatus, map[string]LogsView, error) {
-	logsByService := map[string]LogsView{}
-	if h.runner == nil {
-		return nil, logsByService, nil
-	}
-	latest, ok := latestRelease(releases)
-	if !ok || latest.ComposePath == "" {
-		return nil, logsByService, nil
-	}
-
-	projectDir := filepath.Dir(latest.ComposePath)
-	env, err := h.resolveConfigEnv(ctx, model.ID, projectDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
-	}
-	services, err := h.runner.Status(ctx, compose.StatusRequest{
-		AppName:     model.ID,
-		ProjectDir:  projectDir,
-		ComposePath: latest.ComposePath,
-		Env:         env,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("load service status for %s: %w", model.ID, err)
-	}
-
-	for _, service := range services {
-		output, err := h.runner.Logs(ctx, compose.LogsRequest{
-			AppName:     model.ID,
-			ProjectDir:  projectDir,
-			ComposePath: latest.ComposePath,
-			ServiceName: service.Name,
-			Lines:       50,
-			Env:         env,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("load logs for %s/%s: %w", model.ID, service.Name, err)
-		}
-		logsByService[service.Name] = NewLogsView(model.ID, service.Name, compose.RedactValues(output, env))
-	}
-
-	return services, logsByService, nil
-}
-
-func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
-	if h.configResolver == nil {
-		return nil, nil
-	}
-	return h.configResolver.ResolveAppConfig(ctx, appID, projectDir)
-}
-
-func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App, releases []app.Release) (map[string]string, error) {
-	if h.configResolver == nil {
-		return nil, nil
-	}
-	latest, ok := latestRelease(releases)
-	if !ok || latest.ComposePath == "" {
-		return nil, nil
-	}
-	env, err := h.resolveConfigEnv(ctx, model.ID, filepath.Dir(latest.ComposePath))
-	if err != nil {
-		return nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
-	}
-	return env, nil
-}
-
-func redactDeployments(deployments []app.Deployment, values map[string]string) []app.Deployment {
-	if len(values) == 0 {
-		return deployments
-	}
-	redacted := append([]app.Deployment(nil), deployments...)
-	for i := range redacted {
-		redacted[i].FailureDetail = compose.RedactValues(redacted[i].FailureDetail, values)
-		redacted[i].ErrorMessage = compose.RedactValues(redacted[i].ErrorMessage, values)
-	}
-	return redacted
-}
-
-func redactEvents(events []app.Event, values map[string]string) []app.Event {
-	if len(values) == 0 {
-		return events
-	}
-	redacted := append([]app.Event(nil), events...)
-	for i := range redacted {
-		redacted[i].Message = compose.RedactValues(redacted[i].Message, values)
-	}
-	return redacted
 }
 
 func renderAppList(writer io.Writer, screen AppListScreen) error {

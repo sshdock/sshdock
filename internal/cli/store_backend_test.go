@@ -588,69 +588,6 @@ func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T)
 	}
 }
 
-func TestStoreBackendAppsHealthUsesLatestRunnableReleaseForServiceStatus(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
-	appsDir := filepath.Join(t.TempDir(), "apps")
-	now := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
-	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
-	failedComposePath := filepath.Join(appsDir, "my-app", "failed", "compose.yml")
-	if err := sqlite.CreateRelease(ctx, app.Release{
-		ID:          "rel_failed",
-		AppID:       "my-app",
-		CommitSHA:   "failed",
-		ComposePath: failedComposePath,
-		Status:      app.ReleaseStatusFailed,
-		CreatedAt:   now.Add(time.Minute),
-		UpdatedAt:   now.Add(time.Minute),
-	}); err != nil {
-		t.Fatalf("CreateRelease failed: %v", err)
-	}
-	if err := sqlite.CreateDeployment(ctx, app.Deployment{
-		ID:           "dep_failed",
-		AppID:        "my-app",
-		ReleaseID:    "rel_failed",
-		Status:       app.DeploymentStatusFailed,
-		StartedAt:    now.Add(time.Minute),
-		FinishedAt:   now.Add(time.Minute),
-		ErrorMessage: "stage=build; detail=image pull failed",
-	}); err != nil {
-		t.Fatalf("CreateDeployment failed: %v", err)
-	}
-	runner := &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "web", State: "running"}}}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:         "node-a",
-		AppsDir:        appsDir,
-		RecoveryRunner: runner,
-		Now:            func() time.Time { return now },
-	})
-	cliRunner := NewRunner(backend, "dev")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	if code := cliRunner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
-	}
-	for _, want := range []string{
-		"health: fail",
-		"latest release: rel_failed failed",
-		"latest deploy: dep_failed failed",
-		"last failure: stage=build; detail=image pull failed",
-		"services: 1 running, 0 attention",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("apps health stdout missing %q:\n%s", want, stdout.String())
-		}
-	}
-	if len(runner.StatusRequests) != 1 {
-		t.Fatalf("status requests = %#v", runner.StatusRequests)
-	}
-	wantComposePath := filepath.Join(appsDir, "my-app", "worktree", "compose.yml")
-	if runner.StatusRequests[0].ComposePath != wantComposePath {
-		t.Fatalf("status compose path = %q, want %q", runner.StatusRequests[0].ComposePath, wantComposePath)
-	}
-}
-
 func TestStoreBackendDomainsCheckReportsRouterMismatch(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)

@@ -66,6 +66,7 @@ wildcard-domain-e2e:
 
 config-e2e:
 	go test -count=1 ./test/harness -run TestConfigImportAndGitPushDeployUsesProcessEnvironment -v
+	go test -count=1 ./cmd/sshdockd -run TestRunDashboardConfigCommandFeedsGitPushDeploy -v
 
 backup-restore-e2e:
 	go test -count=1 ./test/harness -run TestBackupRestoreKeepsEncryptedConfigUsable -v

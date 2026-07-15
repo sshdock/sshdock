@@ -56,7 +56,7 @@ ssh -T dashboard@sshdock.<domain>
 
 Common cases:
 
-- `missing required config`: set the named key with `ssh dashboard@sshdock.<domain> config set <app> <key>`, then push or redeploy.
+- Missing `${KEY:?message}` Compose config: set the named key with `ssh dashboard@sshdock.<domain> config set <app> <key>`, then push or redeploy.
 - Compose validation failure: run `docker compose config` in the app repository, then fix the reported Compose error.
 - Image pull or build failure: fix the image reference, registry access, Dockerfile, or build context, then push again.
 - Service start or health-wait failure: inspect `sudo sshdock apps health <app>` and `sudo sshdock logs <app> --tail 200`, then fix services that exited, became unhealthy, or exceeded the bounded wait before redeploying.

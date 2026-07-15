@@ -57,17 +57,11 @@ func TestConfigImportAndGitPushDeployUsesProcessEnvironment(t *testing.T) {
 			if err := os.MkdirAll(gotWorktreePath, 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(filepath.Join(gotWorktreePath, ".sshdock.yml"), []byte(`config:
-  required:
-    - DATABASE_URL
-`), 0o644); err != nil {
-				return err
-			}
 			return os.WriteFile(filepath.Join(gotWorktreePath, "compose.yml"), []byte(`services:
   web:
     image: nginx:alpine
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL with sshdock config set}
 `), 0o644)
 		}),
 		Now: func() time.Time { return now },

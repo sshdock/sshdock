@@ -144,12 +144,13 @@ sudo sshdock backup inspect /var/lib/sshdock/backups/<archive>.tar.gz
 
 ## App Config
 
-For releases with app config support, apps can commit `.sshdock.yml` to declare required config keys without committing secret values:
+Store app config outside Git and reference required values with native Compose interpolation:
 
 ```yaml
-config:
-  required:
-    - DATABASE_URL
+services:
+  web:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL with sshdock config set}
 ```
 
 Store values over SSH, then deploy or redeploy:

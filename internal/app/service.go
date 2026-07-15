@@ -70,6 +70,10 @@ type configResolver interface {
 	ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error)
 }
 
+type configRedactor interface {
+	RedactionValues(ctx context.Context, appID string) (map[string]string, error)
+}
+
 func NewService(store serviceStore, options ...ServiceOption) *Service {
 	service := &Service{
 		store: store,

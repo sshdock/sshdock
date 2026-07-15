@@ -86,8 +86,12 @@ func (s *Service) redeploy(ctx context.Context, request redeployRequest, target 
 	if err != nil {
 		return fail("config", err)
 	}
+	redactionValues, err := s.resolveRedactionValues(ctx, request.appID, env)
+	if err != nil {
+		return fail("config", err)
+	}
 	if _, err := s.deploy.Deploy(ctx, compose.DeployRequest{AppName: request.appID, ProjectDir: projectDir, ReleaseID: release.ID, CommitSHA: release.CommitSHA, ComposePath: release.ComposePath, Env: env}); err != nil {
-		err = compose.RedactError(err, env)
+		err = compose.RedactError(err, redactionValues)
 		stage := deployfailure.Stage(err)
 		failure := deployfailure.New(stage, err, "redeploy deployment "+deployment.ID+" marked failed; the previously running release may still be serving", deployfailure.FixForStage(stage), retryGuidance)
 		return fail(stage, failure)

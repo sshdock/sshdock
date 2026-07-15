@@ -56,8 +56,14 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 		failure := deployfailure.New("config", envErr, "release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed", "set the missing config value(s) with the command(s) in detail", retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "config", cause: failure, retryGuidance: retryGuidance})
 	}
+	redactionValues, err := h.resolveDeployRedactionValues(ctx, event.AppName, env)
+	if err != nil {
+		retryGuidance := "sudo sshdock apps redeploy " + event.AppName
+		failure := deployfailure.New("config", err, "release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed", "repair the app config encryption state", retryGuidance)
+		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "config", cause: failure, retryGuidance: retryGuidance})
+	}
 	if _, err := compose.ValidateFileWithEnv(composePath, env); err != nil {
-		err = compose.RedactError(err, env)
+		err = compose.RedactError(err, redactionValues)
 		stage := string(compose.DeployStageValidateCompose)
 		retryGuidance := "commit a Compose fix and push it to remote main"
 		failure := deployfailure.New(stage, err, gitPushChangedState(releaseID, deploymentID, stage), deployfailure.FixForStage(stage), retryGuidance)
@@ -65,9 +71,9 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	}
 
 	result, err := h.runner.Deploy(ctx, compose.DeployRequest{AppName: event.AppName, ProjectDir: worktreePath, ComposePath: composePath, ReleaseID: releaseID, CommitSHA: event.CommitSHA, Env: env})
-	warningErr := h.recordDeployWarnings(ctx, event.AppName, deploymentID, result.Warnings, env)
+	warningErr := h.recordDeployWarnings(ctx, event.AppName, deploymentID, result.Warnings, redactionValues)
 	if err != nil {
-		err = compose.RedactError(err, env)
+		err = compose.RedactError(err, redactionValues)
 		stage := deployfailure.Stage(err)
 		retryGuidance := "push a fixed commit to remote main, or run sudo sshdock apps redeploy " + event.AppName + " after a transient fix"
 		failure := deployfailure.New(stage, err, gitPushChangedState(releaseID, deploymentID, stage), deployfailure.FixForStage(stage), retryGuidance)
@@ -99,6 +105,14 @@ func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName strin
 		return nil, nil
 	}
 	return h.configResolver.ResolveAppConfig(ctx, appName, projectDir)
+}
+
+func (h *PostReceiveHandler) resolveDeployRedactionValues(ctx context.Context, appName string, env map[string]string) (map[string]string, error) {
+	redactor, ok := h.configResolver.(configRedactor)
+	if !ok {
+		return env, nil
+	}
+	return redactor.RedactionValues(ctx, appName)
 }
 
 func (h *PostReceiveHandler) beginPushAttempt(ctx context.Context, event PushEvent) (pushAttempt, error) {

@@ -2,17 +2,13 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	appmodel "github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/cli"
 	"github.com/sshdock/sshdock/internal/compose"
-	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -139,52 +135,6 @@ func TestRunDashboardRendersOnce(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-}
-
-func TestRunDashboardDispatchesConfigOriginalCommand(t *testing.T) {
-	ctx := context.Background()
-	dataDir := t.TempDir()
-	dbPath := filepath.Join(dataDir, "sshdock.db")
-	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-
-	sqlite, err := store.OpenSQLite(ctx, dbPath)
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
-	if err := sqlite.CreateApp(ctx, appmodel.App{ID: "my-app", Name: "my-app", NodeID: "local", Status: appmodel.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatalf("CreateApp: %v", err)
-	}
-	if err := sqlite.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	t.Setenv("SSH_ORIGINAL_COMMAND", "config set my-app DATABASE_URL")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := runWithInput([]string{"dashboard"}, strings.NewReader("postgres://secret\n"), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("config set exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if strings.Contains(stdout.String(), "postgres://secret") || strings.Contains(stderr.String(), "postgres://secret") {
-		t.Fatalf("config set leaked secret stdout=%q stderr=%q", stdout.String(), stderr.String())
-	}
-
-	t.Setenv("SSH_ORIGINAL_COMMAND", "config list my-app")
-	stdout.Reset()
-	stderr.Reset()
-	code = runWithInput([]string{"dashboard"}, nil, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("config list exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "DATABASE_URL\t-\tset\t<redacted>") {
-		t.Fatalf("config list stdout = %q", stdout.String())
-	}
-	if strings.Contains(stdout.String(), "postgres://secret") {
-		t.Fatalf("config list leaked secret: %q", stdout.String())
 	}
 }
 

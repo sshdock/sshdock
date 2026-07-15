@@ -113,6 +113,8 @@ printf '%s' "$DATABASE_URL" | ssh dashboard@sshdock.example.com config set my-ap
 
 The value is encrypted before it is stored in SQLite. The default key file is `/var/lib/sshdock/config.key`, or `SSHDOCK_CONFIG_KEY_PATH` when overridden.
 
+Flat app config is the default. SSHDock supplies flat stored values only to the Docker Compose process environment; Compose passes a value to a container only where the Compose model references it. Operational names beginning with `SSHDOCK_`, `COMPOSE_`, `DOCKER_`, `SSH_`, `LD_`, `BUILDKIT_`, or `BUILDX_`, plus `PATH` and `HOME`, are reserved and cannot be stored as app config.
+
 If the app is already running, deploy or redeploy it after changing config so containers receive the new value.
 
 ### `sshdock config import <app> [--scope <scope>]`
@@ -173,9 +175,22 @@ If the app is already running, deploy or redeploy it after unsetting config so c
 
 Config commands also work as local `sudo sshdock config ...` commands on the server.
 
-### `.sshdock.yml` Config Manifest
+### Compose-Native Required Config
 
-Apps can commit `.sshdock.yml` to declare required keys without committing values:
+Declare required values where Compose uses them:
+
+```yaml
+services:
+  web:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL with sshdock config set}
+```
+
+Missing required interpolation fails Compose validation before containers start. The failure names the missing key and remains redacted in deploy output, deployment history, events, logs, health output, and the TUI. Config mutation never starts, restarts, or redeploys an app; run `apps redeploy` explicitly when the new value should take effect.
+
+### Legacy `.sshdock.yml` Compatibility
+
+Existing apps may continue to use `.sshdock.yml` declarations and scoped config during the compatibility window:
 
 ```yaml
 config:
@@ -185,7 +200,7 @@ config:
       scope: worker
 ```
 
-On deploy, SSHDock loads required values, passes them only to the `docker compose` process environment, and fails before Compose starts if any required key is missing. Missing-key errors include exact `ssh dashboard@<host> config set ...` recovery commands.
+On deploy, SSHDock still resolves these legacy declarations and includes exact `ssh dashboard@<host> config set ...` recovery commands for missing values. New apps should use flat config and native Compose interpolation instead.
 
 This local encryption model protects against database-only leaks and ordinary SQLite backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up the SQLite database and the host-local config key together.
 

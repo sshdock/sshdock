@@ -60,6 +60,14 @@ func (s *Service) resolveDeployEnv(ctx context.Context, appID string, projectDir
 	return s.configResolver.ResolveAppConfig(ctx, appID, projectDir)
 }
 
+func (s *Service) resolveRedactionValues(ctx context.Context, appID string, env map[string]string) (map[string]string, error) {
+	redactor, ok := s.configResolver.(configRedactor)
+	if !ok {
+		return env, nil
+	}
+	return redactor.RedactionValues(ctx, appID)
+}
+
 func (s *Service) startRecoveryDeployment(ctx context.Context, start recoveryStart) (Deployment, error) {
 	now := s.now()
 	start.deployment.StartedAt = now

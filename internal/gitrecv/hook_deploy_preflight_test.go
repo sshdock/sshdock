@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
@@ -56,6 +57,60 @@ func TestPostReceiveHandlerRecordsComposeDetectionFailureAsDeploymentAttempt(t *
 		t.Fatal("Handle error = nil, want Compose detection failure")
 	}
 	assertPreflightAttempt(t, ctx, sqlite, "dep_detect", "abc123", "detect compose")
+}
+
+func TestPostReceiveHandlerRecordsNativeRequiredConfigFailureWithoutLeakingFlatValues(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	secret := "postgres://secret"
+	configService := appconfig.NewService(sqlite, filepath.Join(t.TempDir(), "config.key"))
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte(secret)}); err != nil {
+		t.Fatalf("Set config: %v", err)
+	}
+	runner := &compose.FakeRunner{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store:          sqlite,
+		Runner:         runner,
+		ConfigResolver: configService,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, worktreePath string, _ string) error {
+			writeHookCompose(t, worktreePath, `
+services:
+  web:
+    image: ${MISSING_IMAGE:?database is ${DATABASE_URL}}
+`)
+			return nil
+		}),
+		NewDeploymentID: func() (string, error) { return "dep_required_config", nil },
+	})
+
+	// When
+	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", filepath.Join(t.TempDir(), "worktree"), strings.NewReader("old abc123 refs/heads/main\n"))
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "MISSING_IMAGE") || !strings.Contains(err.Error(), "fix compose.yml") {
+		t.Fatalf("Handle error = %v, want actionable redacted interpolation failure", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("Handle error leaked config value: %v", err)
+	}
+	if len(runner.DeployRequests) != 0 {
+		t.Fatalf("DeployRequests = %#v, want validation failure before deploy", runner.DeployRequests)
+	}
+	assertPreflightAttempt(t, ctx, sqlite, "dep_required_config", "abc123", string(compose.DeployStageValidateCompose))
+	deployments, listErr := sqlite.ListDeploymentsByApp(ctx, "my-app")
+	if listErr != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", listErr)
+	}
+	events, listErr := sqlite.ListEventsByApp(ctx, "my-app")
+	if listErr != nil {
+		t.Fatalf("ListEventsByApp: %v", listErr)
+	}
+	for _, text := range []string{deployments[0].FailureDetail, events[len(events)-1].Message} {
+		if strings.Contains(text, secret) || !strings.Contains(text, "MISSING_IMAGE") {
+			t.Fatalf("persisted failure is not redacted: %q", text)
+		}
+	}
 }
 
 func assertPreflightAttempt(t *testing.T, ctx context.Context, sqlite interface {

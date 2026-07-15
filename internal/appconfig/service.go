@@ -46,11 +46,6 @@ type ImportRequest struct {
 	MutatedBy string
 }
 
-type ResolveRequest struct {
-	AppID      string
-	ProjectDir string
-}
-
 type Entry struct {
 	Name          string
 	Scope         string
@@ -91,7 +86,7 @@ func WithRecoveryHost(host string) ServiceOption {
 }
 
 func (s *Service) Set(ctx context.Context, request SetRequest) error {
-	ref, err := validateConfigRef(ConfigRef{AppID: request.AppID, Name: request.Name, Scope: request.Scope})
+	ref, err := validateConfigMutationRef(ConfigRef{AppID: request.AppID, Name: request.Name, Scope: request.Scope})
 	if err != nil {
 		return err
 	}
@@ -227,45 +222,6 @@ func (s *Service) Unset(ctx context.Context, ref ConfigRef) error {
 	return s.store.DeleteAppConfigValue(ctx, storeRef(ref))
 }
 
-func (s *Service) ResolveEnv(ctx context.Context, request ResolveRequest) (map[string]string, error) {
-	manifest, err := LoadManifest(request.ProjectDir)
-	if err != nil {
-		return nil, err
-	}
-	if len(manifest.Required) == 0 {
-		return nil, nil
-	}
-	if err := s.requireApp(ctx, request.AppID); err != nil {
-		return nil, err
-	}
-
-	env := map[string]string{}
-	var missing []RequiredKey
-	for _, required := range manifest.Required {
-		ref := ConfigRef{AppID: request.AppID, Name: required.Name, Scope: required.Scope}
-		value, err := s.Reveal(ctx, ref)
-		if errors.Is(err, store.ErrNotFound) {
-			missing = append(missing, required)
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		if _, exists := env[required.Name]; exists {
-			return nil, fmt.Errorf("config key %s is declared more than once for Compose environment resolution", required.Name)
-		}
-		env[required.Name] = value
-	}
-	if len(missing) > 0 {
-		return nil, missingRequiredError(request.AppID, s.recoveryHost, missing)
-	}
-	return env, nil
-}
-
-func (s *Service) ResolveAppConfig(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
-	return s.ResolveEnv(ctx, ResolveRequest{AppID: appID, ProjectDir: projectDir})
-}
-
 func (s *Service) requireApp(ctx context.Context, appID string) error {
 	if strings.TrimSpace(appID) == "" {
 		return fmt.Errorf("app name is required")
@@ -276,40 +232,4 @@ func (s *Service) requireApp(ctx context.Context, appID string) error {
 		return fmt.Errorf("get app %q: %w", appID, err)
 	}
 	return nil
-}
-
-func validateConfigRef(ref ConfigRef) (ConfigRef, error) {
-	ref.AppID = strings.TrimSpace(ref.AppID)
-	ref.Name = strings.TrimSpace(ref.Name)
-	ref.Scope = strings.TrimSpace(ref.Scope)
-	if ref.AppID == "" {
-		return ConfigRef{}, fmt.Errorf("app name is required")
-	}
-	key, err := validateRequiredKey(RequiredKey{Name: ref.Name, Scope: ref.Scope})
-	if err != nil {
-		return ConfigRef{}, err
-	}
-	ref.Name = key.Name
-	ref.Scope = key.Scope
-	return ref, nil
-}
-
-func storeRef(ref ConfigRef) store.AppConfigRef {
-	return store.AppConfigRef{AppID: ref.AppID, Name: ref.Name, Scope: ref.Scope}
-}
-
-func missingRequiredError(appID string, host string, missing []RequiredKey) error {
-	names := make([]string, 0, len(missing))
-	commands := make([]string, 0, len(missing))
-	for _, key := range missing {
-		names = append(names, key.display())
-		command := fmt.Sprintf("ssh dashboard@%s config set %s %s", host, appID, key.Name)
-		if key.Scope != "" {
-			command += " --scope " + key.Scope
-		}
-		commands = append(commands, command)
-	}
-	sort.Strings(names)
-	sort.Strings(commands)
-	return fmt.Errorf("missing required config for %s: %s\nset missing values:\n  %s", appID, strings.Join(names, ", "), strings.Join(commands, "\n  "))
 }

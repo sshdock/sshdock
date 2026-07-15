@@ -47,10 +47,16 @@ func (s *Service) RollbackRelease(ctx context.Context, appID string, releaseID s
 		_ = s.failRecoveryDeployment(ctx, recoveryFailure{deployment: deployment, eventType: "rollback.failed", message: "Rollback failed for release " + releaseID + ": " + err.Error()})
 		return deployment, err
 	}
+	redactionValues, err := s.resolveRedactionValues(ctx, appID, env)
+	if err != nil {
+		deployment = failedDeployment(deployment, "config", err.Error(), retryGuidance, s.now())
+		_ = s.failRecoveryDeployment(ctx, recoveryFailure{deployment: deployment, eventType: "rollback.failed", message: "Rollback failed for release " + releaseID + ": " + err.Error()})
+		return deployment, err
+	}
 	if _, err := s.deploy.Deploy(ctx, compose.DeployRequest{
 		AppName: appID, ProjectDir: projectDir, ReleaseID: release.ID, CommitSHA: release.CommitSHA, ComposePath: release.ComposePath, Env: env,
 	}); err != nil {
-		err = compose.RedactError(err, env)
+		err = compose.RedactError(err, redactionValues)
 		stage := deployfailure.Stage(err)
 		failure := deployfailure.New(stage, err, "rollback deployment "+deployment.ID+" marked failed; the previously running release may still be serving", deployfailure.FixForStage(stage), retryGuidance)
 		deployment = failedDeployment(deployment, stage, failure.Error(), retryGuidance, s.now())

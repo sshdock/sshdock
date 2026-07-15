@@ -64,7 +64,7 @@ sudo sshdock apps list
 sudo sshdock domains list static-site
 sudo sshdock events list static-site
 sudo sshdock logs static-site web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Verify from your machine:
@@ -81,7 +81,7 @@ Expected evidence:
 - `events list static-site` includes `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
 - HTTP returns a redirect to HTTPS.
 - HTTPS returns the page containing `SSHDock static site OK`.
-- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
+- `ssh -T sshdock@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
 
 Clean up:
 
@@ -139,7 +139,7 @@ sudo sshdock apps list
 sudo sshdock domains list build-service
 sudo sshdock events list build-service
 sudo sshdock logs build-service web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Verify from your machine:
@@ -156,7 +156,7 @@ Expected evidence:
 - `events list build-service` includes `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
 - HTTP returns a redirect to HTTPS.
 - HTTPS returns `SSHDock build service OK`.
-- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
+- `ssh -T sshdock@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
 
 Clean up:
 
@@ -218,9 +218,9 @@ Expected first-push evidence:
 Set the missing value:
 
 ```bash
-printf '%s\n' 'Hello from SSHDock config' | ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE
-ssh dashboard@sshdock.example.com config list config-app
-ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE
+printf '%s\n' 'Hello from SSHDock config' | ssh sshdock@sshdock.example.com config set config-app APP_MESSAGE
+ssh sshdock@sshdock.example.com config list config-app
+ssh sshdock@sshdock.example.com config get config-app APP_MESSAGE
 ```
 
 Expected config evidence:
@@ -243,7 +243,7 @@ sudo sshdock apps list
 sudo sshdock domains list config-app
 sudo sshdock events list config-app
 sudo sshdock logs config-app web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Verify from your machine:
@@ -260,7 +260,7 @@ Expected deploy evidence:
 - `events list config-app` includes the initial failed deploy, the later `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
 - HTTP returns a redirect to HTTPS.
 - HTTPS returns `SSHDock config example: Hello from SSHDock config`.
-- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, logs, and redacted config.
+- `ssh -T sshdock@sshdock.example.com` shows the app, route, release, deployment, events, logs, and redacted config.
 
 Clean up:
 
@@ -317,7 +317,7 @@ Verify:
 sudo sshdock apps list
 sudo sshdock domains list worker-only
 sudo sshdock logs worker-only worker
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:
@@ -372,7 +372,7 @@ sudo sshdock domains list web-worker-redis
 sudo sshdock logs web-worker-redis worker
 curl -I http://web-worker-redis.example.com
 curl -fsS https://web-worker-redis.example.com
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:
@@ -427,7 +427,7 @@ sudo sshdock domains list api-postgres
 sudo sshdock logs api-postgres api
 sudo sshdock logs api-postgres db
 curl -fsS https://api-postgres.example.com/messages
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:
@@ -487,7 +487,7 @@ sudo sshdock apps redeploy stateful-counter
 curl -fsS https://stateful-counter.example.com
 sudo sshdock domains list stateful-counter
 sudo sshdock logs stateful-counter web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:
@@ -622,7 +622,7 @@ sudo sshdock domains list wordpress-lite
 sudo sshdock events list wordpress-lite
 sudo sshdock logs wordpress-lite web
 sudo sshdock logs wordpress-lite db
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Verify from your machine:
@@ -639,7 +639,7 @@ Expected evidence:
 - `events list wordpress-lite` includes `deploy.succeeded`, `route.auto_attached`, and `router.reloaded`.
 - HTTP returns a redirect to HTTPS.
 - HTTPS reaches the WordPress first-load installer.
-- `ssh -T dashboard@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
+- `ssh -T sshdock@sshdock.example.com` shows the app, route, release, deployment, events, and logs.
 
 The inline WordPress credentials are demo-only. Change them before real use. WordPress and MariaDB state live in Docker named volumes, and SSHDock v0 intentionally preserves volumes when removing an app. Operators remain responsible for secrets, backup/restore, WordPress updates, plugin updates, SMTP, cache, and hardening.
 

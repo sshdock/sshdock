@@ -9,7 +9,7 @@ Use SSHDock when you want:
 - A Compose-first app model.
 - One node and one operator.
 - Git push deploys without a web dashboard.
-- SSH-native operations through `sshdock` and `ssh dashboard@<host>`.
+- SSH-native operations through `sshdock` and `ssh sshdock@<host>`.
 - A small implementation that is easy to inspect.
 
 Stay on Dokku, or evaluate it first, when you need:
@@ -60,7 +60,7 @@ Use [`MIGRATE_FROM_DOKKU.md`](MIGRATE_FROM_DOKKU.md) for a practical migration p
 
 1. Convert the app shape to `compose.yml`.
 2. Declare required config with native Compose interpolation, not committed values.
-3. Set config through `ssh dashboard@sshdock.<domain> config ...`.
+3. Set config through `ssh sshdock@sshdock.<domain> config ...`.
 4. Push to SSHDock.
 5. Verify health, route, logs, events, rollback, and backup before DNS cutover.
 

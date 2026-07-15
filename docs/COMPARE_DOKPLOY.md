@@ -27,7 +27,7 @@ Use Dokploy when you want:
 | Primary model | Git push Compose apps to one VPS | Web UI for applications, Docker Compose, providers, remote servers, and supporting services |
 | Deploy trigger | Git push to SSHDock's Git SSH endpoint | Provider integrations, Git repositories, Docker images, zip uploads, raw Docker Compose, and webhooks |
 | Runtime | Single-node Docker Compose | Docker Compose and Docker Stack workflows |
-| Operations | `sudo sshdock ...` and `ssh dashboard@<host>` | Browser UI plus configured provider/server workflows |
+| Operations | `sudo sshdock ...` and `ssh sshdock@<host>` | Browser UI plus configured provider/server workflows |
 | Web UI | None | Core part of the product |
 | Config/secrets | Compose interpolation declares requirements; flat encrypted values are stored by SSHDock | UI-defined environment variables for applications and Docker Compose |
 | Domains | Base-domain defaults plus `sshdock domains attach/list/check` | UI-managed domains for applications and Docker Compose |

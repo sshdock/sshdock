@@ -20,7 +20,7 @@ func TestExternalDashboardCaptureConfigSkipsWithoutTarget(t *testing.T) {
 
 func TestExternalDashboardCaptureConfigBuildsSSHCommand(t *testing.T) {
 	env := map[string]string{
-		"SSHDOCK_TUI_SCREENSHOT_SSH_TARGET":   "dashboard@sshdock.example.com",
+		"SSHDOCK_TUI_SCREENSHOT_SSH_TARGET":   "sshdock@sshdock.example.com",
 		"SSHDOCK_TUI_SCREENSHOT_SSH_PORT":     "2222",
 		"SSHDOCK_TUI_SCREENSHOT_SSH_IDENTITY": "/tmp/dashboard_ed25519",
 		"SSHDOCK_TUI_SCREENSHOT_DIR":          "/tmp/sshdock-vps-shots",
@@ -46,7 +46,7 @@ func TestExternalDashboardCaptureConfigBuildsSSHCommand(t *testing.T) {
 		"-o", "IdentitiesOnly=yes",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
-		"dashboard@sshdock.example.com",
+		"sshdock@sshdock.example.com",
 	}
 	if !reflect.DeepEqual(config.Args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", config.Args, wantArgs)

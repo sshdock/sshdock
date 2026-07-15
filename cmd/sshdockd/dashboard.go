@@ -46,9 +46,9 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
-		args, ok := dashboardOriginalCommandArgs(originalCommand)
-		if !ok {
-			fmt.Fprintln(stderr, "dashboard SSH command supports config commands only")
+		args, err := operatorOriginalCommandArgs(originalCommand)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
 			return 2
 		}
 		backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
@@ -58,6 +58,10 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 			ConfigManager: configService,
 		})
 		runner := cli.NewRunner(backend, version.String())
+		if operatorHelpRequested(args) {
+			printOperatorHelp(stdout, args)
+			return 0
+		}
 		return runner.RunWithInput(args, stdin, stdout, stderr)
 	}
 
@@ -101,14 +105,6 @@ func dashboardHasInteractiveTerminal(stdin io.Reader, stdout io.Writer) bool {
 	return isatty.IsTerminal(input.Fd()) && isatty.IsTerminal(output.Fd())
 }
 
-func dashboardOriginalCommandArgs(command string) ([]string, bool) {
-	fields := strings.Fields(command)
-	if len(fields) == 0 || fields[0] != "config" {
-		return nil, false
-	}
-	return fields, true
-}
-
 type dashboardCLIBackend interface {
 	RestartApp(appName string) error
 	RestartService(appName string, serviceName string) error
@@ -125,13 +121,13 @@ type dashboardActionBackend struct {
 
 func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
 	backend := cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
-		NodeID:                      cfg.NodeID,
-		AppsDir:                     cfg.AppsDir,
-		GitHost:                     cfg.GitHost,
-		AuthorizedKeysPath:          cfg.GitAuthorizedKeysPath,
-		GitReceiveCommand:           cfg.GitReceiveCommand,
-		DashboardAuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
-		DashboardCommand:            cfg.DashboardCommand,
+		NodeID:                     cfg.NodeID,
+		AppsDir:                    cfg.AppsDir,
+		GitHost:                    cfg.GitHost,
+		AuthorizedKeysPath:         cfg.GitAuthorizedKeysPath,
+		GitReceiveCommand:          cfg.GitReceiveCommand,
+		OperatorAuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
+		OperatorCommand:            cfg.OperatorCommand,
 		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
 			ConfigPath:   cfg.CaddyConfigPath,
 			Executor:     router.LocalCommandExecutor{},

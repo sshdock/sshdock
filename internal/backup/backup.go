@@ -634,8 +634,8 @@ func validateRestoreTargetPaths(cfg config.Config) error {
 		filepath.Dir(cfg.ConfigKeyPath),
 		cfg.GitHomeDir,
 		filepath.Dir(cfg.GitAuthorizedKeysPath),
-		filepath.Dir(cfg.DashboardHostKeyPath),
-		filepath.Dir(cfg.DashboardAuthorizedKeysPath),
+		filepath.Dir(cfg.OperatorHostKeyPath),
+		filepath.Dir(cfg.OperatorAuthorizedKeysPath),
 		filepath.Dir(cfg.CaddyConfigPath),
 		filepath.Dir(cfg.CaddyMainConfigPath),
 	}
@@ -713,8 +713,8 @@ func sourcePaths(cfg config.Config) SourcePaths {
 		SQLiteDBPath:        cfg.SQLiteDBPath,
 		ConfigKeyPath:       cfg.ConfigKeyPath,
 		GitAuthorizedKeys:   cfg.GitAuthorizedKeysPath,
-		DashboardHostKey:    cfg.DashboardHostKeyPath,
-		DashboardKeys:       cfg.DashboardAuthorizedKeysPath,
+		DashboardHostKey:    cfg.OperatorHostKeyPath,
+		DashboardKeys:       cfg.OperatorAuthorizedKeysPath,
 		CaddyConfigPath:     cfg.CaddyConfigPath,
 		CaddyMainConfigPath: cfg.CaddyMainConfigPath,
 	}

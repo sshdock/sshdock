@@ -43,7 +43,7 @@ func TestRunDashboardConfigCommandFeedsGitPushDeploy(t *testing.T) {
 	t.Setenv("SSH_ORIGINAL_COMMAND", "config set my-app DATABASE_URL")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := runWithInput([]string{"dashboard"}, strings.NewReader(secret+"\n"), &stdout, &stderr)
+	code := runWithInput([]string{"operator"}, strings.NewReader(secret+"\n"), &stdout, &stderr)
 
 	// Then
 	if code != 0 {

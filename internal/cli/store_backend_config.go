@@ -42,7 +42,7 @@ func (b *StoreBackend) SetConfig(appName string, name string, value []byte) erro
 	if err != nil {
 		return err
 	}
-	if err := b.configManager.Set(ctx, appconfig.SetRequest{AppID: appName, Name: name, Value: value, MutatedBy: "dashboard"}); err != nil {
+	if err := b.configManager.Set(ctx, appconfig.SetRequest{AppID: appName, Name: name, Value: value, MutatedBy: "sshdock"}); err != nil {
 		return err
 	}
 	return b.recordConfigMutation(ctx, event)

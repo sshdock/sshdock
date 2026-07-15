@@ -24,7 +24,7 @@ Verify:
 sudo sshdock apps list
 sudo sshdock logs worker-only worker
 sudo sshdock events list worker-only
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:

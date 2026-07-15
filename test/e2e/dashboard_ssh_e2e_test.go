@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,61 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 	}
 	if strings.Contains(interactiveOutput, "PTY allocation request failed") {
 		t.Fatalf("interactive dashboard failed PTY allocation:\n%s", interactiveOutput)
+	}
+}
+
+func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
+	// Given
+	requireGit(t)
+	sshdPath := requireCommandOrSkip(t, "sshd")
+	sshPath := requireCommandOrSkip(t, "ssh")
+	sshKeygenPath := requireCommandOrSkip(t, "ssh-keygen")
+	paths := setupBootstrappedServerPush(t, "fake")
+	appName := "operator-app"
+	pushComposeAppThroughSSH(t, paths, appName, map[string]string{
+		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
+	})
+	server := startDashboardSSHServer(t, paths, sshdPath, sshKeygenPath)
+
+	// When
+	inspectionOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "apps", "list")...,
+	)
+	configOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "config", "list", appName)...,
+	)
+	helpOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), "help")...,
+	)
+
+	// Then
+	if !strings.Contains(inspectionOutput, appName) {
+		t.Fatalf("apps list output missing %q:\n%s", appName, inspectionOutput)
+	}
+	if !strings.Contains(configOutput, "no config") {
+		t.Fatalf("config list output missing empty state:\n%s", configOutput)
+	}
+	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") {
+		t.Fatalf("restricted help exposes local commands or omits inspection commands:\n%s", helpOutput)
+	}
+
+	markerPath := filepath.Join(paths.tmp, "host-shell-ran")
+	maliciousCommand := "apps list; touch " + markerPath
+	args := append(dashboardSSHArgs(paths, server, false), maliciousCommand)
+	cmd := exec.Command(sshPath, args...)
+	cmd.Dir = paths.tmp
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("host-shell command succeeded:\n%s", output)
+	}
+	if !strings.Contains(string(output), "not available over SSH") {
+		t.Fatalf("invalid-command output missing restricted guidance:\n%s", output)
+	}
+	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("host shell marker exists: %v", statErr)
 	}
 }
 

@@ -54,7 +54,7 @@ func TestBackupRestoreKeepsEncryptedConfigUsable(t *testing.T) {
 	writeHarnessFile(t, filepath.Join(source.AppRepoPath("restore-app"), "HEAD"), "ref: refs/heads/main\n", 0o644)
 	writeHarnessFile(t, filepath.Join(source.AppWorktreePath("restore-app"), "compose.yml"), "services:\n  web:\n    image: nginx:alpine\n", 0o644)
 	writeHarnessFile(t, source.GitAuthorizedKeysPath, "ssh-ed25519 git-key\n", 0o600)
-	writeHarnessFile(t, source.DashboardAuthorizedKeysPath, "ssh-ed25519 dashboard-key\n", 0o600)
+	writeHarnessFile(t, source.OperatorAuthorizedKeysPath, "ssh-ed25519 operator-key\n", 0o600)
 	writeHarnessFile(t, source.CaddyConfigPath, "# generated routes\n", 0o644)
 	writeHarnessFile(t, source.CaddyMainConfigPath, "import "+source.CaddyConfigPath+"\n", 0o644)
 
@@ -123,8 +123,8 @@ func backupHarnessConfig(t *testing.T) config.Config {
 	cfg.ConfigKeyPath = filepath.Join(dataDir, "config.key")
 	cfg.GitHomeDir = filepath.Join(dataDir, "git")
 	cfg.GitAuthorizedKeysPath = filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
-	cfg.DashboardHostKeyPath = filepath.Join(dataDir, "dashboard", "ssh_host_rsa_key")
-	cfg.DashboardAuthorizedKeysPath = filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys")
+	cfg.OperatorHostKeyPath = filepath.Join(dataDir, "operator", "ssh_host_rsa_key")
+	cfg.OperatorAuthorizedKeysPath = filepath.Join(dataDir, ".ssh", "authorized_keys")
 	cfg.CaddyConfigPath = filepath.Join(caddyDir, "sshdock.caddyfile")
 	cfg.CaddyMainConfigPath = filepath.Join(caddyDir, "Caddyfile")
 	return cfg

@@ -46,13 +46,13 @@ func runServe(stderr io.Writer) int {
 	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
 	server := tui.NewSSHServer(tui.SSHServerConfig{
 		ListenAddr:         cfg.SSHListenAddr,
-		DashboardUser:      cfg.DashboardUser,
-		HostKeyPath:        cfg.DashboardHostKeyPath,
-		AuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
+		OperatorUser:       cfg.OperatorUser,
+		HostKeyPath:        cfg.OperatorHostKeyPath,
+		AuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
 		Handler:            handler,
 	})
 	if err := server.Serve(ctx); err != nil {
-		fmt.Fprintf(stderr, "dashboard SSH server: %v\n", err)
+		fmt.Fprintf(stderr, "operator SSH server: %v\n", err)
 		return 1
 	}
 	return 0

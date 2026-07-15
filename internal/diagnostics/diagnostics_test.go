@@ -48,7 +48,7 @@ func TestRunReportsOKWhenConfigDependenciesAndDirsAreUsable(t *testing.T) {
 		"caddy import",
 		"caddy config",
 		"git authorized_keys",
-		"dashboard authorized_keys",
+		"operator authorized_keys",
 		"runtime permissions",
 		"config key",
 		"sqlite migrations",
@@ -139,24 +139,24 @@ func (f *fakeExecutor) Run(_ context.Context, command Command) (string, error) {
 
 func diagnosticsConfig(root string) config.Config {
 	return config.Config{
-		DataDir:                     filepath.Join(root, "data"),
-		SQLiteDBPath:                filepath.Join(root, "data", "sshdock.db"),
-		AppsDir:                     filepath.Join(root, "data", "apps"),
-		LocksDir:                    filepath.Join(root, "data", "locks"),
-		ConfigKeyPath:               filepath.Join(root, "data", "config.key"),
-		NodeID:                      "local",
-		SSHListenAddr:               ":2222",
-		DashboardUser:               "dashboard",
-		DashboardHostKeyPath:        filepath.Join(root, "data", "dashboard", "ssh_host_rsa_key"),
-		DashboardAuthorizedKeysPath: filepath.Join(root, "data", "dashboard", ".ssh", "authorized_keys"),
-		DashboardCommand:            "/usr/local/bin/sshdockd dashboard",
-		GitUser:                     "git",
-		GitHomeDir:                  filepath.Join(root, "data", "git"),
-		GitHost:                     "server",
-		GitAuthorizedKeysPath:       filepath.Join(root, "data", "git", ".ssh", "authorized_keys"),
-		GitReceiveCommand:           "/usr/local/bin/sshdockd git-receive",
-		CaddyConfigPath:             filepath.Join(root, "caddy", "sshdock.caddyfile"),
-		CaddyMainConfigPath:         filepath.Join(root, "caddy", "Caddyfile"),
+		DataDir:                    filepath.Join(root, "data"),
+		SQLiteDBPath:               filepath.Join(root, "data", "sshdock.db"),
+		AppsDir:                    filepath.Join(root, "data", "apps"),
+		LocksDir:                   filepath.Join(root, "data", "locks"),
+		ConfigKeyPath:              filepath.Join(root, "data", "config.key"),
+		NodeID:                     "local",
+		SSHListenAddr:              ":2222",
+		OperatorUser:               "dashboard",
+		OperatorHostKeyPath:        filepath.Join(root, "data", "operator", "ssh_host_rsa_key"),
+		OperatorAuthorizedKeysPath: filepath.Join(root, "data", ".ssh", "authorized_keys"),
+		OperatorCommand:            "/usr/local/bin/sshdockd operator",
+		GitUser:                    "git",
+		GitHomeDir:                 filepath.Join(root, "data", "git"),
+		GitHost:                    "server",
+		GitAuthorizedKeysPath:      filepath.Join(root, "data", "git", ".ssh", "authorized_keys"),
+		GitReceiveCommand:          "/usr/local/bin/sshdockd git-receive",
+		CaddyConfigPath:            filepath.Join(root, "caddy", "sshdock.caddyfile"),
+		CaddyMainConfigPath:        filepath.Join(root, "caddy", "Caddyfile"),
 	}
 }
 
@@ -169,8 +169,8 @@ func prepareHealthyDiagnosticsRuntime(t *testing.T, cfg config.Config) {
 		filepath.Dir(cfg.SQLiteDBPath),
 		cfg.GitHomeDir,
 		filepath.Dir(cfg.GitAuthorizedKeysPath),
-		filepath.Dir(cfg.DashboardHostKeyPath),
-		filepath.Dir(cfg.DashboardAuthorizedKeysPath),
+		filepath.Dir(cfg.OperatorHostKeyPath),
+		filepath.Dir(cfg.OperatorAuthorizedKeysPath),
 		filepath.Dir(cfg.CaddyConfigPath),
 		filepath.Dir(cfg.CaddyMainConfigPath),
 	)
@@ -180,8 +180,8 @@ func prepareHealthyDiagnosticsRuntime(t *testing.T, cfg config.Config) {
 	if err := os.WriteFile(cfg.GitAuthorizedKeysPath, []byte("command=\"exec /usr/local/bin/sshdockd git-receive\",no-pty ssh-ed25519 AAAA git\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile git authorized_keys: %v", err)
 	}
-	if err := os.WriteFile(cfg.DashboardAuthorizedKeysPath, []byte("command=\"exec /usr/local/bin/sshdockd dashboard\",no-port-forwarding ssh-ed25519 AAAA dashboard\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile dashboard authorized_keys: %v", err)
+	if err := os.WriteFile(cfg.OperatorAuthorizedKeysPath, []byte("command=\"exec /usr/local/bin/sshdockd operator\",no-port-forwarding ssh-ed25519 AAAA operator\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile operator authorized_keys: %v", err)
 	}
 	if err := os.WriteFile(cfg.CaddyConfigPath, []byte("# SSHDock generated routes\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile generated caddy: %v", err)

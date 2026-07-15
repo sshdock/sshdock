@@ -28,7 +28,7 @@ sudo sshdock domains list wordpress-lite
 sudo sshdock events list wordpress-lite
 sudo sshdock logs wordpress-lite web
 sudo sshdock logs wordpress-lite db
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 ```bash

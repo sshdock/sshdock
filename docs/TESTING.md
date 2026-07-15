@@ -134,10 +134,10 @@ The dashboard test:
 1. Builds and installs SSHDock binaries under a fake root.
 2. Starts a temporary local OpenSSH server for the Git push path.
 3. Pushes a Compose app through real `ssh`.
-4. Renders dashboard `authorized_keys` through `sshdock ssh-keys add`.
-5. Starts a temporary local OpenSSH server using the dashboard `authorized_keys` file.
+4. Renders operator `authorized_keys` through `sshdock ssh-keys add`.
+5. Starts a temporary local OpenSSH server using the operator `authorized_keys` file.
 6. Connects with `ssh -T` and verifies the plain render-once fallback.
-7. Connects with `ssh -tt`, lets the forced command run interactive `sshdockd dashboard`, sends `q`, and verifies PTY allocation succeeds.
+7. Connects with `ssh -tt`, lets the forced command run interactive `sshdockd operator`, sends `q`, and verifies PTY allocation succeeds.
 8. Verifies the dashboard includes the app list, app detail, service status, route, release, deployment, event, and service log views.
 
 This test uses the fake Compose runner for dashboard service status/log output so it does not require the deployed app to be running in Docker.
@@ -175,8 +175,8 @@ This target uses the same real dashboard path as `make tui-e2e`:
 1. Builds and installs SSHDock binaries under a fake root.
 2. Starts a temporary local OpenSSH server for the Git push path.
 3. Pushes a Compose app through real `ssh`.
-4. Starts a temporary local OpenSSH server using the dashboard `authorized_keys` file.
-5. Runs `ssh -tt` inside a fixed-size local PTY so OpenSSH allocates a real remote PTY for `sshdockd dashboard`.
+4. Starts a temporary local OpenSSH server using the operator `authorized_keys` file.
+5. Runs `ssh -tt` inside a fixed-size local PTY so OpenSSH allocates a real remote PTY for `sshdockd operator`.
 6. Replays the PTY output through a headless terminal model and captures the live alternate-screen dashboard before quitting.
 7. Writes artifacts to `_artifacts/tui-screenshots-real/`:
    - `session.ansi`: raw PTY output stream
@@ -184,12 +184,12 @@ This target uses the same real dashboard path as `make tui-e2e`:
    - `summary|services|routes|releases|deploys|logs.png`: PNG screenshots for each captured tab
    - `manifest.json`: command, terminal size, and artifact index
 
-The capture uses the fake Compose runner for service status/log data, but the dashboard access path is real OpenSSH forced-command dashboard access.
+The capture uses the fake Compose runner for service status/log data, but the operator access path is real OpenSSH forced-command access.
 
 To capture a real external server instead of the local e2e harness, run:
 
 ```bash
-SSHDOCK_TUI_SCREENSHOT_SSH_TARGET=dashboard@server \
+SSHDOCK_TUI_SCREENSHOT_SSH_TARGET=sshdock@server \
 SSHDOCK_TUI_SCREENSHOT_SSH_IDENTITY=/path/to/key \
 make tui-screenshots-vps
 ```
@@ -257,7 +257,7 @@ make backup-restore-e2e
 The backup restore test:
 
 1. Creates a real SQLite store with an app and encrypted config value.
-2. Writes app repo/worktree state, Git/dashboard key state, and generated Caddy config under temporary paths.
+2. Writes app repo/worktree state, Git/operator key state, and generated Caddy config under temporary paths.
 3. Creates a backup archive with fake Docker volume inventory.
 4. Restores the archive to a separate temporary config.
 5. Verifies the restored `config.key` can decrypt the restored config value.
@@ -380,7 +380,7 @@ The test skips only when the local OpenSSH server is unavailable or cannot be st
 
 The default and OpenSSH e2e tiers do not prove:
 
-- dashboard SSH sessions
+- operator SSH sessions
 - production system SSH daemon reload behavior
 
-The Caddy route path is covered separately by `make route-e2e`. The dashboard SSH path is covered separately by `make tui-e2e`.
+The Caddy route path is covered separately by `make route-e2e`. The operator SSH path is covered separately by `make tui-e2e`.

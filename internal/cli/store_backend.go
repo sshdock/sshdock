@@ -25,21 +25,21 @@ type ReceiveRepoSetupper interface {
 }
 
 type StoreBackendConfig struct {
-	NodeID                      string
-	AppsDir                     string
-	GitHost                     string
-	AuthorizedKeysPath          string
-	GitReceiveCommand           string
-	DashboardAuthorizedKeysPath string
-	DashboardCommand            string
-	RepoSetupper                ReceiveRepoSetupper
-	Router                      routeSyncer
-	RecoveryRunner              compose.Runner
-	RecoveryCheckout            appmodel.WorktreeCheckout
-	CurrentMainResolver         appmodel.CurrentMainResolver
-	ConfigManager               configManager
-	Now                         func() time.Time
-	NewDeploymentID             func() (string, error)
+	NodeID                     string
+	AppsDir                    string
+	GitHost                    string
+	AuthorizedKeysPath         string
+	GitReceiveCommand          string
+	OperatorAuthorizedKeysPath string
+	OperatorCommand            string
+	RepoSetupper               ReceiveRepoSetupper
+	Router                     routeSyncer
+	RecoveryRunner             compose.Runner
+	RecoveryCheckout           appmodel.WorktreeCheckout
+	CurrentMainResolver        appmodel.CurrentMainResolver
+	ConfigManager              configManager
+	Now                        func() time.Time
+	NewDeploymentID            func() (string, error)
 }
 
 type routeSyncer interface {
@@ -55,22 +55,22 @@ type logStreamer interface {
 }
 
 type StoreBackend struct {
-	store                       store.Store
-	nodeID                      string
-	appsDir                     string
-	gitHost                     string
-	authorizedKeysPath          string
-	gitReceiveCommand           string
-	dashboardAuthorizedKeysPath string
-	dashboardCommand            string
-	repoSetupper                ReceiveRepoSetupper
-	router                      routeSyncer
-	recoveryRunner              compose.Runner
-	recoveryCheckout            appmodel.WorktreeCheckout
-	currentMainResolver         appmodel.CurrentMainResolver
-	configManager               configManager
-	now                         func() time.Time
-	newDeploymentID             func() (string, error)
+	store                      store.Store
+	nodeID                     string
+	appsDir                    string
+	gitHost                    string
+	authorizedKeysPath         string
+	gitReceiveCommand          string
+	operatorAuthorizedKeysPath string
+	operatorCommand            string
+	repoSetupper               ReceiveRepoSetupper
+	router                     routeSyncer
+	recoveryRunner             compose.Runner
+	recoveryCheckout           appmodel.WorktreeCheckout
+	currentMainResolver        appmodel.CurrentMainResolver
+	configManager              configManager
+	now                        func() time.Time
+	newDeploymentID            func() (string, error)
 }
 
 func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *StoreBackend {
@@ -88,22 +88,22 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 	}
 
 	return &StoreBackend{
-		store:                       persistentStore,
-		nodeID:                      cfg.NodeID,
-		appsDir:                     cfg.AppsDir,
-		gitHost:                     cfg.GitHost,
-		authorizedKeysPath:          cfg.AuthorizedKeysPath,
-		gitReceiveCommand:           cfg.GitReceiveCommand,
-		dashboardAuthorizedKeysPath: cfg.DashboardAuthorizedKeysPath,
-		dashboardCommand:            cfg.DashboardCommand,
-		repoSetupper:                cfg.RepoSetupper,
-		router:                      cfg.Router,
-		recoveryRunner:              cfg.RecoveryRunner,
-		recoveryCheckout:            cfg.RecoveryCheckout,
-		currentMainResolver:         cfg.CurrentMainResolver,
-		configManager:               cfg.ConfigManager,
-		now:                         cfg.Now,
-		newDeploymentID:             cfg.NewDeploymentID,
+		store:                      persistentStore,
+		nodeID:                     cfg.NodeID,
+		appsDir:                    cfg.AppsDir,
+		gitHost:                    cfg.GitHost,
+		authorizedKeysPath:         cfg.AuthorizedKeysPath,
+		gitReceiveCommand:          cfg.GitReceiveCommand,
+		operatorAuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
+		operatorCommand:            cfg.OperatorCommand,
+		repoSetupper:               cfg.RepoSetupper,
+		router:                     cfg.Router,
+		recoveryRunner:             cfg.RecoveryRunner,
+		recoveryCheckout:           cfg.RecoveryCheckout,
+		currentMainResolver:        cfg.CurrentMainResolver,
+		configManager:              cfg.ConfigManager,
+		now:                        cfg.Now,
+		newDeploymentID:            cfg.NewDeploymentID,
 	}
 }
 
@@ -583,9 +583,9 @@ func (b *StoreBackend) writeAuthorizedKeys(keys []store.SSHKey) error {
 			return fmt.Errorf("write authorized_keys: %w", err)
 		}
 	}
-	if b.dashboardAuthorizedKeysPath != "" {
-		if err := sshaccess.WriteDashboardAuthorizedKeys(b.dashboardAuthorizedKeysPath, sshAccessKeys(keys), b.dashboardCommand); err != nil {
-			return fmt.Errorf("write dashboard authorized_keys: %w", err)
+	if b.operatorAuthorizedKeysPath != "" {
+		if err := sshaccess.WriteOperatorAuthorizedKeys(b.operatorAuthorizedKeysPath, sshAccessKeys(keys), b.operatorCommand); err != nil {
+			return fmt.Errorf("write operator authorized_keys: %w", err)
 		}
 	}
 	return nil

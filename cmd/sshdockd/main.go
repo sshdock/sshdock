@@ -27,7 +27,7 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) == 1 && args[0] == "daemon" {
 		return runDaemon(stderr)
 	}
-	if len(args) == 1 && args[0] == "dashboard" {
+	if len(args) == 1 && args[0] == "operator" {
 		return runDashboard(stdin, stdout, stderr)
 	}
 	if len(args) >= 1 && args[0] == "git-hook" {
@@ -40,6 +40,6 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | dashboard | version | git-pre-receive | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | operator | version | git-pre-receive | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }

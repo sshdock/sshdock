@@ -22,22 +22,22 @@ func (f SessionHandlerFunc) HandleSession(ctx context.Context, session Session) 
 }
 
 type ServerConfig struct {
-	ListenAddr    string
-	DashboardUser string
-	Handler       SessionHandler
+	ListenAddr   string
+	OperatorUser string
+	Handler      SessionHandler
 }
 
 type Server struct {
-	listenAddr    string
-	dashboardUser string
-	handler       SessionHandler
+	listenAddr   string
+	operatorUser string
+	handler      SessionHandler
 }
 
 func NewServer(config ServerConfig) *Server {
 	return &Server{
-		listenAddr:    config.ListenAddr,
-		dashboardUser: config.DashboardUser,
-		handler:       config.Handler,
+		listenAddr:   config.ListenAddr,
+		operatorUser: config.OperatorUser,
+		handler:      config.Handler,
 	}
 }
 
@@ -45,16 +45,16 @@ func (s *Server) ListenAddr() string {
 	return s.listenAddr
 }
 
-func (s *Server) DashboardUser() string {
-	return s.dashboardUser
+func (s *Server) OperatorUser() string {
+	return s.operatorUser
 }
 
 func (s *Server) AcceptSession(ctx context.Context, session Session) error {
-	if session.User() != s.dashboardUser {
-		return fmt.Errorf("unauthorized dashboard user %q", session.User())
+	if session.User() != s.operatorUser {
+		return fmt.Errorf("unauthorized operator user %q", session.User())
 	}
 	if s.handler == nil {
-		return fmt.Errorf("dashboard session handler is not configured")
+		return fmt.Errorf("operator session handler is not configured")
 	}
 
 	return s.handler.HandleSession(ctx, session)

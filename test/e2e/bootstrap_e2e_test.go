@@ -46,6 +46,10 @@ if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
 	echo 0
 	exit 0
 fi
+if [ "$#" -eq 2 ] && [ "$1" = "-u" ] && [ "$2" = "dashboard" ]; then
+	echo 999
+	exit 0
+fi
 printf 'id %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
 exit 1
 `)
@@ -78,10 +82,10 @@ exit 0
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock"))
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdockd"))
 	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock-git-receive"))
-	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard"))
+	assertExecutable(t, filepath.Join(installRoot, "usr/local/bin/sshdock-operator"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock"))
 	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock/apps"))
-	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock/dashboard"))
+	assertDir(t, filepath.Join(installRoot, "var/lib/sshdock/.ssh"))
 
 	wrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/sshdock-git-receive"))
 	for _, want := range []string{
@@ -95,14 +99,14 @@ exit 0
 		}
 	}
 
-	dashboardWrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard"))
+	operatorWrapper := readFile(t, filepath.Join(installRoot, "usr/local/bin/sshdock-operator"))
 	for _, want := range []string{
 		"export SSHDOCK_DATA_DIR=/var/lib/sshdock",
 		"export SSHDOCK_COMPOSE_RUNNER=docker",
-		"exec /usr/local/bin/sshdockd dashboard",
+		"exec /usr/local/bin/sshdockd operator",
 	} {
-		if !strings.Contains(dashboardWrapper, want) {
-			t.Fatalf("dashboard wrapper missing %q:\n%s", want, dashboardWrapper)
+		if !strings.Contains(operatorWrapper, want) {
+			t.Fatalf("operator wrapper missing %q:\n%s", want, operatorWrapper)
 		}
 	}
 
@@ -118,17 +122,9 @@ exit 0
 	}
 	assertFileMode(t, gitSudoersPath, 0o440)
 
-	dashboardSudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")
-	dashboardSudoers := readFile(t, dashboardSudoersPath)
-	for _, want := range []string{
-		`Defaults:dashboard env_keep += "SSH_ORIGINAL_COMMAND"`,
-		"dashboard ALL=(sshdock) NOPASSWD: /usr/local/bin/sshdock-dashboard",
-	} {
-		if !strings.Contains(dashboardSudoers, want) {
-			t.Fatalf("dashboard sudoers missing %q:\n%s", want, dashboardSudoers)
-		}
+	if _, err := os.Stat(filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")); !os.IsNotExist(err) {
+		t.Fatalf("legacy dashboard sudoers still exists: %v", err)
 	}
-	assertFileMode(t, dashboardSudoersPath, 0o440)
 
 	unitPath := filepath.Join(installRoot, "etc/systemd/system/sshdockd.service")
 	unit := readFile(t, unitPath)
@@ -165,9 +161,9 @@ exit 0
 		"sudo -V",
 		"useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock",
 		"useradd --system --home /var/lib/sshdock/git --shell /bin/sh git",
-		"useradd --system --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
+		"usermod --home /var/lib/sshdock --shell /bin/sh sshdock",
 		"usermod --shell /bin/sh git",
-		"usermod --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
+		"usermod --lock --shell /usr/sbin/nologin dashboard",
 		"visudo -cf ",
 		"systemctl daemon-reload",
 		"systemctl enable sshdockd.service",
@@ -176,6 +172,9 @@ exit 0
 		if !strings.Contains(fakeLog, want) {
 			t.Fatalf("fake command log missing %q:\n%s", want, fakeLog)
 		}
+	}
+	if strings.Contains(fakeLog, "useradd --system --home /var/lib/sshdock/dashboard") {
+		t.Fatalf("bootstrap created legacy dashboard account:\n%s", fakeLog)
 	}
 }
 
@@ -199,6 +198,56 @@ func TestBootstrapRequiresTag(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "SSHDOCK_TAG is required") {
 		t.Fatalf("bootstrap missing tag output = %s", output)
+	}
+}
+
+func TestBootstrapUpgradeMovesKeysAndRetiresDashboardAccess(t *testing.T) {
+	// Given
+	root := filepath.Join("..", "..")
+	tmp := t.TempDir()
+	sourceBinDir := buildBootstrapSourceBinaries(t, root, tmp)
+	fakeBinDir := filepath.Join(tmp, "fake-bin")
+	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
+	writeBootstrapFakeCommands(t, fakeBinDir)
+	installRoot := filepath.Join(tmp, "root")
+	legacyKeysPath := filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh/authorized_keys")
+	legacyWrapperPath := filepath.Join(installRoot, "usr/local/bin/sshdock-dashboard")
+	legacySudoersPath := filepath.Join(installRoot, "etc/sudoers.d/sshdock-dashboard")
+	for path, content := range map[string]string{
+		legacyKeysPath:    "ssh-ed25519 legacy-key\n",
+		legacyWrapperPath: "legacy wrapper\n",
+		legacySudoersPath: "legacy sudoers\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatalf("WriteFile %s: %v", path, err)
+		}
+	}
+	env := append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"SSHDOCK_TAG=test-local",
+		"SSHDOCK_BOOTSTRAP_ROOT="+installRoot,
+		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
+		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0",
+		"SSHDOCK_BOOTSTRAP_SKIP_USER=1",
+		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
+		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+	)
+
+	// When
+	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
+
+	// Then
+	operatorKeysPath := filepath.Join(installRoot, "var/lib/sshdock/.ssh/authorized_keys")
+	if got := readFile(t, operatorKeysPath); got != "ssh-ed25519 legacy-key\n" {
+		t.Fatalf("operator authorized_keys = %q, want migrated legacy key", got)
+	}
+	for _, path := range []string{legacyKeysPath, legacyWrapperPath, legacySudoersPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("legacy access path %s still exists: %v", path, err)
+		}
 	}
 }
 
@@ -239,13 +288,13 @@ func TestBootstrapInstallsDependenciesAndConfiguresHost(t *testing.T) {
 		"systemctl enable --now ssh",
 		"systemctl enable --now caddy",
 		"usermod -aG docker sshdock",
+		"usermod --home /var/lib/sshdock --shell /bin/sh sshdock",
 		"usermod --shell /bin/sh git",
-		"usermod --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard",
 		"visudo -cf ",
 		"chown -R sshdock:sshdock " + filepath.Join(installRoot, "var/lib/sshdock"),
 		"chown -R sshdock:sshdock " + filepath.Join(installRoot, "etc/caddy/sshdock"),
 		"chown -R git:git " + filepath.Join(installRoot, "var/lib/sshdock/git"),
-		"chown dashboard:dashboard " + filepath.Join(installRoot, "var/lib/sshdock/dashboard") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh") + " " + filepath.Join(installRoot, "var/lib/sshdock/dashboard/.ssh/authorized_keys"),
+		"chown sshdock:sshdock " + filepath.Join(installRoot, "var/lib/sshdock") + " " + filepath.Join(installRoot, "var/lib/sshdock/.ssh") + " " + filepath.Join(installRoot, "var/lib/sshdock/.ssh/authorized_keys"),
 		"chmod 0755 " + filepath.Join(installRoot, "var/lib/sshdock/git"),
 		"chmod 0700 " + filepath.Join(installRoot, "var/lib/sshdock/git/.ssh"),
 		"touch " + filepath.Join(installRoot, "var/lib/sshdock/git/.ssh/authorized_keys"),

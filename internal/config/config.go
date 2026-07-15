@@ -8,49 +8,49 @@ import (
 )
 
 type Config struct {
-	DataDir                     string
-	SQLiteDBPath                string
-	AppsDir                     string
-	LocksDir                    string
-	ConfigKeyPath               string
-	NodeID                      string
-	SSHListenAddr               string
-	DashboardUser               string
-	DashboardHostKeyPath        string
-	DashboardAuthorizedKeysPath string
-	DashboardCommand            string
-	GitUser                     string
-	GitHomeDir                  string
-	GitHost                     string
-	GitAuthorizedKeysPath       string
-	GitReceiveCommand           string
-	CaddyConfigPath             string
-	CaddyMainConfigPath         string
-	CaddyAdminAddress           string
+	DataDir                    string
+	SQLiteDBPath               string
+	AppsDir                    string
+	LocksDir                   string
+	ConfigKeyPath              string
+	NodeID                     string
+	SSHListenAddr              string
+	OperatorUser               string
+	OperatorHostKeyPath        string
+	OperatorAuthorizedKeysPath string
+	OperatorCommand            string
+	GitUser                    string
+	GitHomeDir                 string
+	GitHost                    string
+	GitAuthorizedKeysPath      string
+	GitReceiveCommand          string
+	CaddyConfigPath            string
+	CaddyMainConfigPath        string
+	CaddyAdminAddress          string
 }
 
 func Default() Config {
 	dataDir := "/var/lib/sshdock"
 
 	return Config{
-		DataDir:                     dataDir,
-		SQLiteDBPath:                filepath.Join(dataDir, "sshdock.db"),
-		AppsDir:                     filepath.Join(dataDir, "apps"),
-		LocksDir:                    filepath.Join(dataDir, "locks"),
-		ConfigKeyPath:               filepath.Join(dataDir, "config.key"),
-		NodeID:                      "local",
-		SSHListenAddr:               ":2222",
-		DashboardUser:               "dashboard",
-		DashboardHostKeyPath:        filepath.Join(dataDir, "dashboard", "ssh_host_rsa_key"),
-		DashboardAuthorizedKeysPath: filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"),
-		DashboardCommand:            "sudo -n -u sshdock /usr/local/bin/sshdock-dashboard",
-		GitUser:                     "git",
-		GitHomeDir:                  filepath.Join(dataDir, "git"),
-		GitHost:                     "server",
-		GitAuthorizedKeysPath:       filepath.Join(dataDir, "git", ".ssh", "authorized_keys"),
-		GitReceiveCommand:           "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive",
-		CaddyConfigPath:             "/etc/caddy/sshdock/sshdock.caddyfile",
-		CaddyMainConfigPath:         "/etc/caddy/Caddyfile",
+		DataDir:                    dataDir,
+		SQLiteDBPath:               filepath.Join(dataDir, "sshdock.db"),
+		AppsDir:                    filepath.Join(dataDir, "apps"),
+		LocksDir:                   filepath.Join(dataDir, "locks"),
+		ConfigKeyPath:              filepath.Join(dataDir, "config.key"),
+		NodeID:                     "local",
+		SSHListenAddr:              ":2222",
+		OperatorUser:               "sshdock",
+		OperatorHostKeyPath:        filepath.Join(dataDir, "ssh_host_rsa_key"),
+		OperatorAuthorizedKeysPath: filepath.Join(dataDir, ".ssh", "authorized_keys"),
+		OperatorCommand:            "/usr/local/bin/sshdock-operator",
+		GitUser:                    "git",
+		GitHomeDir:                 filepath.Join(dataDir, "git"),
+		GitHost:                    "server",
+		GitAuthorizedKeysPath:      filepath.Join(dataDir, "git", ".ssh", "authorized_keys"),
+		GitReceiveCommand:          "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive",
+		CaddyConfigPath:            "/etc/caddy/sshdock/sshdock.caddyfile",
+		CaddyMainConfigPath:        "/etc/caddy/Caddyfile",
 	}
 }
 
@@ -64,10 +64,10 @@ func LoadFromEnv() Config {
 	cfg.ConfigKeyPath = envOrDefault("SSHDOCK_CONFIG_KEY_PATH", filepath.Join(cfg.DataDir, "config.key"))
 	cfg.NodeID = envOrDefault("SSHDOCK_NODE_ID", cfg.NodeID)
 	cfg.SSHListenAddr = envOrDefault("SSHDOCK_SSH_LISTEN_ADDR", cfg.SSHListenAddr)
-	cfg.DashboardUser = envOrDefault("SSHDOCK_DASHBOARD_USER", cfg.DashboardUser)
-	cfg.DashboardHostKeyPath = envOrDefault("SSHDOCK_DASHBOARD_HOST_KEY_PATH", filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key"))
-	cfg.DashboardAuthorizedKeysPath = envOrDefault("SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.DataDir, "dashboard", ".ssh", "authorized_keys"))
-	cfg.DashboardCommand = envOrDefault("SSHDOCK_DASHBOARD_COMMAND", cfg.DashboardCommand)
+	cfg.OperatorUser = envOrDefault("SSHDOCK_OPERATOR_USER", cfg.OperatorUser)
+	cfg.OperatorHostKeyPath = envOrDefault("SSHDOCK_OPERATOR_HOST_KEY_PATH", filepath.Join(cfg.DataDir, "ssh_host_rsa_key"))
+	cfg.OperatorAuthorizedKeysPath = envOrDefault("SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.DataDir, ".ssh", "authorized_keys"))
+	cfg.OperatorCommand = envOrDefault("SSHDOCK_OPERATOR_COMMAND", cfg.OperatorCommand)
 	cfg.GitUser = envOrDefault("SSHDOCK_GIT_USER", cfg.GitUser)
 	cfg.GitHomeDir = envOrDefault("SSHDOCK_GIT_HOME_DIR", filepath.Join(cfg.DataDir, "git"))
 	cfg.GitHost = envOrDefault("SSHDOCK_GIT_HOST", cfg.GitHost)
@@ -104,10 +104,10 @@ func (c Config) Validate() error {
 		{env: "SSHDOCK_CONFIG_KEY_PATH", value: c.ConfigKeyPath},
 		{env: "SSHDOCK_NODE_ID", value: c.NodeID},
 		{env: "SSHDOCK_SSH_LISTEN_ADDR", value: c.SSHListenAddr},
-		{env: "SSHDOCK_DASHBOARD_USER", value: c.DashboardUser},
-		{env: "SSHDOCK_DASHBOARD_HOST_KEY_PATH", value: c.DashboardHostKeyPath},
-		{env: "SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", value: c.DashboardAuthorizedKeysPath},
-		{env: "SSHDOCK_DASHBOARD_COMMAND", value: c.DashboardCommand},
+		{env: "SSHDOCK_OPERATOR_USER", value: c.OperatorUser},
+		{env: "SSHDOCK_OPERATOR_HOST_KEY_PATH", value: c.OperatorHostKeyPath},
+		{env: "SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", value: c.OperatorAuthorizedKeysPath},
+		{env: "SSHDOCK_OPERATOR_COMMAND", value: c.OperatorCommand},
 		{env: "SSHDOCK_GIT_USER", value: c.GitUser},
 		{env: "SSHDOCK_GIT_HOME_DIR", value: c.GitHomeDir},
 		{env: "SSHDOCK_GIT_HOST", value: c.GitHost},

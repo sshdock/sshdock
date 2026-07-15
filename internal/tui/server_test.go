@@ -9,26 +9,26 @@ import (
 func TestNewServerUsesConfig(t *testing.T) {
 	handler := SessionHandlerFunc(func(context.Context, Session) error { return nil })
 	server := NewServer(ServerConfig{
-		ListenAddr:    "127.0.0.1:2222",
-		DashboardUser: "dashboard",
-		Handler:       handler,
+		ListenAddr:   "127.0.0.1:2222",
+		OperatorUser: "dashboard",
+		Handler:      handler,
 	})
 
 	if server.ListenAddr() != "127.0.0.1:2222" {
 		t.Fatalf("ListenAddr = %q", server.ListenAddr())
 	}
-	if server.DashboardUser() != "dashboard" {
-		t.Fatalf("DashboardUser = %q", server.DashboardUser())
+	if server.OperatorUser() != "dashboard" {
+		t.Fatalf("OperatorUser = %q", server.OperatorUser())
 	}
 }
 
-func TestServerAcceptSessionCallsHandlerForDashboardUser(t *testing.T) {
+func TestServerAcceptSessionCallsHandlerForOperatorUser(t *testing.T) {
 	ctx := context.Background()
 	session := fakeSession{user: "dashboard"}
 	var called bool
 	server := NewServer(ServerConfig{
-		ListenAddr:    ":2222",
-		DashboardUser: "dashboard",
+		ListenAddr:   ":2222",
+		OperatorUser: "dashboard",
 		Handler: SessionHandlerFunc(func(_ context.Context, got Session) error {
 			called = true
 			if got.User() != "dashboard" {
@@ -46,12 +46,12 @@ func TestServerAcceptSessionCallsHandlerForDashboardUser(t *testing.T) {
 	}
 }
 
-func TestServerRejectsNonDashboardUser(t *testing.T) {
+func TestServerRejectsNonOperatorUser(t *testing.T) {
 	ctx := context.Background()
 	server := NewServer(ServerConfig{
-		ListenAddr:    ":2222",
-		DashboardUser: "dashboard",
-		Handler:       SessionHandlerFunc(func(context.Context, Session) error { return nil }),
+		ListenAddr:   ":2222",
+		OperatorUser: "dashboard",
+		Handler:      SessionHandlerFunc(func(context.Context, Session) error { return nil }),
 	})
 
 	err := server.AcceptSession(ctx, fakeSession{user: "root"})
@@ -64,8 +64,8 @@ func TestServerReturnsHandlerError(t *testing.T) {
 	ctx := context.Background()
 	failure := errors.New("handler failed")
 	server := NewServer(ServerConfig{
-		ListenAddr:    ":2222",
-		DashboardUser: "dashboard",
+		ListenAddr:   ":2222",
+		OperatorUser: "dashboard",
 		Handler: SessionHandlerFunc(func(context.Context, Session) error {
 			return failure
 		}),

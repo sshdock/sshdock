@@ -28,7 +28,7 @@ curl -fsS https://stateful-counter.example.com
 sudo sshdock apps redeploy stateful-counter
 curl -fsS https://stateful-counter.example.com
 sudo sshdock logs stateful-counter web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:

@@ -30,7 +30,7 @@ func TestSSHServerServesDashboardSessionWithAuthorizedKey(t *testing.T) {
 	listener := listenLocalhost(t)
 	server := NewSSHServer(SSHServerConfig{
 		ListenAddr:         listener.Addr().String(),
-		DashboardUser:      "dashboard",
+		OperatorUser:       "dashboard",
 		HostKeyPath:        hostKeyPath,
 		AuthorizedKeysPath: authorizedKeysPath,
 		Handler: SessionHandlerFunc(func(_ context.Context, session Session) error {
@@ -58,7 +58,7 @@ func TestSSHServerServesDashboardSessionWithAuthorizedKey(t *testing.T) {
 	}
 }
 
-func TestSSHServerRejectsWrongDashboardUserOrKey(t *testing.T) {
+func TestSSHServerRejectsWrongOperatorUserOrKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	hostKeyPath := writeTestRSAKey(t, filepath.Join(t.TempDir(), "ssh_host_rsa_key"))
@@ -71,7 +71,7 @@ func TestSSHServerRejectsWrongDashboardUserOrKey(t *testing.T) {
 	listener := listenLocalhost(t)
 	server := NewSSHServer(SSHServerConfig{
 		ListenAddr:         listener.Addr().String(),
-		DashboardUser:      "dashboard",
+		OperatorUser:       "dashboard",
 		HostKeyPath:        hostKeyPath,
 		AuthorizedKeysPath: authorizedKeysPath,
 		Handler:            SessionHandlerFunc(func(context.Context, Session) error { return nil }),

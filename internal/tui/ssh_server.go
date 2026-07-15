@@ -19,7 +19,7 @@ import (
 
 type SSHServerConfig struct {
 	ListenAddr         string
-	DashboardUser      string
+	OperatorUser       string
 	HostKeyPath        string
 	AuthorizedKeysPath string
 	Handler            SessionHandler
@@ -38,9 +38,9 @@ func NewSSHServer(config SSHServerConfig) *SSHServer {
 		hostKeyPath:        config.HostKeyPath,
 		authorizedKeysPath: config.AuthorizedKeysPath,
 		server: NewServer(ServerConfig{
-			ListenAddr:    config.ListenAddr,
-			DashboardUser: config.DashboardUser,
-			Handler:       config.Handler,
+			ListenAddr:   config.ListenAddr,
+			OperatorUser: config.OperatorUser,
+			Handler:      config.Handler,
 		}),
 	}
 }
@@ -56,19 +56,19 @@ func (s *SSHServer) Serve(ctx context.Context) error {
 func (s *SSHServer) ServeListener(ctx context.Context, listener net.Listener) error {
 	signer, err := loadOrCreateHostSigner(s.hostKeyPath)
 	if err != nil {
-		return fmt.Errorf("load dashboard SSH host key: %w", err)
+		return fmt.Errorf("load operator SSH host key: %w", err)
 	}
 	authorizedKeys, err := loadAuthorizedKeys(s.authorizedKeysPath)
 	if err != nil {
-		return fmt.Errorf("load dashboard authorized keys: %w", err)
+		return fmt.Errorf("load operator authorized keys: %w", err)
 	}
 	config := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			if conn.User() != s.server.DashboardUser() {
-				return nil, fmt.Errorf("unauthorized dashboard user %q", conn.User())
+			if conn.User() != s.server.OperatorUser() {
+				return nil, fmt.Errorf("unauthorized operator user %q", conn.User())
 			}
 			if !authorizedKeys[string(key.Marshal())] {
-				return nil, fmt.Errorf("unauthorized dashboard key for %q", conn.User())
+				return nil, fmt.Errorf("unauthorized operator key for %q", conn.User())
 			}
 			return &ssh.Permissions{Extensions: map[string]string{"user": conn.User()}}, nil
 		},

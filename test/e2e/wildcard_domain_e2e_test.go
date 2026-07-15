@@ -83,7 +83,7 @@ services:
 		t.Fatalf("Caddyfile should not contain a wildcard route:\n%s", caddyConfig)
 	}
 
-	dashboardOutput := runCommand(t, root, env, sshdockdPath, "dashboard")
+	dashboardOutput := runCommand(t, root, env, sshdockdPath, "operator")
 	if !strings.Contains(dashboardOutput, "wildcard-app.example.com") {
 		t.Fatalf("dashboard output missing auto route:\n%s", dashboardOutput)
 	}

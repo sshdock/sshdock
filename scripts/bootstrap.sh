@@ -245,6 +245,14 @@ ensure_daemon_user() {
 	ensure_system_user "$DAEMON_USER" "$DATA_DIR" "/usr/sbin/nologin"
 }
 
+ensure_operator_user() {
+	if [ "$SKIP_USER" = "1" ]; then
+		return
+	fi
+	need_command usermod
+	run usermod --home "$OPERATOR_HOME_DIR" --shell "$OPERATOR_SHELL" "$DAEMON_USER"
+}
+
 ensure_git_user() {
 	if [ "$SKIP_USER" = "1" ]; then
 		return
@@ -252,15 +260,6 @@ ensure_git_user() {
 	ensure_system_user "$GIT_USER" "$GIT_HOME_DIR" "$GIT_SHELL"
 	need_command usermod
 	run usermod --shell "$GIT_SHELL" "$GIT_USER"
-}
-
-ensure_dashboard_user() {
-	if [ "$SKIP_USER" = "1" ]; then
-		return
-	fi
-	ensure_system_user "$DASHBOARD_USER" "$DASHBOARD_HOME_DIR" "$DASHBOARD_SHELL"
-	need_command usermod
-	run usermod --home "$DASHBOARD_HOME_DIR" --shell "$DASHBOARD_SHELL" "$DASHBOARD_USER"
 }
 
 ensure_system_user() {
@@ -301,18 +300,18 @@ ensure_daemon_docker_access() {
 
 normalize_runtime_ownership() {
 	local data_dir_actual git_home_actual git_ssh_dir_actual git_authorized_keys_actual
-	local dashboard_home_actual dashboard_ssh_dir_actual dashboard_authorized_keys_actual caddy_dir_actual
+	local operator_home_actual operator_ssh_dir_actual operator_authorized_keys_actual caddy_dir_actual
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
 	git_authorized_keys_actual="$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")"
-	dashboard_home_actual="$(prefix_path "$DASHBOARD_HOME_DIR")"
-	dashboard_ssh_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
-	dashboard_authorized_keys_actual="$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")"
+	operator_home_actual="$(prefix_path "$OPERATOR_HOME_DIR")"
+	operator_ssh_dir_actual="$(dirname "$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")")"
+	operator_authorized_keys_actual="$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")"
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 
-	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual" "$dashboard_home_actual"
-	run chmod 0700 "$git_ssh_dir_actual" "$dashboard_ssh_dir_actual"
+	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual" "$operator_home_actual"
+	run chmod 0700 "$git_ssh_dir_actual" "$operator_ssh_dir_actual"
 
 	if [ "$SKIP_CHOWN" = "1" ]; then
 		return
@@ -329,16 +328,25 @@ normalize_runtime_ownership() {
 	run touch "$git_authorized_keys_actual"
 	run chmod 0600 "$git_authorized_keys_actual"
 	run chown "$GIT_USER:$GIT_USER" "$git_ssh_dir_actual" "$git_authorized_keys_actual"
-	run touch "$dashboard_authorized_keys_actual"
-	run chmod 0600 "$dashboard_authorized_keys_actual"
-	run chown "$DASHBOARD_USER:$DASHBOARD_USER" "$dashboard_home_actual" "$dashboard_ssh_dir_actual" "$dashboard_authorized_keys_actual"
-	run chmod 0755 "$dashboard_home_actual"
-	run chmod 0700 "$dashboard_ssh_dir_actual"
+	run touch "$operator_authorized_keys_actual"
+	run chmod 0600 "$operator_authorized_keys_actual"
+	run chown "$DAEMON_USER:$DAEMON_USER" "$operator_home_actual" "$operator_ssh_dir_actual" "$operator_authorized_keys_actual"
+	run chmod 0755 "$operator_home_actual"
+	run chmod 0700 "$operator_ssh_dir_actual"
+}
+
+migrate_legacy_dashboard_keys() {
+	local legacy_keys_actual operator_keys_actual
+	legacy_keys_actual="$(prefix_path "$LEGACY_DASHBOARD_AUTHORIZED_KEYS_PATH")"
+	operator_keys_actual="$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")"
+	if [ -s "$legacy_keys_actual" ] && [ ! -s "$operator_keys_actual" ]; then
+		run cp "$legacy_keys_actual" "$operator_keys_actual"
+	fi
 }
 
 prepare_directories() {
 	local bin_dir_actual data_dir_actual apps_dir_actual systemd_dir_actual caddy_dir_actual
-	local git_home_actual git_ssh_dir_actual dashboard_home_actual dashboard_ssh_dir_actual
+	local git_home_actual git_ssh_dir_actual operator_home_actual operator_ssh_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
 	apps_dir_actual="$(prefix_path "$APPS_DIR")"
@@ -346,10 +354,11 @@ prepare_directories() {
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
-	dashboard_home_actual="$(prefix_path "$DASHBOARD_HOME_DIR")"
-	dashboard_ssh_dir_actual="$(dirname "$(prefix_path "$DASHBOARD_AUTHORIZED_KEYS_PATH")")"
+	operator_home_actual="$(prefix_path "$OPERATOR_HOME_DIR")"
+	operator_ssh_dir_actual="$(dirname "$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")")"
 
-	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$dashboard_home_actual" "$dashboard_ssh_dir_actual"
+	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$operator_home_actual" "$operator_ssh_dir_actual"
+	migrate_legacy_dashboard_keys
 	normalize_runtime_ownership
 }
 
@@ -431,9 +440,9 @@ WRAPPER
 	run chmod 0755 "$wrapper_actual"
 }
 
-write_dashboard_wrapper() {
+write_operator_wrapper() {
 	local wrapper_actual
-	wrapper_actual="$(prefix_path "$DASHBOARD_WRAPPER_PATH")"
+	wrapper_actual="$(prefix_path "$OPERATOR_WRAPPER_PATH")"
 
 	run mkdir -p "$(dirname "$wrapper_actual")"
 	cat > "$wrapper_actual" <<WRAPPER
@@ -446,7 +455,7 @@ export SSHDOCK_APPS_DIR=$APPS_DIR
 export SSHDOCK_GIT_HOST=$GIT_HOST
 export SSHDOCK_COMPOSE_RUNNER=docker
 export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
-exec $INSTALL_BIN_DIR/sshdockd dashboard
+exec $INSTALL_BIN_DIR/sshdockd operator
 WRAPPER
 	run chmod 0755 "$wrapper_actual"
 }
@@ -472,25 +481,15 @@ SUDOERS
 	run chmod 0440 "$sudoers_actual"
 }
 
-configure_dashboard_sudoers() {
-	if [ "$SKIP_USER" = "1" ]; then
-		return
+retire_legacy_dashboard_access() {
+	run rm -f \
+		"$(prefix_path "$LEGACY_DASHBOARD_AUTHORIZED_KEYS_PATH")" \
+		"$(prefix_path "$SUDOERS_DIR/sshdock-dashboard")" \
+		"$(prefix_path "$LEGACY_DASHBOARD_WRAPPER_PATH")"
+	if [ "$SKIP_USER" = "0" ] && id -u dashboard >/dev/null 2>&1; then
+		need_command usermod
+		run usermod --lock --shell /usr/sbin/nologin dashboard
 	fi
-	local sudoers_actual sudoers_tmp
-	sudoers_actual="$(prefix_path "$SUDOERS_DIR/sshdock-dashboard")"
-	sudoers_tmp="$(dirname "$sudoers_actual")/.sshdock-dashboard.tmp.$$"
-
-	run mkdir -p "$(dirname "$sudoers_actual")"
-	cat > "$sudoers_tmp" <<SUDOERS
-Defaults:$DASHBOARD_USER env_keep += "SSH_ORIGINAL_COMMAND"
-$DASHBOARD_USER ALL=($DAEMON_USER) NOPASSWD: $DASHBOARD_WRAPPER_PATH
-SUDOERS
-	run chmod 0440 "$sudoers_tmp"
-	if command -v visudo >/dev/null 2>&1; then
-		run visudo -cf "$sudoers_tmp"
-	fi
-	run mv -f "$sudoers_tmp" "$sudoers_actual"
-	run chmod 0440 "$sudoers_actual"
 }
 
 write_systemd_unit() {
@@ -587,12 +586,12 @@ SYSTEMD_DIR="${SSHDOCK_SYSTEMD_DIR:-/etc/systemd/system}"
 CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock/sshdock.caddyfile}"
 CADDY_MAIN_CONFIG_PATH="${SSHDOCK_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
 SSH_LISTEN_ADDR="${SSHDOCK_SSH_LISTEN_ADDR:-:2222}"
-DASHBOARD_USER="${SSHDOCK_DASHBOARD_USER:-dashboard}"
-DASHBOARD_HOME_DIR="${SSHDOCK_DASHBOARD_HOME_DIR:-$DATA_DIR/dashboard}"
-DASHBOARD_SHELL="${SSHDOCK_DASHBOARD_SHELL:-/bin/sh}"
-DASHBOARD_HOST_KEY_PATH="${SSHDOCK_DASHBOARD_HOST_KEY_PATH:-$DATA_DIR/dashboard/ssh_host_rsa_key}"
-DASHBOARD_AUTHORIZED_KEYS_PATH="${SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH:-$DASHBOARD_HOME_DIR/.ssh/authorized_keys}"
-DASHBOARD_WRAPPER_PATH="${SSHDOCK_DASHBOARD_WRAPPER_PATH:-$INSTALL_BIN_DIR/sshdock-dashboard}"
+OPERATOR_HOME_DIR="${SSHDOCK_OPERATOR_HOME_DIR:-$DATA_DIR}"
+OPERATOR_SHELL="${SSHDOCK_OPERATOR_SHELL:-/bin/sh}"
+OPERATOR_AUTHORIZED_KEYS_PATH="${SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH:-$OPERATOR_HOME_DIR/.ssh/authorized_keys}"
+OPERATOR_WRAPPER_PATH="${SSHDOCK_OPERATOR_WRAPPER_PATH:-$INSTALL_BIN_DIR/sshdock-operator}"
+LEGACY_DASHBOARD_AUTHORIZED_KEYS_PATH="$DATA_DIR/dashboard/.ssh/authorized_keys"
+LEGACY_DASHBOARD_WRAPPER_PATH="$INSTALL_BIN_DIR/sshdock-dashboard"
 GIT_HOST="${SSHDOCK_GIT_HOST:-server}"
 GIT_USER="${SSHDOCK_GIT_USER:-git}"
 GIT_HOME_DIR="${SSHDOCK_GIT_HOME_DIR:-$DATA_DIR/git}"
@@ -629,15 +628,15 @@ else
 	check_runtime_dependencies
 fi
 ensure_daemon_user
+ensure_operator_user
 ensure_git_user
-ensure_dashboard_user
 prepare_directories
 ensure_daemon_docker_access
 install_binaries
 write_git_receive_wrapper
-write_dashboard_wrapper
+write_operator_wrapper
 configure_git_sudoers
-configure_dashboard_sudoers
+retire_legacy_dashboard_access
 write_systemd_unit
 configure_caddy_import
 verify_installed_binaries

@@ -204,7 +204,7 @@ func TestRunWithEnvBackupCreateInspectAndRestore(t *testing.T) {
 	t.Setenv("SSHDOCK_APPS_DIR", filepath.Join(dataDir, "apps"))
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", filepath.Join(dataDir, "config.key"))
 	t.Setenv("SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", filepath.Join(dataDir, "git", ".ssh", "authorized_keys"))
-	t.Setenv("SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"))
+	t.Setenv("SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", filepath.Join(dataDir, ".ssh", "authorized_keys"))
 	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", filepath.Join(caddyDir, "sshdock.caddyfile"))
 	t.Setenv("SSHDOCK_CADDY_MAIN_CONFIG_PATH", filepath.Join(caddyDir, "Caddyfile"))
 
@@ -238,11 +238,11 @@ func TestRunWithEnvBackupCreateInspectAndRestore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, "git", ".ssh", "authorized_keys"), []byte("ssh-ed25519 git-key\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile git authorized keys: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "dashboard", ".ssh"), 0o755); err != nil {
-		t.Fatalf("MkdirAll dashboard ssh: %v", err)
+	if err := os.MkdirAll(filepath.Join(dataDir, ".ssh"), 0o755); err != nil {
+		t.Fatalf("MkdirAll operator ssh: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys"), []byte("ssh-ed25519 dashboard-key\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile dashboard authorized keys: %v", err)
+	if err := os.WriteFile(filepath.Join(dataDir, ".ssh", "authorized_keys"), []byte("ssh-ed25519 operator-key\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile operator authorized keys: %v", err)
 	}
 	if err := os.MkdirAll(filepath.Join(dataDir, "apps", "my-app", "worktree"), 0o755); err != nil {
 		t.Fatalf("MkdirAll worktree: %v", err)

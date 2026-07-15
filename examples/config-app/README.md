@@ -33,9 +33,9 @@ required variable APP_MESSAGE is missing a value
 Set the missing value over SSH. `config list` stays redacted, while `config get` is an explicit reveal:
 
 ```bash
-printf '%s\n' 'Hello from SSHDock config' | ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE
-ssh dashboard@sshdock.example.com config list config-app
-ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE
+printf '%s\n' 'Hello from SSHDock config' | ssh sshdock@sshdock.example.com config set config-app APP_MESSAGE
+ssh sshdock@sshdock.example.com config list config-app
+ssh sshdock@sshdock.example.com config get config-app APP_MESSAGE
 ```
 
 Create a new commit so Git runs the receive hook, then push again:
@@ -52,7 +52,7 @@ sudo sshdock apps list
 sudo sshdock domains list config-app
 sudo sshdock events list config-app
 sudo sshdock logs config-app web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 ```bash

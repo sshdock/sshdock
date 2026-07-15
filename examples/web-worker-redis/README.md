@@ -28,7 +28,7 @@ sudo sshdock domains list web-worker-redis
 sudo sshdock logs web-worker-redis web
 sudo sshdock logs web-worker-redis worker
 curl -fsS https://web-worker-redis.example.com
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:

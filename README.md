@@ -26,7 +26,7 @@ wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/sc
 sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
 ```
 
-Set the base domain and authorize your deploy/dashboard key:
+Set the base domain and authorize your deploy/operator key:
 
 ```bash
 sudo sshdock server domain set example.com
@@ -89,19 +89,19 @@ SSHDock warns when trusted Compose input publishes on all interfaces or couples 
 Open the SSH dashboard:
 
 ```bash
-ssh dashboard@sshdock.example.com
+ssh sshdock@sshdock.example.com
 ```
 
 Inspect apps and app state:
 
 ```bash
-sudo sshdock apps list
-sudo sshdock apps info my-app
-sudo sshdock apps health my-app
-sudo sshdock logs my-app --tail 200
-sudo sshdock releases list my-app
-sudo sshdock deployments list my-app
-sudo sshdock events list my-app
+ssh sshdock@sshdock.example.com apps list
+ssh sshdock@sshdock.example.com apps info my-app
+ssh sshdock@sshdock.example.com apps health my-app
+ssh sshdock@sshdock.example.com logs my-app --tail 200
+ssh sshdock@sshdock.example.com releases list my-app
+ssh sshdock@sshdock.example.com deployments list my-app
+ssh sshdock@sshdock.example.com events list my-app
 ```
 
 Each app commit has one stable release while every push or redeploy records a separate deployment attempt. `deployments list` prints the complete attempt history, including timing and redacted failure recovery detail; recent attempts also appear in the SSH dashboard.
@@ -156,8 +156,8 @@ services:
 Store values over SSH, then deploy or redeploy:
 
 ```bash
-ssh dashboard@sshdock.example.com config set my-app DATABASE_URL < database-url.txt
-ssh dashboard@sshdock.example.com config list my-app
+ssh sshdock@sshdock.example.com config set my-app DATABASE_URL < database-url.txt
+ssh sshdock@sshdock.example.com config list my-app
 sudo sshdock apps redeploy my-app
 ```
 

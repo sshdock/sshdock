@@ -50,8 +50,8 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkDir("sqlite dir", filepath.Dir(cfg.SQLiteDBPath))
 	report.checkDir("git home dir", cfg.GitHomeDir)
 	report.checkDir("git authorized_keys dir", filepath.Dir(cfg.GitAuthorizedKeysPath))
-	report.checkDir("dashboard host key dir", filepath.Dir(cfg.DashboardHostKeyPath))
-	report.checkDir("dashboard authorized_keys dir", filepath.Dir(cfg.DashboardAuthorizedKeysPath))
+	report.checkDir("operator host key dir", filepath.Dir(cfg.OperatorHostKeyPath))
+	report.checkDir("operator authorized_keys dir", filepath.Dir(cfg.OperatorAuthorizedKeysPath))
 	report.checkDir("caddy config dir", filepath.Dir(cfg.CaddyConfigPath))
 
 	serverConfig, hasServerConfig := report.checkStore(ctx, cfg.SQLiteDBPath)
@@ -70,7 +70,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkCaddyImport(cfg)
 	report.checkCommand(ctx, executor, "caddy config", Command{Name: "caddy", Args: []string{"validate", "--config", cfg.CaddyMainConfigPath}}, "Caddy must be able to load the main config and SSHDock's generated import.", "fix the Caddyfile error, then run sudo systemctl reload caddy")
 	report.checkAuthorizedKeys("git authorized_keys", cfg.GitAuthorizedKeysPath, cfg.GitReceiveCommand)
-	report.checkAuthorizedKeys("dashboard authorized_keys", cfg.DashboardAuthorizedKeysPath, cfg.DashboardCommand)
+	report.checkAuthorizedKeys("operator authorized_keys", cfg.OperatorAuthorizedKeysPath, cfg.OperatorCommand)
 	report.checkRuntimePermissions(cfg)
 	report.checkConfigKey(cfg.ConfigKeyPath)
 
@@ -209,7 +209,7 @@ func (r *Report) checkDNS(ctx context.Context, executor CommandExecutor, serverC
 	}
 
 	controlHost := domaincfg.ControlHost(serverConfig.BaseDomain)
-	checkDNSHost(ctx, r, executor, "base-domain DNS", controlHost, "The control host receives Git SSH and dashboard SSH connections.", "create an A or AAAA record for "+controlHost+" pointing at this server")
+	checkDNSHost(ctx, r, executor, "base-domain DNS", controlHost, "The control host receives Git SSH and operator SSH connections.", "create an A or AAAA record for "+controlHost+" pointing at this server")
 
 	wildcardProbe := "sshdock-diagnostics." + serverConfig.BaseDomain
 	checkDNSHost(ctx, r, executor, "wildcard DNS", wildcardProbe, "Wildcard DNS lets SSHDock route app hosts automatically.", "create a wildcard A or AAAA record for *."+serverConfig.BaseDomain+" pointing at this server")
@@ -270,7 +270,7 @@ func (r *Report) checkRuntimePermissions(cfg config.Config) {
 		cfg.AppsDir,
 		cfg.GitHomeDir,
 		filepath.Dir(cfg.GitAuthorizedKeysPath),
-		filepath.Dir(cfg.DashboardAuthorizedKeysPath),
+		filepath.Dir(cfg.OperatorAuthorizedKeysPath),
 		filepath.Dir(cfg.CaddyConfigPath),
 	} {
 		info, err := os.Stat(path)

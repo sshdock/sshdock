@@ -234,21 +234,21 @@ useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock
 
 The script creates `/var/lib/sshdock` and `/var/lib/sshdock/apps`, then assigns ownership to the daemon user during a real root install.
 
-## SSH Dashboard User
+## SSH Operator Account
 
-The default dashboard user is:
+The installed operator account is:
 
 ```text
-dashboard
+sshdock
 ```
 
 Expected operator entry point:
 
 ```bash
-ssh dashboard@server
+ssh sshdock@server
 ```
 
-The production dashboard uses host `sshd` on port `22`, like the Git receive path. The `dashboard` account is an SSH entry point only; each authorized key is restricted to a forced command. With a PTY, the command opens an interactive TUI. Without a PTY, `ssh -T dashboard@server` renders plain text and exits for scripts and smoke tests.
+The production operator surface uses host `sshd` on port `22`, like the Git receive path. Each authorized key for the `sshdock` account is restricted to one forced command. A commandless PTY session opens the interactive TUI; a commandless non-PTY session renders a plain snapshot. Supplied commands are parsed into argv without a host shell and are limited to app inspection and config management. Host setup and administration remain local `sudo sshdock` operations.
 
 Interactive dashboard controls:
 
@@ -271,37 +271,37 @@ The dashboard is the v0 operator surface for deployed apps. It can restart apps 
 
 Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 
-Default dashboard SSH settings:
+Default operator SSH settings:
 
 ```text
-SSHDOCK_DASHBOARD_USER=dashboard
-SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH=/var/lib/sshdock/dashboard/.ssh/authorized_keys
-SSHDOCK_DASHBOARD_COMMAND="sudo -n -u sshdock /usr/local/bin/sshdock-dashboard"
+SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH=/var/lib/sshdock/.ssh/authorized_keys
+SSHDOCK_OPERATOR_COMMAND=/usr/local/bin/sshdock-operator
 ```
 
-The bootstrap script creates or validates this user with:
+The bootstrap script creates the runtime account and then enables its forced-command SSH entry point with:
 
 ```bash
-useradd --system --home /var/lib/sshdock/dashboard --shell /bin/sh dashboard
+useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock
+usermod --home /var/lib/sshdock --shell /bin/sh sshdock
 ```
 
-The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Dashboard access is still restricted by generated `authorized_keys` options.
+The login shell is `/bin/sh` because OpenSSH forced commands run through the account shell. Access remains restricted by generated `authorized_keys` options.
 
-The bootstrap script installs `/usr/local/bin/sshdock-dashboard` and a narrow `/etc/sudoers.d/sshdock-dashboard` rule so the SSH-only `dashboard` account can hand off dashboard rendering to the `sshdock` daemon user.
+The bootstrap script installs `/usr/local/bin/sshdock-operator`. On upgrade it moves a legacy dashboard key file when needed, removes the old wrapper and sudoers rule, and locks the old `dashboard` account instead of retaining it as an alias.
 
-`sshdock ssh-keys add` rewrites the dashboard key file:
+`sshdock ssh-keys add` rewrites the operator key file:
 
 ```text
-/var/lib/sshdock/dashboard/.ssh/authorized_keys
+/var/lib/sshdock/.ssh/authorized_keys
 ```
 
-Each rendered dashboard key is restricted with:
+Each rendered operator key is restricted with:
 
 ```text
-command="exec sudo -n -u sshdock /usr/local/bin/sshdock-dashboard",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
+command="exec /usr/local/bin/sshdock-operator",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
-The dashboard forced command runs `sshdockd dashboard`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for normal `ssh dashboard@server` sessions and writes plain output for non-PTY sessions. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
+The operator wrapper runs `sshdockd operator`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for commandless `ssh sshdock@server` sessions, writes plain output for commandless non-PTY sessions, and dispatches supported remote commands without invoking `sh -c`. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 
@@ -448,7 +448,7 @@ The command checks:
 - listening ports `22`, `80`, and `443`
 - base-domain DNS and wildcard app DNS after `sshdock server domain set <domain>`
 - Caddy main-file import wiring and generated config validation
-- Git and dashboard `authorized_keys` forced-command wiring
+- Git and operator `authorized_keys` forced-command wiring
 - runtime directory permissions and `config.key` permissions when the key exists
 - Docker and Docker Compose
 - Caddy
@@ -478,7 +478,7 @@ Inspect the archive before moving or restoring it:
 sudo sshdock backup inspect /root/sshdock-backup.tar.gz
 ```
 
-The archive contains a manifest, the SSHDock state directory, app repos and worktrees, SQLite release/deployment/domain metadata, Git and dashboard key state, `config.key`, generated Caddy config, Caddy main config, and a Docker volume inventory file.
+The archive contains a manifest, the SSHDock state directory, app repos and worktrees, SQLite release/deployment/domain metadata, Git and operator key state, `config.key`, generated Caddy config, Caddy main config, and a Docker volume inventory file.
 
 ```text
 manifest.json

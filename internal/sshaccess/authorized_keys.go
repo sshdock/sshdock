@@ -28,11 +28,11 @@ func RenderAuthorizedKeys(keys []Key, receiveCommand string) string {
 	})
 }
 
-func RenderDashboardAuthorizedKeys(keys []Key, dashboardCommand string) string {
-	if dashboardCommand == "" {
-		dashboardCommand = "sshdockd dashboard"
+func RenderOperatorAuthorizedKeys(keys []Key, operatorCommand string) string {
+	if operatorCommand == "" {
+		operatorCommand = "sshdockd operator"
 	}
-	return renderAuthorizedKeys(keys, dashboardCommand, []string{
+	return renderAuthorizedKeys(keys, operatorCommand, []string{
 		"no-port-forwarding",
 		"no-agent-forwarding",
 		"no-X11-forwarding",
@@ -74,12 +74,12 @@ func WriteAuthorizedKeys(path string, keys []Key, receiveCommand string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 
-func WriteDashboardAuthorizedKeys(path string, keys []Key, dashboardCommand string) error {
+func WriteOperatorAuthorizedKeys(path string, keys []Key, operatorCommand string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 
-	content := RenderDashboardAuthorizedKeys(keys, dashboardCommand)
+	content := RenderOperatorAuthorizedKeys(keys, operatorCommand)
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 

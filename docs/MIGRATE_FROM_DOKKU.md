@@ -80,12 +80,12 @@ services:
       - "127.0.0.1:3000:3000"
 ```
 
-After the SSHDock app exists, store values over dashboard SSH:
+After the SSHDock app exists, store values over operator SSH:
 
 ```bash
-ssh dashboard@sshdock.example.com config set my-app DATABASE_URL < database-url.txt
-ssh dashboard@sshdock.example.com config set my-app SECRET_KEY_BASE < secret-key-base.txt
-ssh dashboard@sshdock.example.com config list my-app
+ssh sshdock@sshdock.example.com config set my-app DATABASE_URL < database-url.txt
+ssh sshdock@sshdock.example.com config set my-app SECRET_KEY_BASE < secret-key-base.txt
+ssh sshdock@sshdock.example.com config list my-app
 ```
 
 If you push before setting required config, Docker Compose validation fails before containers start and names the missing variable.
@@ -125,7 +125,7 @@ sudo sshdock domains check my-app
 sudo sshdock releases list my-app
 sudo sshdock events list my-app
 sudo sshdock logs my-app --tail 200
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 If automatic route inference is not enough, attach the route explicitly:

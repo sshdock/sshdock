@@ -92,8 +92,8 @@ func TestGroupHelpPrintsUsageAndExamples(t *testing.T) {
 		"  sshdock config set <app> <key>",
 		"  sshdock config keys <app>",
 		"Examples:",
-		`  printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
-		"  ssh dashboard@<host> config keys my-app",
+		`  printf '%s' "$DATABASE_URL" | ssh sshdock@<host> config set my-app DATABASE_URL`,
+		"  ssh sshdock@<host> config keys my-app",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, output)
@@ -404,7 +404,7 @@ func TestConfigGetPermissionDeniedPrintsRevealGuidance(t *testing.T) {
 	for _, want := range []string{
 		"config get requires access to SSHDock's config encryption key",
 		"sudo sshdock config get my-app DATABASE_URL",
-		"ssh dashboard@<host> config get my-app DATABASE_URL",
+		"ssh sshdock@<host> config get my-app DATABASE_URL",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stderr missing %q:\n%s", want, output)

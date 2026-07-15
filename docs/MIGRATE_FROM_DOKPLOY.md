@@ -71,8 +71,8 @@ services:
 After the app exists on SSHDock, import or set values:
 
 ```bash
-ssh dashboard@sshdock.example.com config import my-app < .env.production
-ssh dashboard@sshdock.example.com config list my-app
+ssh sshdock@sshdock.example.com config import my-app < .env.production
+ssh sshdock@sshdock.example.com config list my-app
 ```
 
 Do not commit `.env.production`.
@@ -108,7 +108,7 @@ sudo sshdock domains check my-app
 sudo sshdock releases list my-app
 sudo sshdock events list my-app
 sudo sshdock logs my-app --tail 200
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 If automatic routing is not correct, attach a route explicitly:

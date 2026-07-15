@@ -89,7 +89,7 @@ func TestWriteArtifactsPersistsRawTextPNGAndManifest(t *testing.T) {
 		},
 		Rows:    4,
 		Cols:    20,
-		Command: []string{"ssh", "-tt", "dashboard@127.0.0.1"},
+		Command: []string{"ssh", "-tt", "sshdock@127.0.0.1"},
 	})
 	if err != nil {
 		t.Fatalf("WriteArtifacts: %v", err)

@@ -30,8 +30,8 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.SSHListenAddr == "" {
 		t.Fatal("SSHListenAddr is empty")
 	}
-	if cfg.DashboardUser == "" {
-		t.Fatal("DashboardUser is empty")
+	if cfg.OperatorUser != "sshdock" {
+		t.Fatalf("OperatorUser = %q, want sshdock", cfg.OperatorUser)
 	}
 	if cfg.GitUser != "git" {
 		t.Fatalf("GitUser = %q, want git", cfg.GitUser)
@@ -48,14 +48,14 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.GitReceiveCommand != "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive" {
 		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
 	}
-	if cfg.DashboardHostKeyPath != filepath.Join(cfg.DataDir, "dashboard", "ssh_host_rsa_key") {
-		t.Fatalf("DashboardHostKeyPath = %q, want path under dashboard data dir", cfg.DashboardHostKeyPath)
+	if cfg.OperatorHostKeyPath != filepath.Join(cfg.DataDir, "ssh_host_rsa_key") {
+		t.Fatalf("OperatorHostKeyPath = %q, want path under operator data dir", cfg.OperatorHostKeyPath)
 	}
-	if cfg.DashboardAuthorizedKeysPath != filepath.Join(cfg.DataDir, "dashboard", ".ssh", "authorized_keys") {
-		t.Fatalf("DashboardAuthorizedKeysPath = %q, want path under dashboard data dir", cfg.DashboardAuthorizedKeysPath)
+	if cfg.OperatorAuthorizedKeysPath != filepath.Join(cfg.DataDir, ".ssh", "authorized_keys") {
+		t.Fatalf("OperatorAuthorizedKeysPath = %q, want path under operator home", cfg.OperatorAuthorizedKeysPath)
 	}
-	if cfg.DashboardCommand != "sudo -n -u sshdock /usr/local/bin/sshdock-dashboard" {
-		t.Fatalf("DashboardCommand = %q", cfg.DashboardCommand)
+	if cfg.OperatorCommand != "/usr/local/bin/sshdock-operator" {
+		t.Fatalf("OperatorCommand = %q", cfg.OperatorCommand)
 	}
 	if cfg.CaddyConfigPath != "/etc/caddy/sshdock/sshdock.caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
@@ -79,15 +79,15 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", "/tmp/sshdock-config.key")
 	t.Setenv("SSHDOCK_NODE_ID", "node-a")
 	t.Setenv("SSHDOCK_SSH_LISTEN_ADDR", "127.0.0.1:2222")
-	t.Setenv("SSHDOCK_DASHBOARD_USER", "operator")
+	t.Setenv("SSHDOCK_OPERATOR_USER", "remote-operator")
 	t.Setenv("SSHDOCK_GIT_USER", "deploy")
 	t.Setenv("SSHDOCK_GIT_HOME_DIR", "/tmp/sshdock-git")
 	t.Setenv("SSHDOCK_GIT_HOST", "sshdock.example.com")
 	t.Setenv("SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", "/tmp/authorized_keys")
 	t.Setenv("SSHDOCK_GIT_RECEIVE_COMMAND", "/opt/sshdock/bin/sshdockd git-receive")
-	t.Setenv("SSHDOCK_DASHBOARD_HOST_KEY_PATH", "/tmp/dashboard_host_key")
-	t.Setenv("SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH", "/tmp/dashboard_authorized_keys")
-	t.Setenv("SSHDOCK_DASHBOARD_COMMAND", "/opt/sshdock/bin/sshdockd dashboard")
+	t.Setenv("SSHDOCK_OPERATOR_HOST_KEY_PATH", "/tmp/operator_host_key")
+	t.Setenv("SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", "/tmp/operator_authorized_keys")
+	t.Setenv("SSHDOCK_OPERATOR_COMMAND", "/opt/sshdock/bin/sshdockd operator")
 	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
 	t.Setenv("SSHDOCK_CADDY_MAIN_CONFIG_PATH", "/tmp/main-Caddyfile")
 	t.Setenv("SSHDOCK_CADDY_ADMIN_ADDRESS", "127.0.0.1:22019")
@@ -115,8 +115,8 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	if cfg.SSHListenAddr != "127.0.0.1:2222" {
 		t.Fatalf("SSHListenAddr = %q", cfg.SSHListenAddr)
 	}
-	if cfg.DashboardUser != "operator" {
-		t.Fatalf("DashboardUser = %q", cfg.DashboardUser)
+	if cfg.OperatorUser != "remote-operator" {
+		t.Fatalf("OperatorUser = %q", cfg.OperatorUser)
 	}
 	if cfg.GitUser != "deploy" {
 		t.Fatalf("GitUser = %q", cfg.GitUser)
@@ -133,14 +133,14 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	if cfg.GitReceiveCommand != "/opt/sshdock/bin/sshdockd git-receive" {
 		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
 	}
-	if cfg.DashboardHostKeyPath != "/tmp/dashboard_host_key" {
-		t.Fatalf("DashboardHostKeyPath = %q", cfg.DashboardHostKeyPath)
+	if cfg.OperatorHostKeyPath != "/tmp/operator_host_key" {
+		t.Fatalf("OperatorHostKeyPath = %q", cfg.OperatorHostKeyPath)
 	}
-	if cfg.DashboardAuthorizedKeysPath != "/tmp/dashboard_authorized_keys" {
-		t.Fatalf("DashboardAuthorizedKeysPath = %q", cfg.DashboardAuthorizedKeysPath)
+	if cfg.OperatorAuthorizedKeysPath != "/tmp/operator_authorized_keys" {
+		t.Fatalf("OperatorAuthorizedKeysPath = %q", cfg.OperatorAuthorizedKeysPath)
 	}
-	if cfg.DashboardCommand != "/opt/sshdock/bin/sshdockd dashboard" {
-		t.Fatalf("DashboardCommand = %q", cfg.DashboardCommand)
+	if cfg.OperatorCommand != "/opt/sshdock/bin/sshdockd operator" {
+		t.Fatalf("OperatorCommand = %q", cfg.OperatorCommand)
 	}
 	if cfg.CaddyConfigPath != "/tmp/Caddyfile" {
 		t.Fatalf("CaddyConfigPath = %q", cfg.CaddyConfigPath)
@@ -180,7 +180,7 @@ func TestValidateReportsActionableMissingFields(t *testing.T) {
 	cfg.DataDir = " "
 	cfg.ConfigKeyPath = " "
 	cfg.GitHost = " "
-	cfg.DashboardCommand = " "
+	cfg.OperatorCommand = " "
 	cfg.GitReceiveCommand = " "
 
 	err := cfg.Validate()
@@ -193,7 +193,7 @@ func TestValidateReportsActionableMissingFields(t *testing.T) {
 		"SSHDOCK_DATA_DIR is required",
 		"SSHDOCK_CONFIG_KEY_PATH is required",
 		"SSHDOCK_GIT_HOST is required",
-		"SSHDOCK_DASHBOARD_COMMAND is required",
+		"SSHDOCK_OPERATOR_COMMAND is required",
 		"SSHDOCK_GIT_RECEIVE_COMMAND is required",
 	} {
 		if !strings.Contains(message, want) {

@@ -57,7 +57,7 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 	dataDir := filepath.Join(installRoot, "var/lib/sshdock")
 	for _, path := range []string{
 		filepath.Join(dataDir, "git/.ssh/authorized_keys"),
-		filepath.Join(dataDir, "dashboard/.ssh/authorized_keys"),
+		filepath.Join(dataDir, ".ssh/authorized_keys"),
 	} {
 		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatalf("WriteFile authorized_keys: %v", err)
@@ -75,8 +75,8 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 		"SSHDOCK_APPS_DIR="+filepath.Join(dataDir, "apps"),
 		"SSHDOCK_GIT_HOME_DIR="+filepath.Join(dataDir, "git"),
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "git/.ssh/authorized_keys"),
-		"SSHDOCK_DASHBOARD_HOST_KEY_PATH="+filepath.Join(dataDir, "dashboard/ssh_host_rsa_key"),
-		"SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "dashboard/.ssh/authorized_keys"),
+		"SSHDOCK_OPERATOR_HOST_KEY_PATH="+filepath.Join(dataDir, "ssh_host_rsa_key"),
+		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, ".ssh/authorized_keys"),
 		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile"),
 		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+diagnosticsCaddyMainPath,
 	)
@@ -101,7 +101,7 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 		"ok caddy import",
 		"ok caddy config",
 		"ok git authorized_keys",
-		"ok dashboard authorized_keys",
+		"ok operator authorized_keys",
 		"ok sqlite migrations",
 		"diagnostics ok",
 	} {

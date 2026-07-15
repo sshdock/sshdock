@@ -28,7 +28,7 @@ func TestExternalDashboardSSHScreenCapture(t *testing.T) {
 		t.Fatalf("external dashboard capture config: %v", err)
 	}
 	if !ok {
-		t.Skip("set SSHDOCK_TUI_SCREENSHOT_SSH_TARGET=dashboard@host to capture a real external dashboard")
+		t.Skip("set SSHDOCK_TUI_SCREENSHOT_SSH_TARGET=sshdock@host to capture a real external dashboard")
 	}
 
 	manifest := captureDashboardSSHCommandSession(t, dashboardCommandCaptureOptions{

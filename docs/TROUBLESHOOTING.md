@@ -51,12 +51,12 @@ Inspect the same failure from multiple surfaces:
 sudo sshdock apps health <app>
 sudo sshdock releases list <app>
 sudo sshdock events list <app>
-ssh -T dashboard@sshdock.<domain>
+ssh -T sshdock@sshdock.<domain>
 ```
 
 Common cases:
 
-- Missing `${KEY:?message}` Compose config: set the named key with `ssh dashboard@sshdock.<domain> config set <app> <key>`, then push or redeploy.
+- Missing `${KEY:?message}` Compose config: set the named key with `ssh sshdock@sshdock.<domain> config set <app> <key>`, then push or redeploy.
 - Compose validation failure: run `docker compose config` in the app repository, then fix the reported Compose error.
 - Image pull or build failure: fix the image reference, registry access, Dockerfile, or build context, then push again.
 - Service start or health-wait failure: inspect `sudo sshdock apps health <app>` and `sudo sshdock logs <app> --tail 200`, then fix services that exited, became unhealthy, or exceeded the bounded wait before redeploying.
@@ -69,14 +69,14 @@ Stored config values are redacted from deploy output, events, logs, and dashboar
 List configured keys without revealing values:
 
 ```bash
-ssh dashboard@sshdock.<domain> config list <app>
+ssh sshdock@sshdock.<domain> config list <app>
 ```
 
 Set or import values:
 
 ```bash
-ssh dashboard@sshdock.<domain> config set <app> DATABASE_URL < database-url.txt
-ssh dashboard@sshdock.<domain> config import <app> < .env.production
+ssh sshdock@sshdock.<domain> config set <app> DATABASE_URL < database-url.txt
+ssh sshdock@sshdock.<domain> config import <app> < .env.production
 ```
 
 Redeploy so containers receive changed values:
@@ -131,14 +131,14 @@ The default tail is 100 lines.
 Use the documented dashboard commands:
 
 ```bash
-ssh dashboard@sshdock.<domain>
-ssh -T dashboard@sshdock.<domain>
+ssh sshdock@sshdock.<domain>
+ssh -T sshdock@sshdock.<domain>
 ```
 
-Do not append a remote `dashboard` command. The installed OpenSSH forced command already runs `sshdockd dashboard`; remote commands are reserved for config commands such as:
+Do not append a remote `operator` command. The installed OpenSSH forced command already runs `sshdockd operator`; append only a supported inspection or config command, such as:
 
 ```bash
-ssh dashboard@sshdock.<domain> config list <app>
+ssh sshdock@sshdock.<domain> config list <app>
 ```
 
 If access fails:
@@ -208,7 +208,7 @@ sudo sshdock diagnostics
 sudo systemctl start sshdockd
 ```
 
-Backups include SSHDock host state, app repos/worktrees, SQLite metadata, `config.key`, Git/dashboard key state, generated Caddy config, and Docker volume inventory. They do not silently include Docker volume contents.
+Backups include SSHDock host state, app repos/worktrees, SQLite metadata, `config.key`, Git/operator key state, generated Caddy config, and Docker volume inventory. They do not silently include Docker volume contents.
 
 ## Still Unsure
 

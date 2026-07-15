@@ -504,7 +504,7 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	sqlite := newHookTestStore(t, ctx, dbPath)
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	runner := &compose.FakeRunner{}
-	missingConfig := errors.New("missing required config for my-app: SECRET\nssh dashboard@<host> config set my-app SECRET")
+	missingConfig := errors.New("missing required config for my-app: SECRET\nssh sshdock@<host> config set my-app SECRET")
 	resolver := &fakeHookConfigResolver{err: missingConfig}
 	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
 		Store:          sqlite,
@@ -526,7 +526,7 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	assertFailureDetail(t, err.Error(),
 		"stage=config",
 		"detail=missing required config for my-app: SECRET",
-		"ssh dashboard@<host> config set my-app SECRET",
+		"ssh sshdock@<host> config set my-app SECRET",
 		"changed=release rel_my-app_abc123 and deployment dep_config_attempt marked failed before Compose started; containers and routes were not changed",
 		"fix=set the missing config value(s) with the command(s) in detail",
 		"retry=sudo sshdock apps redeploy my-app",

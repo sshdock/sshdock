@@ -58,7 +58,7 @@ func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 				"sudo sshdock diagnostics",
 				"stage=...",
 				"domains check",
-				"Do not append a remote `dashboard` command.",
+				"Do not append a remote `operator` command.",
 			},
 			reject: []string{"Unsupported Compose field"},
 		},

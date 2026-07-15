@@ -29,7 +29,7 @@ sudo sshdock apps list
 sudo sshdock domains list build-service
 sudo sshdock events list build-service
 sudo sshdock logs build-service web
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 ```bash

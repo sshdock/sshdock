@@ -120,7 +120,7 @@ func TestRunDashboardRendersOnce(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := runWithInput([]string{"dashboard"}, nil, &stdout, &stderr)
+	code := runWithInput([]string{"operator"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -138,9 +138,96 @@ func TestRunDashboardRendersOnce(t *testing.T) {
 	}
 }
 
+func TestRunOperatorDispatchesRestrictedAppInspectionCommand(t *testing.T) {
+	// Given
+	dataDir := t.TempDir()
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSH_ORIGINAL_COMMAND", "apps list")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runWithInput([]string{"operator"}, nil, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "no apps\n" {
+		t.Fatalf("stdout = %q, want no apps", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunOperatorHelpListsOnlyRemoteCommands(t *testing.T) {
+	// Given
+	dataDir := t.TempDir()
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSH_ORIGINAL_COMMAND", "help")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runWithInput([]string{"operator"}, nil, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{"apps list", "apps health", "config set", "domains check", "logs"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	for _, unwanted := range []string{"apps create", "apps remove", "server domain", "ssh-keys"} {
+		if strings.Contains(stdout.String(), unwanted) {
+			t.Fatalf("stdout contains local-only command %q:\n%s", unwanted, stdout.String())
+		}
+	}
+}
+
 func TestDashboardHasInteractiveTerminalRejectsNonTTYWriters(t *testing.T) {
 	if dashboardHasInteractiveTerminal(strings.NewReader(""), &bytes.Buffer{}) {
 		t.Fatal("dashboardHasInteractiveTerminal returned true for non-TTY streams")
+	}
+}
+
+func TestOperatorOriginalCommandArgsPreserveQuotedArgvBoundaries(t *testing.T) {
+	// Given
+	originalCommand := `config get "my app" 'DATABASE URL'`
+
+	// When
+	args, err := operatorOriginalCommandArgs(originalCommand)
+
+	// Then
+	if err != nil {
+		t.Fatalf("operatorOriginalCommandArgs: %v", err)
+	}
+	want := []string{"config", "get", "my app", "DATABASE URL"}
+	if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestOperatorOriginalCommandArgsRejectHostShellSyntax(t *testing.T) {
+	// Given
+	originalCommand := `apps list; id`
+
+	// When
+	_, err := operatorOriginalCommandArgs(originalCommand)
+
+	// Then
+	if err == nil {
+		t.Fatal("operatorOriginalCommandArgs error = nil, want restricted-command error")
+	}
+	if !strings.Contains(err.Error(), "not available over SSH") {
+		t.Fatalf("error = %q, want restricted-command guidance", err)
 	}
 }
 

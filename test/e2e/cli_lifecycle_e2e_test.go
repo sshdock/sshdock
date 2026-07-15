@@ -45,9 +45,9 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		"SSHDOCK_FAKE_COMPOSE_LOGS=web log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
+		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+dashboardAuthorizedKeysPath,
 		"SSHDOCK_GIT_RECEIVE_COMMAND="+sshdockdPath+" git-receive",
-		"SSHDOCK_DASHBOARD_COMMAND="+sshdockdPath+" dashboard",
+		"SSHDOCK_OPERATOR_COMMAND="+sshdockdPath+" operator",
 	)
 	cfg := config.LoadFromEnv()
 

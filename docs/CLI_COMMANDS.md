@@ -5,12 +5,12 @@ This is the command reference for the v0 SSHDock binaries.
 SSHDock has two command-line entry points:
 
 - `sshdock`: user and admin CLI.
-- `sshdockd`: daemon, Git receive, Git hook, and SSH dashboard entry point.
+- `sshdockd`: daemon, Git receive, Git hook, and restricted SSH operator entry point.
 
 Most operators should use `sshdock` directly and reach the dashboard through OpenSSH:
 
 ```bash
-ssh dashboard@server
+ssh sshdock@server
 ```
 
 `sshdockd` commands are normally called by systemd, OpenSSH forced commands, or Git hooks.
@@ -71,7 +71,7 @@ The default output path is:
 The archive includes:
 
 - `manifest.json` with format, source config paths, entries, and restore guardrails
-- the SSHDock data directory, including SQLite release/deployment/domain metadata, app repos, app worktrees, `config.key`, Git key state, and dashboard key state
+- the SSHDock data directory, including SQLite release/deployment/domain metadata, app repos, app worktrees, `config.key`, Git key state, and operator key state
 - generated Caddy config from `SSHDOCK_CADDY_CONFIG_PATH`
 - Caddy main config from `SSHDOCK_CADDY_MAIN_CONFIG_PATH`
 - Docker volume inventory at `docker/volumes.json`
@@ -108,7 +108,7 @@ Run restore as a user that can preserve SSHDock state ownership and modes. v0 ba
 Read one config value from stdin and store it for an existing app. SSHDock does not create apps from config commands, so typos do not create secret-bearing app rows.
 
 ```bash
-printf '%s' "$DATABASE_URL" | ssh dashboard@sshdock.example.com config set my-app DATABASE_URL
+printf '%s' "$DATABASE_URL" | ssh sshdock@sshdock.example.com config set my-app DATABASE_URL
 ```
 
 The value is encrypted before it is stored in SQLite. The default key file is `/var/lib/sshdock/config.key`, or `SSHDOCK_CONFIG_KEY_PATH` when overridden.
@@ -122,7 +122,7 @@ If the app is already running, deploy or redeploy it after changing config so co
 Read `KEY=VALUE` lines from stdin and store each value for an existing app.
 
 ```bash
-ssh dashboard@sshdock.example.com config import my-app < .env.production
+ssh sshdock@sshdock.example.com config import my-app < .env.production
 ```
 
 Blank lines and `#` comments are ignored. Values are not printed.
@@ -134,7 +134,7 @@ If one or more values are imported for a running app, deploy or redeploy it so c
 List key names, status, update time, and mutation source without revealing values.
 
 ```bash
-ssh dashboard@sshdock.example.com config list my-app
+ssh sshdock@sshdock.example.com config list my-app
 ```
 
 Output format:
@@ -148,7 +148,7 @@ Output format:
 Print only configured key names, one per line, without values or metadata.
 
 ```bash
-ssh dashboard@sshdock.example.com config keys my-app
+ssh sshdock@sshdock.example.com config keys my-app
 ```
 
 ### `sshdock config get <app> <key>`
@@ -156,19 +156,19 @@ ssh dashboard@sshdock.example.com config keys my-app
 Explicitly reveal one config value.
 
 ```bash
-ssh dashboard@sshdock.example.com config get my-app DATABASE_URL
+ssh sshdock@sshdock.example.com config get my-app DATABASE_URL
 ```
 
 Use this sparingly; normal list, dashboard, event, deployment-error, and log paths redact known stored config values.
 
-When running locally as a non-root user on the server, use `sudo sshdock config get ...` or the dashboard SSH command. SSHDock keeps the host-local encryption key readable only by privileged runtime users.
+When running locally as a non-root user on the server, use `sudo sshdock config get ...` or the operator SSH command. SSHDock keeps the host-local encryption key readable only by privileged runtime users.
 
 ### `sshdock config unset <app> <key>`
 
 Remove one stored config value.
 
 ```bash
-ssh dashboard@sshdock.example.com config unset my-app DATABASE_URL
+ssh sshdock@sshdock.example.com config unset my-app DATABASE_URL
 ```
 
 If the app is already running, deploy or redeploy it after unsetting config so containers stop receiving the removed value.
@@ -198,7 +198,7 @@ This local encryption model protects against database-only leaks and ordinary SQ
 
 ### `sshdock server domain set <domain>`
 
-Set the canonical v0 base domain. SSHDock derives the Git/dashboard control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.
+Set the canonical v0 base domain. SSHDock derives the Git/operator control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.
 
 ```bash
 sudo sshdock server domain set example.com
@@ -218,13 +218,13 @@ Native deploys run Compose config, pull, build, and bounded `up -d --wait`. Trus
 
 ### `sshdock ssh-keys add <name>`
 
-Read one SSH public key from stdin, store it, and rewrite Git receive and dashboard `authorized_keys` files.
+Read one SSH public key from stdin, store it, and rewrite Git receive and operator `authorized_keys` files.
 
 ```bash
 cat ~/.ssh/id_ed25519.pub | sudo sshdock ssh-keys add admin
 ```
 
-The same key can deploy through `git@<server-domain>:<app>.git` and open the SSH dashboard through `ssh dashboard@server`.
+The same key can deploy through `git@<server-domain>:<app>.git` and open the SSH dashboard through `ssh sshdock@server`.
 
 ### `sshdock ssh-keys list`
 
@@ -242,7 +242,7 @@ Output format:
 
 ### `sshdock ssh-keys remove <name>`
 
-Remove one SSH key and rewrite Git receive and dashboard `authorized_keys` files.
+Remove one SSH key and rewrite Git receive and operator `authorized_keys` files.
 
 ```bash
 sudo sshdock ssh-keys remove admin
@@ -520,7 +520,7 @@ Run the direct SSH dashboard server.
 sshdockd serve
 ```
 
-In the installed v0 path, dashboard access usually goes through host OpenSSH with a forced `sshdockd dashboard` command instead of exposing the direct dashboard listener.
+In the installed v0 path, operator access goes through host OpenSSH with a forced `sshdockd operator` command instead of exposing the direct dashboard listener.
 
 ### `sshdockd daemon`
 
@@ -532,19 +532,21 @@ sshdockd daemon
 
 On startup it validates config, opens SQLite, runs migrations, and recovers deployed apps by redeploying each app's latest good release. It stays running until interrupted.
 
-### `sshdockd dashboard`
+### `sshdockd operator`
 
-Render the SSH dashboard.
+Open the TUI or dispatch one restricted remote command.
 
 ```bash
-sshdockd dashboard
+sshdockd operator
 ```
 
 With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain text snapshot suitable for smoke tests and scripts:
 
 ```bash
-ssh -T dashboard@server
+ssh -T sshdock@server
 ```
+
+When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, domain inspection, logs, release/deployment/event inspection, and config commands. It preserves quoted argv boundaries, rejects local administration and lifecycle mutations that are not yet part of the restricted surface, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
 
@@ -606,8 +608,8 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_GIT_HOST`: fallback Git host before `sshdock server domain set`; new persisted config derives the control host from the base domain.
 - `SSHDOCK_GIT_AUTHORIZED_KEYS_PATH`: Git receive `authorized_keys` path.
 - `SSHDOCK_GIT_RECEIVE_COMMAND`: forced command for Git deploy keys.
-- `SSHDOCK_DASHBOARD_AUTHORIZED_KEYS_PATH`: dashboard `authorized_keys` path.
-- `SSHDOCK_DASHBOARD_COMMAND`: forced command for dashboard keys.
+- `SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH`: operator `authorized_keys` path. Default: `$SSHDOCK_DATA_DIR/.ssh/authorized_keys`.
+- `SSHDOCK_OPERATOR_COMMAND`: forced command for operator keys. Default: `/usr/local/bin/sshdock-operator`.
 - `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
 - `SSHDOCK_CADDY_MAIN_CONFIG_PATH`: Caddy main config file that imports the generated route file. Default: `/etc/caddy/Caddyfile`.
 - `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.

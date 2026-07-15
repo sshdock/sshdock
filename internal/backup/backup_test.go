@@ -51,7 +51,7 @@ func TestCreateArchiveIncludesStateCaddyAndVolumeInventory(t *testing.T) {
 		"data/apps/my-app/repo.git/HEAD",
 		"data/apps/my-app/worktree/compose.yml",
 		"data/git/.ssh/authorized_keys",
-		"data/dashboard/.ssh/authorized_keys",
+		"data/.ssh/authorized_keys",
 		"caddy/generated.caddyfile",
 		"caddy/main.Caddyfile",
 		"docker/volumes.json",
@@ -275,8 +275,8 @@ func backupTestConfig(t *testing.T) config.Config {
 	cfg.ConfigKeyPath = filepath.Join(dataDir, "config.key")
 	cfg.GitHomeDir = filepath.Join(dataDir, "git")
 	cfg.GitAuthorizedKeysPath = filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
-	cfg.DashboardHostKeyPath = filepath.Join(dataDir, "dashboard", "ssh_host_rsa_key")
-	cfg.DashboardAuthorizedKeysPath = filepath.Join(dataDir, "dashboard", ".ssh", "authorized_keys")
+	cfg.OperatorHostKeyPath = filepath.Join(dataDir, "operator", "ssh_host_rsa_key")
+	cfg.OperatorAuthorizedKeysPath = filepath.Join(dataDir, ".ssh", "authorized_keys")
 	cfg.CaddyConfigPath = filepath.Join(caddyDir, "sshdock.caddyfile")
 	cfg.CaddyMainConfigPath = filepath.Join(caddyDir, "Caddyfile")
 	return cfg
@@ -290,7 +290,7 @@ func writeBackupFixture(t *testing.T, cfg config.Config) {
 		filepath.Join(cfg.AppRepoPath("my-app"), "HEAD"):            "ref: refs/heads/main\n",
 		filepath.Join(cfg.AppWorktreePath("my-app"), "compose.yml"): "services:\n  web:\n    image: nginx:alpine\n",
 		cfg.GitAuthorizedKeysPath:                                   "ssh-ed25519 git-key\n",
-		cfg.DashboardAuthorizedKeysPath:                             "ssh-ed25519 dashboard-key\n",
+		cfg.OperatorAuthorizedKeysPath:                              "ssh-ed25519 operator-key\n",
 		cfg.CaddyConfigPath:                                         "# generated routes\n",
 		cfg.CaddyMainConfigPath:                                     "import " + cfg.CaddyConfigPath + "\n",
 	}

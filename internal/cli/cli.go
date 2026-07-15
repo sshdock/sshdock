@@ -685,7 +685,7 @@ func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName stri
 	fmt.Fprintln(stderr, "config get requires access to SSHDock's config encryption key.")
 	fmt.Fprintln(stderr, "Run one of:")
 	fmt.Fprintf(stderr, "  sudo sshdock %s\n", command)
-	fmt.Fprintf(stderr, "  ssh dashboard@<host> %s\n", command)
+	fmt.Fprintf(stderr, "  ssh sshdock@<host> %s\n", command)
 }
 
 func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
@@ -1160,9 +1160,9 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock config get <app> <key>",
 			"sshdock config unset <app> <key>",
 		}, []string{
-			`printf '%s' "$DATABASE_URL" | ssh dashboard@<host> config set my-app DATABASE_URL`,
-			"ssh dashboard@<host> config import my-app < .env.production",
-			"ssh dashboard@<host> config keys my-app",
+			`printf '%s' "$DATABASE_URL" | ssh sshdock@<host> config set my-app DATABASE_URL`,
+			"ssh sshdock@<host> config import my-app < .env.production",
+			"ssh sshdock@<host> config keys my-app",
 			"sudo sshdock config get my-app DATABASE_URL",
 		})
 	case "domains":
@@ -1217,7 +1217,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sudo sshdock server domain set example.com",
 		})
 	case "ssh-keys":
-		printTopicHelp(stdout, "SSH key commands manage deploy and dashboard access keys.", []string{
+		printTopicHelp(stdout, "SSH key commands manage deploy and operator access keys.", []string{
 			"sshdock ssh-keys add <name>",
 			"sshdock ssh-keys list",
 			"sshdock ssh-keys remove <name>",

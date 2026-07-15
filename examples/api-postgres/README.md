@@ -28,7 +28,7 @@ sudo sshdock domains list api-postgres
 sudo sshdock logs api-postgres api
 sudo sshdock logs api-postgres db
 curl -fsS https://api-postgres.example.com/messages
-ssh -T dashboard@sshdock.example.com
+ssh -T sshdock@sshdock.example.com
 ```
 
 Expected evidence:

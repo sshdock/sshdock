@@ -35,7 +35,7 @@ func TestRenderAuthorizedKeysRestrictsDeployKeys(t *testing.T) {
 	}
 }
 
-func TestRenderDashboardAuthorizedKeysAllowsPTYButKeepsForwardingRestrictions(t *testing.T) {
+func TestRenderOperatorAuthorizedKeysAllowsPTYButKeepsForwardingRestrictions(t *testing.T) {
 	keys := []Key{
 		{
 			Name:      "admin",
@@ -44,10 +44,10 @@ func TestRenderDashboardAuthorizedKeysAllowsPTYButKeepsForwardingRestrictions(t 
 		},
 	}
 
-	rendered := RenderDashboardAuthorizedKeys(keys, "/usr/local/bin/sshdockd dashboard")
+	rendered := RenderOperatorAuthorizedKeys(keys, "/usr/local/bin/sshdockd operator")
 
 	for _, want := range []string{
-		`command="exec /usr/local/bin/sshdockd dashboard"`,
+		`command="exec /usr/local/bin/sshdockd operator"`,
 		`no-port-forwarding`,
 		`no-agent-forwarding`,
 		`no-X11-forwarding`,
@@ -56,11 +56,11 @@ func TestRenderDashboardAuthorizedKeysAllowsPTYButKeepsForwardingRestrictions(t 
 		`sshdock-key:admin`,
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("dashboard authorized_keys missing %q:\n%s", want, rendered)
+			t.Fatalf("operator authorized_keys missing %q:\n%s", want, rendered)
 		}
 	}
 	if strings.Contains(rendered, "no-pty") {
-		t.Fatalf("dashboard authorized_keys should allow PTY:\n%s", rendered)
+		t.Fatalf("operator authorized_keys should allow PTY:\n%s", rendered)
 	}
 }
 

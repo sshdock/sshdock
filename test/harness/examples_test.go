@@ -105,9 +105,9 @@ func TestConfigExampleDocumentsConfigWorkflow(t *testing.T) {
 	for _, want := range []string{
 		"git push sshdock main",
 		"required variable APP_MESSAGE is missing a value",
-		"ssh dashboard@sshdock.example.com config set config-app APP_MESSAGE",
-		"ssh dashboard@sshdock.example.com config list config-app",
-		"ssh dashboard@sshdock.example.com config get config-app APP_MESSAGE",
+		"ssh sshdock@sshdock.example.com config set config-app APP_MESSAGE",
+		"ssh sshdock@sshdock.example.com config list config-app",
+		"ssh sshdock@sshdock.example.com config get config-app APP_MESSAGE",
 		"curl -fsS https://config-app.example.com",
 		"SSHDock config example:",
 		"push again",

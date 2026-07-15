@@ -44,7 +44,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
-	runner, err := dashboardRunnerFromEnv()
+	composeRunner, err := dashboardRunnerFromEnv()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -57,16 +57,16 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
-		backend := newDashboardBackend(sqlite, cfg, runner, configService)
-		runner := cli.NewRunner(backend, version.String())
+		backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
+		cliRunner := cli.NewRunner(backend, version.String())
 		if operatorHelpRequested(args) {
 			printOperatorHelp(stdout, args)
 			return 0
 		}
-		return runner.RunWithInput(args, stdin, stdout, stderr)
+		return cliRunner.RunWithInput(args, stdin, stdout, stderr)
 	}
 
-	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
+	handler := tui.NewDashboardHandlerWithConfig(sqlite, composeRunner, configService)
 	snapshot, err := handler.Snapshot(ctx)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -77,7 +77,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		stdin = os.Stdin
 	}
 	if dashboardHasInteractiveTerminal(stdin, stdout) {
-		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, runner, configService), stdin, stdout); err != nil {
+		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, composeRunner, configService), stdin, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}

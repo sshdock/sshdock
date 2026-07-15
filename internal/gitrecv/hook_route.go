@@ -14,7 +14,18 @@ import (
 	"github.com/sshdock/sshdock/internal/store"
 )
 
-func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, result compose.DeployResult, deploymentID string, createdAt time.Time) error {
+type autoRouteRequest struct {
+	AppName      string
+	Result       compose.DeployResult
+	DeploymentID string
+	CreatedAt    time.Time
+}
+
+func (h *PostReceiveHandler) autoRoute(ctx context.Context, request autoRouteRequest) error {
+	appName := request.AppName
+	result := request.Result
+	deploymentID := request.DeploymentID
+	createdAt := request.CreatedAt
 	domains, err := h.store.ListDomains(ctx)
 	if err != nil {
 		return fmt.Errorf("list domains before initial auto-route: %w", err)
@@ -55,10 +66,21 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, appName string, resu
 		return nil
 	}
 	if err := h.syncRoutesFromStore(ctx); err != nil {
-		_ = h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reload_failed"), AppID: appName, Type: "router.reload_failed", Message: deployfailure.Message("caddy reload", err.Error(), "domain was stored, but generated Caddy routes may not be active", "run sudo sshdock diagnostics and inspect Caddy", "sudo sshdock apps redeploy "+appName), CreatedAt: createdAt.Add(2 * time.Second)})
-		return nil
+		failureErr := h.store.UpsertRouteApplyFailure(ctx, store.RouteApplyFailure{
+			AppID: appName, ServiceName: model.ServiceName, DomainName: model.DomainName,
+			Port: model.Port, HTTPS: model.HTTPS, Operation: store.RouteApplyAttach,
+			Detail: err.Error(), UpdatedAt: createdAt.Add(2 * time.Second),
+		})
+		eventErr := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reload_failed"), AppID: appName, Type: "router.reload_failed", Message: deployfailure.Message("caddy reload", err.Error(), "domain was stored, but generated Caddy routes may not be active", "run sudo sshdock diagnostics and inspect Caddy", "sudo sshdock apps redeploy "+appName), CreatedAt: createdAt.Add(2 * time.Second)})
+		return errors.Join(failureErr, eventErr)
 	}
-	return h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reloaded"), AppID: appName, Type: "router.reloaded", Message: "Reloaded Caddy routes for " + appHost, CreatedAt: createdAt.Add(2 * time.Second)})
+	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reloaded"), AppID: appName, Type: "router.reloaded", Message: "Reloaded Caddy routes for " + appHost, CreatedAt: createdAt.Add(2 * time.Second)}); err != nil {
+		return err
+	}
+	if err := h.store.ClearRouteApplyFailures(ctx); err != nil {
+		return fmt.Errorf("Caddy routes reloaded, but clear resolved route failures: %w", err)
+	}
+	return nil
 }
 
 func (h *PostReceiveHandler) recordAutoRouteSkipped(ctx context.Context, appName string, deploymentID string, reason string, createdAt time.Time) error {
@@ -77,7 +99,10 @@ func (h *PostReceiveHandler) syncRoutesFromStore(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list domains for route rebuild: %w", err)
 	}
-	return h.router.SyncRoutes(ctx, routesFromDomains(domains))
+	if err := h.router.SyncRoutes(ctx, routesFromDomains(domains)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func routesFromDomains(domains []app.Domain) []router.Route {

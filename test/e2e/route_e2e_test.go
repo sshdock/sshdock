@@ -85,7 +85,12 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	}
 
 	waitForCurl(t, curlPath, fmt.Sprintf("http://127.0.0.1:%d", caddyPort), "Welcome to nginx", caddyLogPath)
-	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
+	checkOutput := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "check", appName)
+	wantCheck := fmt.Sprintf("%s\tweb\t%d\tfalse\tok\tactive Caddy route matches", routeDomain, servicePort)
+	if !strings.Contains(checkOutput, wantCheck) {
+		t.Fatalf("fresh-process domains check missing %q:\n%s", wantCheck, checkOutput)
+	}
+	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
 	assertDomainRow(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, routeDomain, servicePort)
 
 	runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "detach", appName, routeDomain)
@@ -93,7 +98,7 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	if strings.Contains(config, routeDomain) {
 		t.Fatalf("detached final route remains in generated Caddyfile:\n%s", config)
 	}
-	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded", "domain.detached", "router.reloaded"})
+	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded", "domain.detached", "router.reloaded"})
 	_ = commitSHA
 }
 

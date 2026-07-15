@@ -97,7 +97,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "succeeded"), AppID: event.AppName, Type: "deploy.succeeded", Message: succeededMessage, CreatedAt: finishedAt}); err != nil {
 		return err
 	}
-	return h.autoRoute(ctx, event.AppName, result, deploymentID, finishedAt)
+	return h.autoRoute(ctx, autoRouteRequest{
+		AppName: event.AppName, Result: result,
+		DeploymentID: deploymentID, CreatedAt: finishedAt,
+	})
 }
 
 func (h *PostReceiveHandler) resolveDeployEnv(ctx context.Context, appName string, projectDir string) (map[string]string, error) {

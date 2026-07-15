@@ -20,6 +20,8 @@ type postReceiveStore interface {
 	CreateDeployment(ctx context.Context, model app.Deployment) error
 	AttachDomain(ctx context.Context, model app.Domain) error
 	ListDomains(ctx context.Context) ([]app.Domain, error)
+	UpsertRouteApplyFailure(ctx context.Context, failure store.RouteApplyFailure) error
+	ClearRouteApplyFailures(ctx context.Context) error
 	GetServerConfig(ctx context.Context) (store.ServerConfig, error)
 	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error

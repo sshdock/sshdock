@@ -194,6 +194,8 @@ SSHDOCK_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
 
 When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a matching `admin` global option and reload uses `--address`. Production installs can leave it unset and use Caddy's default admin endpoint.
 
+`sshdock domains check` reads Caddy's active configuration from this admin endpoint. Keep the endpoint local to the host; if it is unavailable, the check reports the connection failure and points to `sudo sshdock diagnostics` instead of treating generated or in-memory state as active.
+
 DNS and HTTPS limits:
 
 - Public DNS must point the domain at the server before normal public HTTP routing works.

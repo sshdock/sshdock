@@ -28,6 +28,24 @@ type AppConfigRef struct {
 	Name  string
 }
 
+type RouteApplyOperation string
+
+const (
+	RouteApplyAttach RouteApplyOperation = "attach"
+	RouteApplyDetach RouteApplyOperation = "detach"
+)
+
+type RouteApplyFailure struct {
+	AppID       string
+	ServiceName string
+	DomainName  string
+	Port        int
+	HTTPS       bool
+	Operation   RouteApplyOperation
+	Detail      string
+	UpdatedAt   time.Time
+}
+
 type AppConfigValue struct {
 	AppID      string
 	Name       string
@@ -57,6 +75,9 @@ type Store interface {
 	ListDomains(ctx context.Context) ([]app.Domain, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
 	DeleteDomainByAppAndName(ctx context.Context, appID string, domainName string) (app.Domain, error)
+	UpsertRouteApplyFailure(ctx context.Context, failure RouteApplyFailure) error
+	ListRouteApplyFailuresByApp(ctx context.Context, appID string) ([]RouteApplyFailure, error)
+	ClearRouteApplyFailures(ctx context.Context) error
 	CreateEvent(ctx context.Context, model app.Event) error
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
 	SetServerConfig(ctx context.Context, config ServerConfig) error

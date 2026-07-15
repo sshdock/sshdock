@@ -3,11 +3,13 @@ package router
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type CaddyCommand struct {
@@ -32,6 +34,7 @@ type CaddyRouter struct {
 	executor     CaddyCommandExecutor
 	upstreamHost string
 	adminAddress string
+	activeClient *http.Client
 	routes       map[string]Route
 }
 
@@ -45,6 +48,7 @@ func NewCaddyRouter(config CaddyRouterConfig) *CaddyRouter {
 		executor:     config.Executor,
 		upstreamHost: config.UpstreamHost,
 		adminAddress: config.AdminAddress,
+		activeClient: &http.Client{Timeout: 5 * time.Second},
 		routes:       map[string]Route{},
 	}
 }
@@ -69,8 +73,11 @@ func (r *CaddyRouter) SyncRoutes(ctx context.Context, routes []Route) error {
 		return err
 	}
 
+	if err := r.Reload(ctx); err != nil {
+		return err
+	}
 	r.routes = routeMap
-	return r.Reload(ctx)
+	return nil
 }
 
 func (r *CaddyRouter) Reload(ctx context.Context) error {
@@ -85,19 +92,8 @@ func (r *CaddyRouter) Reload(ctx context.Context) error {
 	return r.executor.Run(ctx, CaddyCommand{Name: "caddy", Args: args})
 }
 
-func (r *CaddyRouter) Routes(_ context.Context) ([]Route, error) {
-	domains := make([]string, 0, len(r.routes))
-	for domain := range r.routes {
-		domains = append(domains, domain)
-	}
-	sort.Strings(domains)
-
-	routes := make([]Route, 0, len(domains))
-	for _, domain := range domains {
-		routes = append(routes, r.routes[domain])
-	}
-
-	return routes, nil
+func (r *CaddyRouter) Routes(ctx context.Context) ([]Route, error) {
+	return r.readActiveRoutes(ctx)
 }
 
 func (r *CaddyRouter) writeConfig(ctx context.Context, routes map[string]Route) error {

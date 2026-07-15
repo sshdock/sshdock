@@ -478,7 +478,7 @@ Output format:
 
 ### `sshdock domains check <app>`
 
-Compare stored app domain rows with generated router state when the configured router can report routes.
+Compare stored app domain rows with the active Caddy configuration reported by Caddy's admin API. This works from a fresh CLI process and does not rely on process-local router memory.
 
 ```bash
 sudo sshdock domains check my-app
@@ -490,7 +490,7 @@ Output format:
 <domain>	<service>	<port>	<https>	<status>	<detail>
 ```
 
-Statuses are `ok`, `missing`, `mismatch`, or `stored` when router inspection is unavailable.
+Statuses are `ok`, `missing`, `mismatch`, `failed` when a recorded attach or detach still differs from active Caddy state, `unavailable` when the Caddy admin API cannot be reached, or `stored` when the configured router cannot inspect active state. Failed checks retain the operation error; unavailable checks include `sshdock diagnostics` remediation.
 
 ### `sshdock domains detach <app> <domain>`
 

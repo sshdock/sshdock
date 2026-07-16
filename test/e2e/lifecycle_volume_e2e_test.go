@@ -45,6 +45,13 @@ func TestDockerLifecyclePreservesExistingConfigAndNamedVolume(t *testing.T) {
 	if err := runner.Stop(ctx, lifecycleRequest); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
+	stoppedServices, err := runner.Status(ctx, compose.StatusRequest{AppName: appName, ProjectDir: projectDir, ComposePath: composePath, Env: map[string]string{"VALUE": "new"}})
+	if err != nil {
+		t.Fatalf("Status after stop: %v", err)
+	}
+	if len(stoppedServices) != 1 || stoppedServices[0].Name != "web" || stoppedServices[0].State != "exited" {
+		t.Fatalf("stopped services = %#v, want web exited", stoppedServices)
+	}
 	if err := runner.Start(ctx, lifecycleRequest); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

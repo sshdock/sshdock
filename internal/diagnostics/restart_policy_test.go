@@ -72,7 +72,7 @@ func TestRunWarnsForRunningUnroutedServiceWithoutRestartPolicy(t *testing.T) {
 		t.Fatalf("Close SQLite: %v", err)
 	}
 	executor := healthyExecutor(cfg)
-	statusCommand := "docker compose -f " + composePath + " -p sshdock_worker-app ps --format json"
+	statusCommand := "docker compose -f " + composePath + " -p sshdock_worker-app ps --all --format json"
 	executor.Outputs[statusCommand] = `[{"Service":"worker","State":"running"}]`
 
 	report := Run(context.Background(), cfg, executor)

@@ -36,6 +36,8 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		appName,
 		"healthy",
 		"latest=succeeded",
+		"Current main:",
+		"Latest deploy: dep_",
 		"Services",
 		"web running",
 		"Releases",
@@ -159,8 +161,10 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	if !strings.Contains(configOutput, "no config") {
 		t.Fatalf("config list output missing empty state:\n%s", configOutput)
 	}
-	if !strings.Contains(healthOutput, "services: 1 running, 0 attention") {
-		t.Fatalf("apps health output missing Compose service state:\n%s", healthOutput)
+	for _, want := range []string{"current main:", "latest deploy: dep_", "commit=", "trigger=push", "routes: 0 active, 1 attention (unavailable=1)", "services: 1 running, 0 attention"} {
+		if !strings.Contains(healthOutput, want) {
+			t.Fatalf("apps health output missing %q:\n%s", want, healthOutput)
+		}
 	}
 	if !strings.Contains(logsOutput, "first-dashboard-log") {
 		t.Fatalf("logs output missing Compose logs:\n%s", logsOutput)

@@ -12,35 +12,36 @@ type dashboardConfigRedactor interface {
 	RedactionValues(ctx context.Context, appID string) (map[string]string, error)
 }
 
-func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.App) ([]compose.ServiceStatus, map[string]LogsView, error) {
+func (h *DashboardHandler) serviceLogs(ctx context.Context, model app.App, services []compose.ServiceStatus) (map[string]LogsView, error) {
 	logsByService := map[string]LogsView{}
-	if h.runner == nil {
-		return nil, logsByService, nil
+	if h.runner == nil || len(services) == 0 {
+		return logsByService, nil
 	}
 	projectDir, composePath, err := app.CurrentComposeEntry(model)
 	if err != nil {
-		return nil, logsByService, nil
+		return logsByService, nil
 	}
 	env, err := h.resolveConfigEnv(ctx, model.ID, projectDir)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
+		return nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
 	}
 	redactionValues, err := h.redactionEnv(ctx, model)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	services, err := h.runner.Status(ctx, compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, Env: env})
-	if err != nil {
-		return nil, nil, compose.RedactError(fmt.Errorf("load service status for %s: %w", model.ID, err), redactionValues)
-	}
+	return h.loadServiceLogs(ctx, model, projectDir, composePath, env, redactionValues, services)
+}
+
+func (h *DashboardHandler) loadServiceLogs(ctx context.Context, model app.App, projectDir string, composePath string, env map[string]string, redactionValues map[string]string, services []compose.ServiceStatus) (map[string]LogsView, error) {
+	logsByService := make(map[string]LogsView, len(services))
 	for _, service := range services {
 		output, err := h.runner.Logs(ctx, compose.LogsRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, ServiceName: service.Name, Lines: 50, Env: env})
 		if err != nil {
-			return nil, nil, compose.RedactError(fmt.Errorf("load logs for %s/%s: %w", model.ID, service.Name, err), redactionValues)
+			return nil, compose.RedactError(fmt.Errorf("load logs for %s/%s: %w", model.ID, service.Name, err), redactionValues)
 		}
 		logsByService[service.Name] = NewLogsView(model.ID, service.Name, compose.RedactValues(output, redactionValues))
 	}
-	return services, logsByService, nil
+	return logsByService, nil
 }
 
 func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {

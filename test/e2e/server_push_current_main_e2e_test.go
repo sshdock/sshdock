@@ -105,6 +105,19 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 		"deploy: failed: current main "+failedCommit,
 	)
 	assertRemoteMain(t, repoPath, failedCommit)
+	failedHealth := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "health", appName)
+	for _, want := range []string{
+		"health: fail",
+		"current main: " + failedCommit,
+		"latest deploy: dep_",
+		"failed commit=" + failedCommit + " trigger=push",
+		"services: -",
+		"last failure: dep_",
+	} {
+		if !strings.Contains(failedHealth, want) {
+			t.Fatalf("failed-push health output missing %q:\n%s", want, failedHealth)
+		}
+	}
 
 	// When: force-pushing an older commit to main performs Git-based rollback.
 	beforeRollback := currentMainAttemptCount(t, dbPath, appName, initialCommit)

@@ -22,10 +22,15 @@ type DashboardConfigResolver interface {
 	ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error)
 }
 
+type DashboardHealthProvider interface {
+	AppHealth(appName string) (app.HealthReport, error)
+}
+
 type DashboardHandler struct {
 	store          DashboardStore
 	runner         compose.Runner
 	configResolver DashboardConfigResolver
+	healthProvider DashboardHealthProvider
 }
 
 type DashboardSnapshot struct {
@@ -39,12 +44,12 @@ type DashboardAppSnapshot struct {
 	Logs   map[string]LogsView
 }
 
-func NewDashboardHandler(store DashboardStore, runner compose.Runner) *DashboardHandler {
-	return &DashboardHandler{store: store, runner: runner}
+func NewDashboardHandler(store DashboardStore, runner compose.Runner, healthProvider DashboardHealthProvider) *DashboardHandler {
+	return &DashboardHandler{store: store, runner: runner, healthProvider: healthProvider}
 }
 
-func NewDashboardHandlerWithConfig(store DashboardStore, runner compose.Runner, resolver DashboardConfigResolver) *DashboardHandler {
-	return &DashboardHandler{store: store, runner: runner, configResolver: resolver}
+func NewDashboardHandlerWithConfig(store DashboardStore, runner compose.Runner, resolver DashboardConfigResolver, healthProvider DashboardHealthProvider) *DashboardHandler {
+	return &DashboardHandler{store: store, runner: runner, configResolver: resolver, healthProvider: healthProvider}
 }
 
 func (h *DashboardHandler) HandleSession(ctx context.Context, session Session) error {
@@ -102,11 +107,16 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		deployments = redactDeployments(deployments, redactionValues)
 		events = redactEvents(events, redactionValues)
 
-		services, logsByService, err := h.serviceStatusAndLogs(ctx, model)
+		report, err := h.healthProvider.AppHealth(model.ID)
+		if err != nil {
+			return DashboardSnapshot{}, fmt.Errorf("load health for %s: %w", model.ID, err)
+		}
+		services := serviceStatusesFromHealthReport(report)
+		logsByService, err := h.serviceLogs(ctx, model, services)
 		if err != nil {
 			return DashboardSnapshot{}, err
 		}
-		view := NewAppDetailView(model, services, domains, releases, deployments, events)
+		view := NewAppDetailViewWithHealthReport(model, services, domains, releases, deployments, events, report)
 		appsByID[model.ID] = DashboardAppSnapshot{
 			Detail: NewAppDetailScreen(view),
 			Logs:   logsByService,
@@ -118,6 +128,14 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		AppOrder: appOrder,
 		AppsByID: appsByID,
 	}, nil
+}
+
+func serviceStatusesFromHealthReport(report app.HealthReport) []compose.ServiceStatus {
+	services := make([]compose.ServiceStatus, 0, len(report.Services))
+	for _, service := range report.Services {
+		services = append(services, compose.ServiceStatus{Name: service.Name, State: service.State})
+	}
+	return services
 }
 
 func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error {
@@ -167,13 +185,24 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 		return err
 	}
 	health := screen.Health()
-	if _, err := fmt.Fprintf(writer, "Route: %s\nLatest deploy: %s\nService status: %s\n", valueOrDash(health.RouteStatus), valueOrDash(health.LatestDeploymentStatus), valueOrDash(health.ServiceStatus)); err != nil {
+	if _, err := fmt.Fprintf(writer, "Health: %s\nCurrent main: %s\nRoute: %s\nLatest deploy: %s\nService status: %s\n", valueOrDash(health.OverallStatus), valueOrDash(health.CurrentMainCommit), valueOrDash(health.RouteStatus), latestDeploymentHealthValue(health), valueOrDash(health.ServiceStatus)); err != nil {
 		return err
 	}
 	if health.LastFailure != "" {
-		if _, err := fmt.Fprintf(writer, "Last failure: %s\n", health.LastFailure); err != nil {
+		if _, err := fmt.Fprint(writer, "Last failure: "); err != nil {
 			return err
 		}
+		if health.LastFailureDeploymentID != "" {
+			if _, err := fmt.Fprintf(writer, "%s ", health.LastFailureDeploymentID); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(writer, "%s\n", health.LastFailure); err != nil {
+			return err
+		}
+	}
+	if err := renderHealthChecks(writer, health.Checks); err != nil {
+		return err
 	}
 
 	if err := renderServices(writer, screen.Services()); err != nil {
@@ -192,6 +221,36 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 		return err
 	}
 	return renderLogs(writer, logsByService)
+}
+
+func latestDeploymentHealthValue(health HealthSummary) string {
+	if health.LatestDeploymentID == "" {
+		return valueOrDash(health.LatestDeploymentStatus)
+	}
+	value := health.LatestDeploymentID + " " + valueOrDash(health.LatestDeploymentStatus)
+	if health.LatestDeploymentCommit != "" {
+		value += " commit=" + health.LatestDeploymentCommit
+	}
+	if health.LatestDeploymentTrigger != "" {
+		value += " trigger=" + health.LatestDeploymentTrigger
+	}
+	return value
+}
+
+func renderHealthChecks(writer io.Writer, checks []app.HealthCheck) error {
+	if _, err := fmt.Fprintln(writer, "Health checks"); err != nil {
+		return err
+	}
+	if len(checks) == 0 {
+		_, err := fmt.Fprintln(writer, "- none")
+		return err
+	}
+	for _, check := range checks {
+		if _, err := fmt.Fprintf(writer, "- %s %s: %s\n", check.Status, check.Name, check.Detail); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func renderServices(writer io.Writer, services []ServiceView) error {

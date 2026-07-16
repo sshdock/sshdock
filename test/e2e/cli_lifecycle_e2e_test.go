@@ -78,10 +78,12 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"apps", "health", appName}, []string{
-		"health: ok",
+		"health: warn",
+		"current main: " + commitSHA,
 		"latest release: " + releaseID + " succeeded",
-		"latest deploy:",
+		"latest deploy:", "commit=" + commitSHA, "trigger=push",
 		"domains: 1",
+		"routes: 0 active, 1 attention (unavailable=1)",
 		"services: 1 running, 0 attention",
 	})
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"logs", appName, "web", "--tail", "25"}, []string{"web log"})

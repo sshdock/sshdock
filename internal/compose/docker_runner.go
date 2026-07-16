@@ -85,7 +85,7 @@ func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error 
 }
 
 func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error) {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "ps", "--format", "json")
+	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "ps", "--all", "--format", "json")
 	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	if err != nil {
 		return nil, err

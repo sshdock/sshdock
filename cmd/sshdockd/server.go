@@ -43,7 +43,8 @@ func runServe(stderr io.Writer) int {
 	}
 
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
-	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService)
+	backend := newDashboardBackend(sqlite, cfg, runner, configService)
+	handler := tui.NewDashboardHandlerWithConfig(sqlite, runner, configService, backend)
 	server := tui.NewSSHServer(tui.SSHServerConfig{
 		ListenAddr:         cfg.SSHListenAddr,
 		OperatorUser:       cfg.OperatorUser,

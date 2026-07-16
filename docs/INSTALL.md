@@ -441,7 +441,7 @@ sudo sshdock domains check <app>
 sudo sshdock logs <app> --tail 200
 ```
 
-Use the SSH dashboard Summary, Routes, Deploys, Events, and Logs tabs for the same app-level health, route, deploy, failure, and log context over SSH.
+Use the SSH dashboard Summary, Routes, Deploys, Events, and Logs tabs for the same desired-main, latest-attempt trigger, Compose-service, active-route, health-check, failure, and log context reported by `apps health`.
 
 ## Diagnostics
 

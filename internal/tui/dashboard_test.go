@@ -62,7 +62,19 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		env:             map[string]string{"DATABASE_URL": "postgres://secret"},
 		redactionValues: map[string]string{"my-app/DATABASE_URL": "postgres://secret", "my-app/worker/API_TOKEN": "legacy-secret"},
 	}
-	handler := NewDashboardHandlerWithConfig(store, runner, config)
+	health := &fakeDashboardHealthProvider{reports: map[string]app.HealthReport{
+		"my-app": {
+			Health:                  "fail",
+			RouteStatus:             "routed",
+			LatestDeploymentStatus:  app.DeploymentStatusFailed,
+			ServiceCount:            1,
+			RunningServiceCount:     1,
+			Services:                []app.ServiceHealth{{Name: "web", State: "running"}},
+			LastFailureDeploymentID: "",
+			LastFailure:             "stage=build services; detail=build services failed: docker output included <redacted>",
+		},
+	}}
+	handler := NewDashboardHandlerWithConfig(store, runner, config, health)
 
 	if err := handler.Render(ctx, &output); err != nil {
 		t.Fatalf("Render: %v", err)
@@ -107,15 +119,8 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 	if strings.Contains(rendered, "postgres://secret") || strings.Contains(rendered, "legacy-secret") {
 		t.Fatalf("dashboard output leaked config value:\n%s", rendered)
 	}
-	if len(runner.StatusRequests) != 1 {
-		t.Fatalf("status requests = %#v", runner.StatusRequests)
-	}
-	statusRequest := runner.StatusRequests[0]
-	if statusRequest.AppName != "my-app" || statusRequest.ComposePath != filepath.Join(worktreePath, "compose.yml") || statusRequest.ProjectDir != worktreePath {
-		t.Fatalf("status request = %#v", statusRequest)
-	}
-	if statusRequest.Env["DATABASE_URL"] != "postgres://secret" {
-		t.Fatalf("status request env = %#v", statusRequest.Env)
+	if len(runner.StatusRequests) != 0 {
+		t.Fatalf("dashboard repeated shared health status request: %#v", runner.StatusRequests)
 	}
 	if len(runner.LogsRequests) != 1 {
 		t.Fatalf("logs requests = %#v", runner.LogsRequests)
@@ -165,7 +170,17 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 		Services:  []compose.ServiceStatus{{Name: "web", State: "running"}},
 		LogOutput: "first log\nsecond log\n",
 	}
-	handler := NewDashboardHandler(store, runner)
+	health := &fakeDashboardHealthProvider{reports: map[string]app.HealthReport{
+		"my-app": {
+			Health:                 "ok",
+			RouteStatus:            "routed",
+			LatestDeploymentStatus: app.DeploymentStatusSucceeded,
+			ServiceCount:           1,
+			RunningServiceCount:    1,
+			Services:               []app.ServiceHealth{{Name: "web", State: "running"}},
+		},
+	}}
+	handler := NewDashboardHandler(store, runner, health)
 
 	snapshot, err := handler.Snapshot(ctx)
 	if err != nil {
@@ -186,10 +201,69 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 	}
 }
 
+func TestDashboardHandlerRendersSharedHealthReport(t *testing.T) {
+	// Given
+	worktreePath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile Compose: %v", err)
+	}
+	store := &fakeDashboardStore{apps: []app.App{{ID: "my-app", Name: "my-app", NodeID: "local", WorktreePath: worktreePath, Status: app.AppStatusHealthy}}}
+	health := &fakeDashboardHealthProvider{reports: map[string]app.HealthReport{
+		"my-app": {
+			Health:                  "fail",
+			CurrentMainCommit:       "desired-main",
+			LatestDeploymentID:      "dep_failed",
+			LatestDeploymentCommit:  "desired-main",
+			LatestDeploymentTrigger: app.DeploymentTriggerPush,
+			LatestDeploymentStatus:  "failed",
+			RouteStatus:             "0 active, 1 attention",
+			ServiceCount:            2,
+			RunningServiceCount:     1,
+			AttentionServiceCount:   1,
+			Services:                []app.ServiceHealth{{Name: "web", State: "running"}, {Name: "worker", State: "exited"}},
+			LastFailureDeploymentID: "dep_failed",
+			LastFailure:             "stage=start; detail=container exited",
+			Checks: []app.HealthCheck{{
+				Status: "warn", Name: "routes", Detail: "0 active, 1 attention (unavailable=1)",
+			}},
+		},
+	}}
+	runner := &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "stale", State: "running"}}, LogOutput: "log\n"}
+	handler := NewDashboardHandler(store, runner, health)
+	var output bytes.Buffer
+
+	// When
+	err := handler.Render(context.Background(), &output)
+
+	// Then
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	for _, want := range []string{
+		"Health: fail",
+		"Current main: desired-main",
+		"Route: 0 active, 1 attention",
+		"Latest deploy: dep_failed failed commit=desired-main trigger=push",
+		"Service status: 1 running, 1 attention",
+		"Last failure: dep_failed stage=start; detail=container exited",
+		"Health checks",
+		"warn routes: 0 active, 1 attention (unavailable=1)",
+		"web running",
+		"worker exited",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("dashboard output missing %q:\n%s", want, output.String())
+		}
+	}
+	if len(runner.StatusRequests) != 0 {
+		t.Fatalf("dashboard repeated Compose status instead of using shared report: %#v", runner.StatusRequests)
+	}
+}
+
 func TestDashboardHandlerRendersEmptyAppList(t *testing.T) {
 	ctx := context.Background()
 	var output bytes.Buffer
-	handler := NewDashboardHandler(&fakeDashboardStore{}, &compose.FakeRunner{})
+	handler := NewDashboardHandler(&fakeDashboardStore{}, &compose.FakeRunner{}, &fakeDashboardHealthProvider{})
 
 	if err := handler.Render(ctx, &output); err != nil {
 		t.Fatalf("Render: %v", err)
@@ -210,6 +284,14 @@ type fakeDashboardStore struct {
 type fakeDashboardConfigResolver struct {
 	env             map[string]string
 	redactionValues map[string]string
+}
+
+type fakeDashboardHealthProvider struct {
+	reports map[string]app.HealthReport
+}
+
+func (f *fakeDashboardHealthProvider) AppHealth(appName string) (app.HealthReport, error) {
+	return f.reports[appName], nil
 }
 
 func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string) (map[string]string, error) {

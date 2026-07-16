@@ -90,6 +90,12 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	if !strings.Contains(checkOutput, wantCheck) {
 		t.Fatalf("fresh-process domains check missing %q:\n%s", wantCheck, checkOutput)
 	}
+	healthOutput := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "health", appName)
+	for _, want := range []string{"current main: " + commitSHA, "routes: 1 active, 0 attention"} {
+		if !strings.Contains(healthOutput, want) {
+			t.Fatalf("fresh-process health output missing %q:\n%s", want, healthOutput)
+		}
+	}
 	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded"})
 	assertDomainRow(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, routeDomain, servicePort)
 

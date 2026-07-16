@@ -536,6 +536,8 @@ func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T)
 		ID:         "dep_new",
 		AppID:      "my-app",
 		ReleaseID:  "rel_new",
+		CommitSHA:  "new",
+		Trigger:    app.DeploymentTriggerPush,
 		Status:     app.DeploymentStatusSucceeded,
 		StartedAt:  now,
 		FinishedAt: now,
@@ -559,10 +561,16 @@ func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T)
 		{Name: "worker", State: "running"},
 	}}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:         "node-a",
-		AppsDir:        appsDir,
+		NodeID:  "node-a",
+		AppsDir: appsDir,
+		Router: &fakeRoutePublisher{StoredRoutes: []router.Route{{
+			AppID: "my-app", ServiceName: "web", DomainName: "my-app.example.com", Port: 3000, HTTPS: true,
+		}}},
 		RecoveryRunner: runner,
-		Now:            func() time.Time { return now },
+		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) {
+			return "new", nil
+		}),
+		Now: func() time.Time { return now },
 	})
 	cliRunner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -573,9 +581,11 @@ func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T)
 	}
 	for _, want := range []string{
 		"health: ok",
+		"current main: new",
 		"latest release: rel_new succeeded",
-		"latest deploy: dep_new succeeded",
+		"latest deploy: dep_new succeeded commit=new trigger=push",
 		"domains: 1",
+		"routes: 1 active, 0 attention",
 		"services: 2 running, 0 attention",
 		"ok\tservices\t2 running",
 	} {

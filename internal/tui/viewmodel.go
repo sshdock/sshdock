@@ -81,10 +81,17 @@ type EventView struct {
 }
 
 type HealthSummary struct {
-	RouteStatus            string
-	LatestDeploymentStatus string
-	ServiceStatus          string
-	LastFailure            string
+	OverallStatus           string
+	CurrentMainCommit       string
+	RouteStatus             string
+	LatestDeploymentID      string
+	LatestDeploymentCommit  string
+	LatestDeploymentTrigger string
+	LatestDeploymentStatus  string
+	ServiceStatus           string
+	LastFailureDeploymentID string
+	LastFailure             string
+	Checks                  []app.HealthCheck
 }
 
 type LogsView struct {
@@ -123,6 +130,12 @@ func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains [
 		Health:      newHealthSummary(services, domains, deployments),
 		Actions:     []string{"restart app", "redeploy current main", "attach domain"},
 	}
+}
+
+func NewAppDetailViewWithHealthReport(model app.App, services []compose.ServiceStatus, domains []app.Domain, releases []app.Release, deployments []app.Deployment, events []app.Event, report app.HealthReport) AppDetailView {
+	view := NewAppDetailView(model, services, domains, releases, deployments, events)
+	view.Health = newHealthSummaryFromReport(report)
+	return view
 }
 
 func NewLogsView(appID string, serviceName string, output string) LogsView {
@@ -248,4 +261,27 @@ func newHealthSummary(services []compose.ServiceStatus, domains []app.Domain, de
 		}
 	}
 	return summary
+}
+
+func newHealthSummaryFromReport(report app.HealthReport) HealthSummary {
+	serviceStatus := "-"
+	if report.ServiceCount > 0 {
+		serviceStatus = strconv.Itoa(report.RunningServiceCount) + " running"
+		if report.AttentionServiceCount > 0 {
+			serviceStatus += ", " + strconv.Itoa(report.AttentionServiceCount) + " attention"
+		}
+	}
+	return HealthSummary{
+		OverallStatus:           report.Health,
+		CurrentMainCommit:       report.CurrentMainCommit,
+		RouteStatus:             report.RouteStatus,
+		LatestDeploymentID:      report.LatestDeploymentID,
+		LatestDeploymentCommit:  report.LatestDeploymentCommit,
+		LatestDeploymentTrigger: string(report.LatestDeploymentTrigger),
+		LatestDeploymentStatus:  string(report.LatestDeploymentStatus),
+		ServiceStatus:           serviceStatus,
+		LastFailureDeploymentID: report.LastFailureDeploymentID,
+		LastFailure:             report.LastFailure,
+		Checks:                  append([]app.HealthCheck(nil), report.Checks...),
+	}
 }

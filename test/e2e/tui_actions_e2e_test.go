@@ -72,7 +72,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		},
 	})
 	actions := tuiCLIActionAdapter{backend: backend}
-	handler := tui.NewDashboardHandler(sqlite, composeRunner)
+	handler := tui.NewDashboardHandler(sqlite, composeRunner, backend)
 	snapshot, err := handler.Snapshot(ctx)
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)

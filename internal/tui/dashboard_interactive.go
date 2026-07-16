@@ -1020,8 +1020,10 @@ func renderSummaryTable(width int, detail AppDetailScreen) string {
 		{"App", metadata.Name},
 		{"State", metadata.Status},
 		{"Node", metadata.NodeID},
+		{"Health", valueOrDash(health.OverallStatus)},
+		{"Current main", valueOrDash(health.CurrentMainCommit)},
 		{"Route", valueOrDash(health.RouteStatus)},
-		{"Latest deploy", valueOrDash(health.LatestDeploymentStatus)},
+		{"Latest deploy", latestDeploymentHealthValue(health)},
 		{"Service status", valueOrDash(health.ServiceStatus)},
 		{"Services", fmt.Sprintf("%d", len(detail.Services()))},
 		{"Routes", fmt.Sprintf("%d", len(detail.Domains()))},
@@ -1030,7 +1032,14 @@ func renderSummaryTable(width int, detail AppDetailScreen) string {
 		{"Events", fmt.Sprintf("%d", len(detail.Events()))},
 	}
 	if health.LastFailure != "" {
-		rows = append(rows, []string{"Last failure", health.LastFailure})
+		failure := health.LastFailure
+		if health.LastFailureDeploymentID != "" {
+			failure = health.LastFailureDeploymentID + " " + failure
+		}
+		rows = append(rows, []string{"Last failure", failure})
+	}
+	for _, check := range health.Checks {
+		rows = append(rows, []string{"Check " + check.Name, check.Status + " " + check.Detail})
 	}
 	return renderDashboardTable(width, []dashboardTableColumn{
 		{Header: "Field", MinWidth: 14, Priority: 0},

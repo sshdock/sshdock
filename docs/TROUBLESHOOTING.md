@@ -175,7 +175,7 @@ sudo sshdock apps health <app>
 
 This Git push records a normal deployment attempt for the selected commit. Use `apps redeploy` only when you want to retry the commit already at remote `main`, such as after fixing server-side config or a transient runtime failure.
 
-`apps health` reports the newest failed release/deployment and failure detail while checking the Compose file and service state from the app's current worktree.
+`apps health` reports remote Git `main`, the latest deployment attempt, current-worktree Compose state, active Caddy route state, and the most recent failure independently. A failed latest attempt therefore remains visible even when older containers are still running.
 
 ## Restart Policy Warning After Reboot
 

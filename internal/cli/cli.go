@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	appmodel "github.com/sshdock/sshdock/internal/app"
 	domaincfg "github.com/sshdock/sshdock/internal/domain"
 )
 
@@ -69,28 +70,9 @@ type Event struct {
 	CreatedAt time.Time
 }
 
-type AppHealth struct {
-	AppName                string
-	Health                 string
-	Status                 string
-	NodeID                 string
-	LatestReleaseID        string
-	LatestReleaseStatus    string
-	LatestDeploymentID     string
-	LatestDeploymentStatus string
-	DomainCount            int
-	ServiceCount           int
-	RunningServiceCount    int
-	AttentionServiceCount  int
-	LastFailure            string
-	Checks                 []HealthCheck
-}
+type AppHealth = appmodel.HealthReport
 
-type HealthCheck struct {
-	Status string
-	Name   string
-	Detail string
-}
+type HealthCheck = appmodel.HealthCheck
 
 type DomainCheck struct {
 	DomainName  string
@@ -233,14 +215,14 @@ func (b *MemoryBackend) AppHealth(name string) (AppHealth, error) {
 	}
 	report := AppHealth{
 		AppName:     model.Name,
-		Status:      model.Status,
+		Status:      appmodel.AppStatus(model.Status),
 		NodeID:      model.NodeID,
 		DomainCount: len(memoryDomainsForApp(b.domains, name)),
 	}
 	report.Checks = append(report.Checks, healthCheckForAppStatus(model.Status))
 	if release, ok := latestCLIRelease(memoryReleasesForApp(b.releases, name)); ok {
 		report.LatestReleaseID = release.ID
-		report.LatestReleaseStatus = release.Status
+		report.LatestReleaseStatus = appmodel.ReleaseStatus(release.Status)
 		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, release.Status))
 		if release.Failure != "" {
 			report.LastFailure = release.Failure
@@ -726,30 +708,46 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 func printAppHealth(stdout io.Writer, report AppHealth) {
 	fmt.Fprintf(stdout, "app: %s\n", report.AppName)
 	fmt.Fprintf(stdout, "health: %s\n", report.Health)
-	fmt.Fprintf(stdout, "status: %s\n", cliValueOrDash(report.Status))
+	fmt.Fprintf(stdout, "status: %s\n", cliValueOrDash(string(report.Status)))
 	fmt.Fprintf(stdout, "node: %s\n", cliValueOrDash(report.NodeID))
+	fmt.Fprintf(stdout, "current main: %s\n", cliValueOrDash(report.CurrentMainCommit))
 	if report.LatestReleaseID != "" || report.LatestReleaseStatus != "" {
-		fmt.Fprintf(stdout, "latest release: %s %s\n", cliValueOrDash(report.LatestReleaseID), cliValueOrDash(report.LatestReleaseStatus))
+		fmt.Fprintf(stdout, "latest release: %s %s\n", cliValueOrDash(report.LatestReleaseID), cliValueOrDash(string(report.LatestReleaseStatus)))
 	} else {
 		fmt.Fprintln(stdout, "latest release: -")
 	}
 	if report.LatestDeploymentID != "" || report.LatestDeploymentStatus != "" {
-		fmt.Fprintf(stdout, "latest deploy: %s %s\n", cliValueOrDash(report.LatestDeploymentID), cliValueOrDash(report.LatestDeploymentStatus))
+		fmt.Fprintf(stdout, "latest deploy: %s %s", cliValueOrDash(report.LatestDeploymentID), cliValueOrDash(string(report.LatestDeploymentStatus)))
+		if report.LatestDeploymentCommit != "" {
+			fmt.Fprintf(stdout, " commit=%s", report.LatestDeploymentCommit)
+		}
+		if report.LatestDeploymentTrigger != "" {
+			fmt.Fprintf(stdout, " trigger=%s", report.LatestDeploymentTrigger)
+		}
+		fmt.Fprintln(stdout)
 	} else {
 		fmt.Fprintln(stdout, "latest deploy: -")
 	}
 	fmt.Fprintf(stdout, "domains: %d\n", report.DomainCount)
+	fmt.Fprintf(stdout, "routes: %s\n", cliValueOrDash(report.RouteStatus))
 	if report.ServiceCount > 0 {
 		fmt.Fprintf(stdout, "services: %d running, %d attention\n", report.RunningServiceCount, report.AttentionServiceCount)
+		for _, service := range report.Services {
+			fmt.Fprintf(stdout, "service\t%s\t%s\n", cliField(service.Name), cliField(service.State))
+		}
 	} else {
 		fmt.Fprintln(stdout, "services: -")
 	}
 	if report.LastFailure != "" {
-		fmt.Fprintf(stdout, "last failure: %s\n", report.LastFailure)
+		fmt.Fprint(stdout, "last failure: ")
+		if report.LastFailureDeploymentID != "" {
+			fmt.Fprintf(stdout, "%s ", report.LastFailureDeploymentID)
+		}
+		fmt.Fprintf(stdout, "%s\n", cliField(report.LastFailure))
 	}
 	fmt.Fprintln(stdout, "checks:")
 	for _, check := range report.Checks {
-		fmt.Fprintf(stdout, "%s\t%s\t%s\n", check.Status, check.Name, check.Detail)
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", cliField(check.Status), cliField(check.Name), cliField(check.Detail))
 	}
 }
 
@@ -765,7 +763,7 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 			return 0
 		}
 		for _, event := range events {
-			fmt.Fprintf(stdout, "%s\t%s\t%s\n", formatCLITime(event.CreatedAt), event.Type, event.Message)
+			fmt.Fprintf(stdout, "%s\t%s\t%s\n", formatCLITime(event.CreatedAt), cliField(event.Type), cliField(event.Message))
 		}
 		return 0
 	}

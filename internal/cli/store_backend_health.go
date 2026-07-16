@@ -37,26 +37,71 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 		return AppHealth{}, err
 	}
 
-	report := AppHealth{AppName: model.Name, Status: string(model.Status), NodeID: model.NodeID, DomainCount: len(domains)}
+	report := AppHealth{AppName: model.Name, Status: model.Status, NodeID: model.NodeID, DomainCount: len(domains)}
 	report.Checks = append(report.Checks, healthCheckForAppStatus(string(model.Status)))
+	if b.currentMainResolver != nil {
+		currentMain, resolveErr := b.currentMainResolver.ResolveCurrentMain(ctx, model.RepoPath)
+		if resolveErr != nil {
+			report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "current main", Detail: resolveErr.Error() + "; push a commit to remote main or inspect the bare repository"})
+		} else {
+			report.CurrentMainCommit = currentMain
+			report.Checks = append(report.Checks, HealthCheck{Status: "ok", Name: "current main", Detail: currentMain})
+		}
+	}
 	if release, ok := latestAppRelease(releases); ok {
 		report.LatestReleaseID = release.ID
-		report.LatestReleaseStatus = string(release.Status)
+		report.LatestReleaseStatus = release.Status
 		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, string(release.Status)))
 	} else {
 		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
 	}
 	if deployment, ok := latestAppDeployment(deployments); ok {
 		report.LatestDeploymentID = deployment.ID
-		report.LatestDeploymentStatus = string(deployment.Status)
+		report.LatestDeploymentCommit = deployment.CommitSHA
+		report.LatestDeploymentTrigger = deployment.Trigger
+		report.LatestDeploymentStatus = deployment.Status
 		report.Checks = append(report.Checks, healthCheckForDeployment(deployment.ID, string(deployment.Status)))
-		if deployment.ErrorMessage != "" {
-			report.LastFailure = compose.RedactValues(deployment.ErrorMessage, redactionValues)
-		}
 	} else {
 		report.Checks = append(report.Checks, healthCheckForDeployment("", ""))
 	}
+	var recentFailure appmodel.Deployment
+	for _, deployment := range deployments {
+		if deployment.Status != appmodel.DeploymentStatusFailed {
+			continue
+		}
+		if recentFailure.ID == "" || deployment.StartedAt.After(recentFailure.StartedAt) || deployment.StartedAt.Equal(recentFailure.StartedAt) && deployment.ID > recentFailure.ID {
+			recentFailure = deployment
+		}
+	}
+	if recentFailure.ID != "" {
+		report.LastFailureDeploymentID = recentFailure.ID
+		summary := strings.TrimSpace(recentFailure.FailureDetail)
+		if !strings.HasPrefix(summary, "stage=") {
+			summary = strings.TrimSpace(recentFailure.ErrorMessage)
+		}
+		if !strings.HasPrefix(summary, "stage=") {
+			parts := make([]string, 0, 3)
+			if recentFailure.FailureStage != "" {
+				parts = append(parts, "stage="+recentFailure.FailureStage)
+			}
+			if recentFailure.FailureDetail != "" {
+				parts = append(parts, "detail="+recentFailure.FailureDetail)
+			}
+			if recentFailure.RetryGuidance != "" {
+				parts = append(parts, "retry="+recentFailure.RetryGuidance)
+			}
+			if len(parts) > 0 {
+				summary = strings.Join(parts, "; ")
+			}
+		}
+		report.LastFailure = compose.RedactValues(summary, redactionValues)
+	}
 	report.Checks = append(report.Checks, healthCheckForDomains(report.DomainCount))
+	routeChecks, err := b.CheckDomains(name)
+	if err != nil {
+		return AppHealth{}, err
+	}
+	addRouteHealth(routeChecks, &report)
 
 	if b.recoveryRunner != nil {
 		projectDir, composePath, err := appmodel.CurrentComposeEntry(model)
@@ -73,6 +118,41 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	return report, nil
 }
 
+func addRouteHealth(routes []DomainCheck, report *AppHealth) {
+	if len(routes) == 0 {
+		report.RouteStatus = "unrouted"
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "routes", Detail: "unrouted"})
+		return
+	}
+
+	checkStatus := "ok"
+	attentionByStatus := make(map[string]int)
+	for _, route := range routes {
+		if route.Status == "ok" {
+			report.ActiveRouteCount++
+			continue
+		}
+		report.RouteAttentionCount++
+		attentionByStatus[route.Status]++
+		if route.Status == "failed" || route.Status == "missing" || route.Status == "mismatch" {
+			checkStatus = "fail"
+		} else if checkStatus == "ok" {
+			checkStatus = "warn"
+		}
+	}
+	report.RouteStatus = fmt.Sprintf("%d active, %d attention", report.ActiveRouteCount, report.RouteAttentionCount)
+	if report.RouteAttentionCount > 0 {
+		states := make([]string, 0, len(attentionByStatus))
+		for _, status := range []string{"failed", "missing", "mismatch", "unavailable", "stored"} {
+			if count := attentionByStatus[status]; count > 0 {
+				states = append(states, fmt.Sprintf("%s=%d", status, count))
+			}
+		}
+		report.RouteStatus += " (" + strings.Join(states, ", ") + ")"
+	}
+	report.Checks = append(report.Checks, HealthCheck{Status: checkStatus, Name: "routes", Detail: report.RouteStatus})
+}
+
 func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projectDir string, composePath string, domains []appmodel.Domain, report *AppHealth) error {
 	env, err := b.configEnv(ctx, name, projectDir)
 	if err != nil {
@@ -84,6 +164,7 @@ func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projec
 	}
 	report.ServiceCount = len(services)
 	for _, service := range services {
+		report.Services = append(report.Services, appmodel.ServiceHealth{Name: service.Name, State: service.State})
 		if service.State == "running" {
 			report.RunningServiceCount++
 		} else {
@@ -111,7 +192,8 @@ func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projec
 		}
 	}
 	if err != nil {
-		return err
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "restart policy", Detail: "inspection unavailable: " + err.Error()})
+		return nil
 	}
 	report.Checks = append(report.Checks, healthCheckForRestartPolicy(nonRestarting))
 	return nil

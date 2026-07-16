@@ -51,13 +51,13 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
+	backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
 	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
 		args, err := operatorOriginalCommandArgs(originalCommand)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
-		backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
 		cliRunner := cli.NewRunner(backend, version.String()).WithInteractiveTerminal(dashboardHasInteractiveTerminal(stdin, stdout))
 		if operatorHelpRequested(args) {
 			printOperatorHelp(stdout, args)
@@ -66,7 +66,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		return cliRunner.RunWithInput(args, stdin, stdout, stderr)
 	}
 
-	handler := tui.NewDashboardHandlerWithConfig(sqlite, composeRunner, configService)
+	handler := tui.NewDashboardHandlerWithConfig(sqlite, composeRunner, configService, backend)
 	snapshot, err := handler.Snapshot(ctx)
 	if err != nil {
 		fmt.Fprintln(stderr, err)

@@ -252,6 +252,54 @@ func TestAppsHealthPrintsOperationalSummary(t *testing.T) {
 	}
 }
 
+func TestAppsHealthKeepsCheckAndFailureRowsSingleLine(t *testing.T) {
+	// Given
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "failed", NodeID: "local"}
+	backend.releases = []Release{{ID: "rel_1", AppName: "my-app", Status: "failed", Failure: "bad\tline\nnext"}}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "bad\tline") || strings.Contains(stdout.String(), "line\nnext") {
+		t.Fatalf("apps health emitted multi-column or multi-line field:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "last failure: bad line next") {
+		t.Fatalf("apps health did not preserve sanitized failure detail:\n%s", stdout.String())
+	}
+}
+
+func TestEventsListKeepsRowsSingleLine(t *testing.T) {
+	// Given
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app"}
+	backend.events = []Event{{AppName: "my-app", Type: "deploy.\tfailed", Message: "bad\tline\nnext", CreatedAt: time.Date(2026, 7, 16, 17, 0, 0, 0, time.UTC)}}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runner.Run([]string{"events", "list", "my-app"}, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("events list exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "deploy.\tfailed") || strings.Contains(stdout.String(), "bad\tline") || strings.Contains(stdout.String(), "line\nnext") {
+		t.Fatalf("events list emitted multi-column or multi-line field:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "deploy. failed\tbad line next") {
+		t.Fatalf("events list did not preserve sanitized fields:\n%s", stdout.String())
+	}
+}
+
 func TestDomainsCheckPrintsRouteStatus(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}

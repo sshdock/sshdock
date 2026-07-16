@@ -120,6 +120,40 @@ func TestNewAppDetailViewUsesNewestAttemptAndFailure(t *testing.T) {
 	}
 }
 
+func TestNewAppDetailViewUsesSharedHealthReportSemantics(t *testing.T) {
+	// Given
+	report := app.HealthReport{
+		Health:                  "fail",
+		CurrentMainCommit:       "desired-main",
+		LatestDeploymentID:      "dep_failed",
+		LatestDeploymentCommit:  "desired-main",
+		LatestDeploymentStatus:  "failed",
+		RouteStatus:             "1 active, 0 attention",
+		ServiceCount:            2,
+		RunningServiceCount:     1,
+		AttentionServiceCount:   1,
+		LastFailureDeploymentID: "dep_failed",
+		LastFailure:             "stage=start; detail=container exited",
+	}
+
+	// When
+	view := NewAppDetailViewWithHealthReport(app.App{ID: "app_1"}, nil, nil, nil, nil, nil, report)
+
+	// Then
+	if view.Health.OverallStatus != "fail" || view.Health.CurrentMainCommit != "desired-main" {
+		t.Fatalf("health = %#v", view.Health)
+	}
+	if view.Health.LatestDeploymentID != "dep_failed" || view.Health.LatestDeploymentCommit != "desired-main" || view.Health.LatestDeploymentStatus != "failed" {
+		t.Fatalf("latest deployment health = %#v", view.Health)
+	}
+	if view.Health.RouteStatus != "1 active, 0 attention" || view.Health.ServiceStatus != "1 running, 1 attention" {
+		t.Fatalf("runtime health = %#v", view.Health)
+	}
+	if view.Health.LastFailureDeploymentID != "dep_failed" || view.Health.LastFailure != "stage=start; detail=container exited" {
+		t.Fatalf("failure health = %#v", view.Health)
+	}
+}
+
 func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
 	// Given
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)

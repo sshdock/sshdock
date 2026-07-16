@@ -199,7 +199,7 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	want := []Command{
 		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "restart", "web"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--format", "json"}, Env: inspectEnv},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--all", "--format", "json"}, Env: inspectEnv},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}, Env: inspectEnv},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {

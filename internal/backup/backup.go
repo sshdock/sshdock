@@ -63,8 +63,8 @@ type SourcePaths struct {
 	SQLiteDBPath        string `json:"sqlite_db_path"`
 	ConfigKeyPath       string `json:"config_key_path"`
 	GitAuthorizedKeys   string `json:"git_authorized_keys_path"`
-	OperatorHostKey     string `json:"dashboard_host_key_path"`
-	OperatorKeys        string `json:"dashboard_authorized_keys_path"`
+	OperatorHostKey     string `json:"operator_host_key_path"`
+	OperatorKeys        string `json:"operator_authorized_keys_path"`
 	CaddyConfigPath     string `json:"caddy_config_path"`
 	CaddyMainConfigPath string `json:"caddy_main_config_path"`
 }

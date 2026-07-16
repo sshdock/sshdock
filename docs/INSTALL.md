@@ -202,7 +202,7 @@ DNS and HTTPS limits:
 - For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `sshdock.example.com A <server-ip>`.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
-- No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through a `dashboard` user forced command.
+- No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through the `sshdock` operator account's forced command.
 
 ## SQLite Data Path
 
@@ -216,8 +216,11 @@ Default files and directories:
 
 ```text
 /var/lib/sshdock/sshdock.db
+/var/lib/sshdock/config.key
 /var/lib/sshdock/apps/
-/var/lib/sshdock/dashboard/
+/var/lib/sshdock/locks/
+/var/lib/sshdock/.ssh/authorized_keys
+/var/lib/sshdock/git/.ssh/authorized_keys
 ```
 
 The installer should create the data directory with ownership suitable for the daemon user.
@@ -419,6 +422,12 @@ Open these ports in both the host firewall and the VPS provider's network firewa
 
 No web dashboard port should be opened.
 
+## Host Operations Boundary
+
+SSHDock coordinates app Git receive, Compose deployment, Caddy routes, encrypted app config, operator commands, and audit history. Normal server tooling remains responsible for operating-system patching, firewall policy, disk monitoring, Docker Engine maintenance, Caddy maintenance, and VPS-provider operations such as instance recovery and provider backups.
+
+Use SSHDock logs, health, events, diagnostics, and command exit codes as inputs to third-party monitoring. SSHDock does not collect host metrics, deliver alerts, page operators, patch the host, or remediate Docker, Caddy, disk, firewall, or provider failures.
+
 ## Upgrade Notes
 
 An upgrade should:
@@ -454,7 +463,7 @@ sudo sshdock diagnostics
 The command checks:
 
 - required SSHDock config values
-- data, app, config key, Git, dashboard, SQLite, and Caddy config directories
+- data, app, config key, Git, operator-access, SQLite, and Caddy config directories
 - Linux OS, systemd, `sshdockd.service`, and runtime command availability
 - listening ports `22`, `80`, and `443`
 - base-domain DNS and wildcard app DNS after `sshdock server domain set <domain>`
@@ -501,7 +510,10 @@ data/
       repo.git/
       worktree/
   git/
-  dashboard/
+    .ssh/
+      authorized_keys
+  .ssh/
+    authorized_keys
 docker/volumes.json
 caddy/generated.caddyfile
 caddy/main.Caddyfile

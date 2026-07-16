@@ -221,8 +221,8 @@ func (b *MemoryBackend) AppHealth(name string) (AppHealth, error) {
 	}
 	report.Checks = append(report.Checks, healthCheckForAppStatus(model.Status))
 	if release, ok := latestCLIRelease(memoryReleasesForApp(b.releases, name)); ok {
-		report.LatestReleaseID = release.ID
-		report.LatestReleaseStatus = appmodel.ReleaseStatus(release.Status)
+		report.AttemptReleaseID = release.ID
+		report.AttemptReleaseStatus = appmodel.ReleaseStatus(release.Status)
 		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, release.Status))
 		if release.Failure != "" {
 			report.LastFailure = release.Failure
@@ -711,10 +711,10 @@ func printAppHealth(stdout io.Writer, report AppHealth) {
 	fmt.Fprintf(stdout, "status: %s\n", cliValueOrDash(string(report.Status)))
 	fmt.Fprintf(stdout, "node: %s\n", cliValueOrDash(report.NodeID))
 	fmt.Fprintf(stdout, "current main: %s\n", cliValueOrDash(report.CurrentMainCommit))
-	if report.LatestReleaseID != "" || report.LatestReleaseStatus != "" {
-		fmt.Fprintf(stdout, "latest release: %s %s\n", cliValueOrDash(report.LatestReleaseID), cliValueOrDash(string(report.LatestReleaseStatus)))
+	if report.AttemptReleaseID != "" || report.AttemptReleaseStatus != "" {
+		fmt.Fprintf(stdout, "attempt release: %s %s\n", cliValueOrDash(report.AttemptReleaseID), cliValueOrDash(string(report.AttemptReleaseStatus)))
 	} else {
-		fmt.Fprintln(stdout, "latest release: -")
+		fmt.Fprintln(stdout, "attempt release: -")
 	}
 	if report.LatestDeploymentID != "" || report.LatestDeploymentStatus != "" {
 		fmt.Fprintf(stdout, "latest deploy: %s %s", cliValueOrDash(report.LatestDeploymentID), cliValueOrDash(string(report.LatestDeploymentStatus)))

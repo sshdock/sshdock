@@ -48,19 +48,30 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 			report.Checks = append(report.Checks, HealthCheck{Status: "ok", Name: "current main", Detail: currentMain})
 		}
 	}
-	if release, ok := latestAppRelease(releases); ok {
-		report.LatestReleaseID = release.ID
-		report.LatestReleaseStatus = release.Status
+	latestDeployment, hasLatestDeployment := latestAppDeployment(deployments)
+	release, hasRelease := latestAppRelease(releases)
+	if hasLatestDeployment {
+		for _, candidate := range releases {
+			if candidate.ID == latestDeployment.ReleaseID {
+				release = candidate
+				hasRelease = true
+				break
+			}
+		}
+	}
+	if hasRelease {
+		report.AttemptReleaseID = release.ID
+		report.AttemptReleaseStatus = release.Status
 		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, string(release.Status)))
 	} else {
 		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
 	}
-	if deployment, ok := latestAppDeployment(deployments); ok {
-		report.LatestDeploymentID = deployment.ID
-		report.LatestDeploymentCommit = deployment.CommitSHA
-		report.LatestDeploymentTrigger = deployment.Trigger
-		report.LatestDeploymentStatus = deployment.Status
-		report.Checks = append(report.Checks, healthCheckForDeployment(deployment.ID, string(deployment.Status)))
+	if hasLatestDeployment {
+		report.LatestDeploymentID = latestDeployment.ID
+		report.LatestDeploymentCommit = latestDeployment.CommitSHA
+		report.LatestDeploymentTrigger = latestDeployment.Trigger
+		report.LatestDeploymentStatus = latestDeployment.Status
+		report.Checks = append(report.Checks, healthCheckForDeployment(latestDeployment.ID, string(latestDeployment.Status)))
 	} else {
 		report.Checks = append(report.Checks, healthCheckForDeployment("", ""))
 	}

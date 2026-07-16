@@ -6,8 +6,8 @@ type HealthReport struct {
 	Status                  AppStatus
 	NodeID                  string
 	CurrentMainCommit       string
-	LatestReleaseID         string
-	LatestReleaseStatus     ReleaseStatus
+	AttemptReleaseID        string
+	AttemptReleaseStatus    ReleaseStatus
 	LatestDeploymentID      string
 	LatestDeploymentCommit  string
 	LatestDeploymentTrigger DeploymentTrigger

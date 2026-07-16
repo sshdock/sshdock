@@ -319,9 +319,9 @@ Summarize an app's operational state in one command.
 sudo sshdock apps health my-app
 ```
 
-Output reports remote Git `main` as the desired commit independently from the latest deployment attempt, including that attempt's ID, commit, trigger, and status. It also reports current-worktree Compose service counts plus one name/state row per service, desired domain count, active Caddy route state, and the most recent deployment failure with its attempt ID. A failed latest attempt remains visible even if containers from an older deployment are still running.
+Output reports remote Git `main` as the desired commit independently from the latest deployment attempt, including that attempt's ID, commit, trigger, status, and `attempt release`. It also reports current-worktree Compose service counts plus one name/state row per service, desired domain count, active Caddy route state, and the most recent deployment failure with its attempt ID. A failed latest attempt remains visible even if containers from an older deployment are still running; after a successful Git-selected rollback, the attempt-release check follows that successful attempt while the prior failure remains visible separately.
 
-Check rows keep the output script-friendly and distinguish app, current-main, release-history, deployment-attempt, domain, active-route, service, and restart-policy state. Missing Git or worktree state, absent or stopped containers, unrouted apps, and unavailable Caddy inspection are reported as warnings or failures instead of being inferred as healthy. A routed or running service using Compose's default `restart: "no"` produces a `warn` check with the affected service names.
+Check rows keep the output script-friendly and distinguish app, current-main, attempt-release, deployment-attempt, domain, active-route, service, and restart-policy state. Missing Git or worktree state, absent or stopped containers, unrouted apps, and unavailable Caddy inspection are reported as warnings or failures instead of being inferred as healthy. A routed or running service using Compose's default `restart: "no"` produces a `warn` check with the affected service names.
 
 ### `sshdock logs <app> [service] [-f] [--tail <lines>]`
 

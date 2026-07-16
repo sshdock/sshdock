@@ -15,8 +15,11 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+const sqliteBusyTimeoutMilliseconds = 5000
+
 func OpenSQLite(ctx context.Context, path string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", path)
+	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(%d)", path, sqliteBusyTimeoutMilliseconds)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}

@@ -241,7 +241,7 @@ func TestAppsHealthPrintsOperationalSummary(t *testing.T) {
 		"app: my-app",
 		"health: ok",
 		"status: healthy",
-		"latest release: rel_1 succeeded",
+		"attempt release: rel_1 succeeded",
 		"domains: 1",
 		"ok\tapp\tstatus healthy",
 		"ok\tdomains\t1 configured",

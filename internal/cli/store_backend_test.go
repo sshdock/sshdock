@@ -582,7 +582,7 @@ func TestStoreBackendAppsHealthIncludesDeployRouteAndServiceStatus(t *testing.T)
 	for _, want := range []string{
 		"health: ok",
 		"current main: new",
-		"latest release: rel_new succeeded",
+		"attempt release: rel_new succeeded",
 		"latest deploy: dep_new succeeded commit=new trigger=push",
 		"domains: 1",
 		"routes: 1 active, 0 attention",

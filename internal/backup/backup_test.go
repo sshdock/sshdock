@@ -62,6 +62,17 @@ func TestCreateArchiveIncludesStateCaddyAndVolumeInventory(t *testing.T) {
 	}
 
 	var manifest Manifest
+	manifestJSON := string(entries["manifest.json"])
+	for _, want := range []string{"operator_host_key_path", "operator_authorized_keys_path"} {
+		if !strings.Contains(manifestJSON, want) {
+			t.Fatalf("manifest missing operator source field %q: %s", want, manifestJSON)
+		}
+	}
+	for _, reject := range []string{"dashboard_host_key_path", "dashboard_authorized_keys_path"} {
+		if strings.Contains(manifestJSON, reject) {
+			t.Fatalf("manifest contains removed dashboard source field %q: %s", reject, manifestJSON)
+		}
+	}
 	if err := json.Unmarshal(entries["manifest.json"], &manifest); err != nil {
 		t.Fatalf("unmarshal manifest: %v", err)
 	}

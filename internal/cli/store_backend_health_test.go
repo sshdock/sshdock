@@ -52,7 +52,7 @@ func TestStoreBackendAppsHealthUsesCurrentWorktreeForServiceStatus(t *testing.T)
 	if code := cliRunner.Run([]string{"apps", "health", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps health exit code = %d, stderr = %q", code, stderr.String())
 	}
-	for _, want := range []string{"health: fail", "current main: failed-main", "latest release: rel_failed failed", "latest deploy: dep_failed failed commit=failed-main trigger=push", "routes: unrouted", "last failure: dep_failed stage=build; detail=image pull failed for <redacted>", "services: 1 running, 0 attention", "service\tweb\trunning"} {
+	for _, want := range []string{"health: fail", "current main: failed-main", "attempt release: rel_failed failed", "latest deploy: dep_failed failed commit=failed-main trigger=push", "routes: unrouted", "last failure: dep_failed stage=build; detail=image pull failed for <redacted>", "services: 1 running, 0 attention", "service\tweb\trunning"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("apps health stdout missing %q:\n%s", want, stdout.String())
 		}
@@ -108,6 +108,54 @@ func TestStoreBackendAppsHealthReportsCurrentMainAndLatestAttemptIndependently(t
 	}
 	if report.LatestDeploymentID != "dep_attempt" || report.LatestDeploymentCommit != "attempted-commit" || report.LatestDeploymentTrigger != "push" {
 		t.Fatalf("latest deployment = %#v", report)
+	}
+}
+
+func TestStoreBackendAppsHealthUsesLatestAttemptReleaseAfterGitRollback(t *testing.T) {
+	// Given a newer failed release followed by a successful Git push of an older release.
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 16, 11, 30, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	if err := sqlite.UpdateReleaseStatus(ctx, "rel_new", app.ReleaseStatusFailed, now.Add(time.Minute)); err != nil {
+		t.Fatalf("UpdateReleaseStatus: %v", err)
+	}
+	for _, deployment := range []app.Deployment{
+		{ID: "dep_failed", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(time.Minute), FailureStage: "start services", FailureDetail: "unhealthy", RetryGuidance: "push a fixed commit"},
+		{ID: "dep_rollback", AppID: "my-app", ReleaseID: "rel_old", CommitSHA: "old", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusSucceeded, StartedAt: now.Add(2 * time.Minute), FinishedAt: now.Add(2 * time.Minute)},
+	} {
+		if err := sqlite.CreateDeployment(ctx, deployment); err != nil {
+			t.Fatalf("CreateDeployment(%s): %v", deployment.ID, err)
+		}
+	}
+	domain := app.Domain{ID: "dom_1", AppID: "my-app", ServiceName: "web", DomainName: "app.example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}
+	if err := sqlite.AttachDomain(ctx, domain); err != nil {
+		t.Fatalf("AttachDomain: %v", err)
+	}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		RecoveryRunner: &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "web", State: "running"}}},
+		Router: &fakeRoutePublisher{StoredRoutes: []router.Route{{
+			AppID: domain.AppID, ServiceName: domain.ServiceName, DomainName: domain.DomainName, Port: domain.Port, HTTPS: domain.HTTPS,
+		}}},
+		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) {
+			return "old", nil
+		}),
+		Now: func() time.Time { return now },
+	})
+
+	// When current health is calculated after the rollback deployment succeeds.
+	report, err := backend.AppHealth("my-app")
+
+	// Then the current attempt's release is healthy and the failed forward attempt stays visible separately.
+	if err != nil {
+		t.Fatalf("AppHealth: %v", err)
+	}
+	if report.Health != "ok" || report.AttemptReleaseID != "rel_old" || report.AttemptReleaseStatus != app.ReleaseStatusSucceeded {
+		t.Fatalf("health release = %#v, want rel_old succeeded and health ok", report)
+	}
+	if report.LatestDeploymentID != "dep_rollback" || report.LastFailureDeploymentID != "dep_failed" {
+		t.Fatalf("deployment history = %#v", report)
 	}
 }
 

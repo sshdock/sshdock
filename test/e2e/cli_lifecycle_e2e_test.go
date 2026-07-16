@@ -80,7 +80,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"apps", "health", appName}, []string{
 		"health: warn",
 		"current main: " + commitSHA,
-		"latest release: " + releaseID + " succeeded",
+		"attempt release: " + releaseID + " succeeded",
 		"latest deploy:", "commit=" + commitSHA, "trigger=push",
 		"domains: 1",
 		"routes: 0 active, 1 attention (unavailable=1)",

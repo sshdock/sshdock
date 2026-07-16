@@ -411,6 +411,31 @@ func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 	}
 }
 
+func TestOpenSQLiteConfiguresBusyTimeoutForConcurrentProcesses(t *testing.T) {
+	// Given a store opened through the production SQLite boundary.
+	ctx := context.Background()
+	store, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	// When the connection's lock-wait policy is inspected.
+	var timeoutMilliseconds int
+	if err := store.db.QueryRowContext(ctx, "pragma busy_timeout").Scan(&timeoutMilliseconds); err != nil {
+		t.Fatalf("query busy_timeout: %v", err)
+	}
+
+	// Then concurrent CLI processes get a bounded wait instead of immediate SQLITE_BUSY.
+	if timeoutMilliseconds != 5000 {
+		t.Fatalf("busy_timeout = %dms, want 5000ms", timeoutMilliseconds)
+	}
+}
+
 func TestOpenSQLiteMigratesUnambiguousScopedConfigToFlatSchema(t *testing.T) {
 	// Given
 	ctx := context.Background()

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -145,104 +147,23 @@ func TestServiceAttachesDomain(t *testing.T) {
 	}
 }
 
-func TestServiceRollbackReleaseStartsDeploymentForKnownRelease(t *testing.T) {
+func TestServiceRestartAppAndServiceUseCurrentWorktreeComposeEntry(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	runner := &fakeRecoveryRunner{}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
-	store.releases["rel_1"] = Release{
-		ID:          "rel_1",
-		AppID:       "app_1",
-		CommitSHA:   "abc123",
-		ComposePath: "compose.yml",
-		Status:      ReleaseStatusSucceeded,
+	worktreePath := t.TempDir()
+	composePath := filepath.Join(worktreePath, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("write current Compose file: %v", err)
 	}
-
-	deployment, err := service.RollbackRelease(ctx, "app_1", "rel_1", "dep_rollback_1")
-	if err != nil {
-		t.Fatalf("RollbackRelease: %v", err)
-	}
-
-	if deployment.AppID != "app_1" {
-		t.Fatalf("AppID = %q", deployment.AppID)
-	}
-	if deployment.ReleaseID != "rel_1" {
-		t.Fatalf("ReleaseID = %q", deployment.ReleaseID)
-	}
-	if deployment.Status != DeploymentStatusSucceeded {
-		t.Fatalf("Status = %q", deployment.Status)
-	}
-	if !deployment.StartedAt.Equal(now) {
-		t.Fatalf("StartedAt = %s", deployment.StartedAt)
-	}
-	if len(runner.deploys) != 1 {
-		t.Fatalf("deploy requests = %#v", runner.deploys)
-	}
-	request := runner.deploys[0]
-	if request.AppName != "app_1" || request.ReleaseID != "rel_1" || request.CommitSHA != "abc123" || request.ComposePath != "compose.yml" || request.ProjectDir != "/apps/app_1/worktree" {
-		t.Fatalf("deploy request = %#v", request)
-	}
-	if store.appStatuses["app_1"] != AppStatusHealthy {
-		t.Fatalf("app status = %q", store.appStatuses["app_1"])
-	}
-	if store.releaseStatuses["rel_1"] != ReleaseStatusRolledBack {
-		t.Fatalf("release status = %q", store.releaseStatuses["rel_1"])
-	}
-	if store.deploymentStatuses["dep_rollback_1"] != DeploymentStatusSucceeded {
-		t.Fatalf("deployment status = %q", store.deploymentStatuses["dep_rollback_1"])
-	}
-	assertEventTypes(t, store.events["app_1"], []string{"rollback.triggered", "rollback.succeeded"})
-}
-
-func TestServiceRollbackReleaseChecksOutSelectedCommitBeforeDeploy(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	runner := &fakeRecoveryRunner{}
-	checkout := &fakeWorktreeCheckout{}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithWorktreeCheckout(checkout))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
-	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
-
-	_, err := service.RollbackRelease(ctx, "app_1", "rel_good", "dep_rollback_1")
-	if err != nil {
-		t.Fatalf("RollbackRelease: %v", err)
-	}
-	if len(checkout.calls) != 1 {
-		t.Fatalf("checkout calls = %#v", checkout.calls)
-	}
-	if checkout.calls[0] != (checkoutCall{repoPath: "/apps/app_1/repo.git", worktreePath: "/apps/app_1/worktree", commitSHA: "good"}) {
-		t.Fatalf("checkout call = %#v", checkout.calls[0])
-	}
-	if len(runner.deploys) != 1 {
-		t.Fatalf("deploys = %#v", runner.deploys)
-	}
-}
-
-func TestServiceRollbackRejectsReleaseFromDifferentApp(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	service := NewService(store)
-	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "other-app"}
-
-	_, err := service.RollbackRelease(ctx, "app_1", "rel_1", "dep_rollback_1")
-	if err == nil {
-		t.Fatal("RollbackRelease error = nil, want error")
-	}
-}
-
-func TestServiceRestartAppAndServiceUseLatestSuccessfulRelease(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	runner := &fakeRecoveryRunner{}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithRecoveryRunner(runner))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_bad"] = Release{ID: "rel_bad", AppID: "app_1", CommitSHA: "bad", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusFailed, CreatedAt: now.Add(-time.Hour)}
-	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/historical/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
+	// When
 	if err := service.RestartApp(ctx, "app_1"); err != nil {
 		t.Fatalf("RestartApp: %v", err)
 	}
@@ -254,7 +175,7 @@ func TestServiceRestartAppAndServiceUseLatestSuccessfulRelease(t *testing.T) {
 		t.Fatalf("restart requests = %#v", runner.restarts)
 	}
 	appRestart := runner.restarts[0]
-	if appRestart.AppName != "app_1" || appRestart.ProjectDir != "/apps/app_1/worktree" || appRestart.ComposePath != "/apps/app_1/worktree/compose.yml" || appRestart.ServiceName != "" {
+	if appRestart.AppName != "app_1" || appRestart.ProjectDir != worktreePath || appRestart.ComposePath != composePath || appRestart.ServiceName != "" {
 		t.Fatalf("app restart request = %#v", appRestart)
 	}
 	serviceRestart := runner.restarts[1]
@@ -269,6 +190,7 @@ func TestServiceRedeployCurrentMainUsesFailedCurrentCommitInsteadOfLatestGood(t 
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	runner := &fakeRecoveryRunner{}
 	service := NewService(
 		store,
@@ -281,9 +203,9 @@ func TestServiceRedeployCurrentMainUsesFailedCurrentCommitInsteadOfLatestGood(t 
 			return "new", nil
 		})),
 	)
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusFailed}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: worktreePath, Status: AppStatusFailed}
 	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
-	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusFailed, CreatedAt: now.Add(-time.Hour)}
+	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/historical/rolled-back/compose.yml", Status: ReleaseStatusRolledBack, CreatedAt: now.Add(-time.Hour)}
 
 	// When
 	deployment, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
@@ -295,7 +217,7 @@ func TestServiceRedeployCurrentMainUsesFailedCurrentCommitInsteadOfLatestGood(t 
 	if deployment.ReleaseID != "rel_new" || deployment.CommitSHA != "new" {
 		t.Fatalf("deployment = %#v, want current main release", deployment)
 	}
-	if len(runner.deploys) != 1 || runner.deploys[0].CommitSHA != "new" {
+	if len(runner.deploys) != 1 || runner.deploys[0].CommitSHA != "new" || runner.deploys[0].ComposePath != filepath.Join(worktreePath, "compose.yml") {
 		t.Fatalf("deploy requests = %#v, want current main commit", runner.deploys)
 	}
 	for index, want := range []string{"Redeploy current main new started", "Redeploy current main new succeeded"} {
@@ -309,9 +231,10 @@ func TestServiceRedeployCurrentMainCreatesDeploymentAndUpdatesState(t *testing.T
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	runner := &fakeRecoveryRunner{}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), withCurrentMain("new"))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour)}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
@@ -329,7 +252,7 @@ func TestServiceRedeployCurrentMainCreatesDeploymentAndUpdatesState(t *testing.T
 		t.Fatalf("deploy requests = %#v", runner.deploys)
 	}
 	request := runner.deploys[0]
-	if request.ReleaseID != "rel_new" || request.CommitSHA != "new" || request.ProjectDir != "/apps/app_1/worktree" {
+	if request.ReleaseID != "rel_new" || request.CommitSHA != "new" || request.ProjectDir != worktreePath || request.ComposePath != filepath.Join(worktreePath, "compose.yml") {
 		t.Fatalf("deploy request = %#v", request)
 	}
 	if store.appStatuses["app_1"] != AppStatusHealthy {
@@ -348,10 +271,11 @@ func TestServiceRedeployCurrentMainPassesResolvedConfigEnvironment(t *testing.T)
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	runner := &fakeRecoveryRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
 	if _, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1"); err != nil {
@@ -368,32 +292,15 @@ func TestServiceRedeployCurrentMainPassesResolvedConfigEnvironment(t *testing.T)
 	}
 }
 
-func TestServiceRollbackPassesResolvedConfigEnvironment(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	runner := &fakeRecoveryRunner{}
-	resolver := &fakeConfigResolver{env: map[string]string{"API_TOKEN": "secret"}}
-	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
-	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
-
-	if _, err := service.RollbackRelease(ctx, "app_1", "rel_good", "dep_rollback_1"); err != nil {
-		t.Fatalf("RollbackRelease: %v", err)
-	}
-	if len(runner.deploys) != 1 || runner.deploys[0].Env["API_TOKEN"] != "secret" {
-		t.Fatalf("deploy requests = %#v", runner.deploys)
-	}
-}
-
 func TestServiceRedeployConfigFailureStopsBeforeCompose(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	runner := &fakeRecoveryRunner{}
 	resolver := &fakeConfigResolver{err: errors.New("missing required config for app_1: SECRET")}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
 	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
@@ -419,11 +326,12 @@ func TestServiceRedeployFailureMarksAppAndDeploymentFailed(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	deployFailure := errors.New("compose failed")
 	failure := compose.NewDeployError(compose.DeployStageBuildServices, deployFailure)
 	runner := &fakeRecoveryRunner{deployErr: failure}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), withCurrentMain("new"))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
 	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
@@ -454,11 +362,12 @@ func TestServiceRedeployFailureRedactsResolvedConfigValues(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeServiceStore()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := testComposeWorktree(t)
 	failure := errors.New("docker output included postgres://secret")
 	runner := &fakeRecoveryRunner{deployErr: failure}
 	resolver := &fakeConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret"}}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithDeployRunner(runner), WithConfigResolver(resolver), withCurrentMain("new"))
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
+	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: worktreePath, Status: AppStatusHealthy}
 	store.releases["rel_new"] = Release{ID: "rel_new", AppID: "app_1", CommitSHA: "new", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 
 	_, err := service.RedeployCurrentMain(ctx, "app_1", "dep_redeploy_1")
@@ -479,79 +388,6 @@ func TestServiceRedeployFailureRedactsResolvedConfigValues(t *testing.T) {
 	}
 }
 
-func TestServiceRecoverDeployedAppsRedeploysLatestGoodRelease(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	runner := &fakeRecoveryRunner{}
-	checkout := &fakeWorktreeCheckout{}
-	service := NewService(
-		store,
-		WithClock(func() time.Time { return now }),
-		WithRecoveryRunner(runner),
-		WithWorktreeCheckout(checkout),
-		WithDeploymentIDGenerator(func() (string, error) {
-			return "dep_startup_attempt", nil
-		}),
-	)
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", RepoPath: "/apps/app_1/repo.git", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
-	store.apps["empty"] = App{ID: "empty", Name: "empty", RepoPath: "/apps/empty/repo.git", WorktreePath: "/apps/empty/worktree", Status: AppStatusCreated}
-	store.releases["rel_old"] = Release{ID: "rel_old", AppID: "app_1", CommitSHA: "old", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour)}
-	store.releases["rel_failed"] = Release{ID: "rel_failed", AppID: "app_1", CommitSHA: "failed", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusFailed, CreatedAt: now}
-
-	if err := service.RecoverDeployedApps(ctx); err != nil {
-		t.Fatalf("RecoverDeployedApps: %v", err)
-	}
-	if len(checkout.calls) != 1 {
-		t.Fatalf("checkout calls = %#v", checkout.calls)
-	}
-	if checkout.calls[0] != (checkoutCall{repoPath: "/apps/app_1/repo.git", worktreePath: "/apps/app_1/worktree", commitSHA: "old"}) {
-		t.Fatalf("checkout call = %#v", checkout.calls[0])
-	}
-	if len(runner.deploys) != 1 {
-		t.Fatalf("deploy requests = %#v", runner.deploys)
-	}
-	if runner.deploys[0].ReleaseID != "rel_old" || runner.deploys[0].CommitSHA != "old" {
-		t.Fatalf("deploy request = %#v", runner.deploys[0])
-	}
-	if store.deploymentStatuses["dep_startup_attempt"] != DeploymentStatusSucceeded {
-		t.Fatalf("deployment statuses = %#v", store.deploymentStatuses)
-	}
-	if store.deployments["dep_startup_attempt"].Trigger != DeploymentTriggerStartupRecovery {
-		t.Fatalf("startup deployment = %#v", store.deployments["dep_startup_attempt"])
-	}
-	for index, want := range []string{"Startup recovery for release rel_old started", "Startup recovery for release rel_old succeeded"} {
-		if got := store.events["app_1"][index].Message; got != want {
-			t.Fatalf("event[%d] message = %q, want %q", index, got, want)
-		}
-	}
-}
-
-func TestServiceRecoverDeployedAppsDoesNotRecommendCurrentMainRedeploy(t *testing.T) {
-	ctx := context.Background()
-	store := newFakeServiceStore()
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	deployFailure := errors.New("compose failed")
-	service := NewService(
-		store,
-		WithClock(func() time.Time { return now }),
-		WithRecoveryRunner(&fakeRecoveryRunner{deployErr: deployFailure}),
-		WithDeploymentIDGenerator(func() (string, error) { return "dep_startup_attempt", nil }),
-	)
-	store.apps["app_1"] = App{ID: "app_1", Name: "app_1", WorktreePath: "/apps/app_1/worktree", Status: AppStatusHealthy}
-	store.releases["rel_good"] = Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
-
-	err := service.RecoverDeployedApps(ctx)
-
-	if !errors.Is(err, deployFailure) {
-		t.Fatalf("RecoverDeployedApps error = %v, want wrapped %v", err, deployFailure)
-	}
-	guidance := store.deployments["dep_startup_attempt"].RetryGuidance
-	if !strings.Contains(guidance, "restart sshdockd") || strings.Contains(guidance, "apps redeploy") {
-		t.Fatalf("startup retry guidance = %q, want daemon-restart guidance without current-main redeploy", guidance)
-	}
-}
-
 type fakeServiceStore struct {
 	apps                 map[string]App
 	releases             map[string]Release
@@ -569,6 +405,15 @@ func withCurrentMain(commitSHA string) ServiceOption {
 	return WithCurrentMainResolver(CurrentMainResolverFunc(func(context.Context, string) (string, error) {
 		return commitSHA, nil
 	}))
+}
+
+func testComposeWorktree(t *testing.T) string {
+	t.Helper()
+	worktreePath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile Compose: %v", err)
+	}
+	return worktreePath
 }
 
 type fakeRecoveryRunner struct {
@@ -658,6 +503,16 @@ func newFakeServiceStore() *fakeServiceStore {
 		domains:              map[string][]Domain{},
 		events:               map[string][]Event{},
 	}
+}
+
+func writeCurrentCompose(t *testing.T) (string, string) {
+	t.Helper()
+	worktreePath := t.TempDir()
+	composePath := filepath.Join(worktreePath, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("write current Compose file: %v", err)
+	}
+	return worktreePath, composePath
 }
 
 func (f *fakeServiceStore) CreateApp(_ context.Context, model App) error {

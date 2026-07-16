@@ -12,13 +12,14 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
-func TestServiceExecAndRunUseDeployedComposeProjectAndRecordEvents(t *testing.T) {
+func TestServiceExecAndRunUseCurrentWorktreeComposeEntryAndRecordEvents(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	worktreePath, composePath := writeCurrentCompose(t)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: "/apps/app_1/worktree"}
-	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
+	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/historical/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithRecoveryRunner(runner), WithConfigResolver(resolver))
@@ -36,8 +37,8 @@ func TestServiceExecAndRunUseDeployedComposeProjectAndRecordEvents(t *testing.T)
 
 	// Then
 	wantRequest := request
-	wantRequest.ProjectDir = "/apps/app_1/worktree"
-	wantRequest.ComposePath = "/apps/app_1/worktree/compose.yml"
+	wantRequest.ProjectDir = worktreePath
+	wantRequest.ComposePath = composePath
 	wantRequest.Env = resolver.env
 	if len(runner.ExecRequests) != 1 {
 		t.Fatalf("ExecRequests = %#v", runner.ExecRequests)
@@ -59,7 +60,8 @@ func TestServiceCommandFailureIsRedactedInErrorAndEvent(t *testing.T) {
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	secret := "stored-secret"
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: "/apps/app_1/worktree"}
+	worktreePath, _ := writeCurrentCompose(t)
+	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{ExecErr: errors.New("container failed with " + secret)}
 	resolver := allValueConfigResolver{env: map[string]string{"TOKEN": secret}, redactionValues: map[string]string{"TOKEN": secret}}

@@ -152,6 +152,9 @@ func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
 	if !slices.Contains(view.Actions, "redeploy current main") {
 		t.Fatalf("actions = %#v, want current-main redeploy wording", view.Actions)
 	}
+	if slices.Contains(view.Actions, "rollback release") {
+		t.Fatalf("actions = %#v, rollback must use Git push to remote main", view.Actions)
+	}
 }
 
 func TestNewLogsView(t *testing.T) {

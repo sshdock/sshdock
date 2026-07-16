@@ -27,7 +27,7 @@ func (s *Service) runAppLifecycle(ctx context.Context, appID string, action life
 	if s.recover == nil {
 		return fmt.Errorf("lifecycle runner is not configured")
 	}
-	model, release, err := s.latestGoodRelease(ctx, appID)
+	target, err := s.currentRuntimeTarget(ctx, appID)
 	if err != nil {
 		return fmt.Errorf("resolve app %q for %s: %w", appID, action, err)
 	}
@@ -45,12 +45,11 @@ func (s *Service) runAppLifecycle(ctx context.Context, appID string, action life
 		return fmt.Errorf("record %s start for app %q: %w", action, appID, err)
 	}
 
-	worktreePath := projectDir(model, release)
-	env, operationErr := s.resolveDeployEnv(ctx, appID, worktreePath)
+	env, operationErr := s.resolveDeployEnv(ctx, appID, target.projectDir)
 	if operationErr != nil {
 		operationErr = fmt.Errorf("resolve app config: %w", operationErr)
 	} else {
-		request := compose.LifecycleRequest{AppName: appID, ProjectDir: worktreePath, ComposePath: release.ComposePath, Env: env}
+		request := compose.LifecycleRequest{AppName: appID, ProjectDir: target.projectDir, ComposePath: target.composePath, Env: env}
 		operationErr = s.executeAppLifecycle(ctx, action, request)
 	}
 	if operationErr != nil {

@@ -16,6 +16,8 @@ import (
 type Command struct {
 	Name string
 	Args []string
+	Dir  string
+	Env  map[string]string
 }
 
 type CommandExecutor interface {
@@ -30,6 +32,7 @@ type Report struct {
 type Check struct {
 	Name    string
 	OK      bool
+	Warning bool
 	Message string
 	Why     string
 	Fix     string
@@ -54,7 +57,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkDir("operator authorized_keys dir", filepath.Dir(cfg.OperatorAuthorizedKeysPath))
 	report.checkDir("caddy config dir", filepath.Dir(cfg.CaddyConfigPath))
 
-	serverConfig, hasServerConfig := report.checkStore(ctx, cfg.SQLiteDBPath)
+	serverConfig, hasServerConfig := report.checkStore(ctx, cfg, executor)
 
 	report.checkLinux(ctx, executor)
 	report.checkCommand(ctx, executor, "docker", Command{Name: "docker", Args: []string{"version"}}, "Docker Engine runs app containers.", "install or start Docker Engine, then rerun sudo sshdock diagnostics")
@@ -64,7 +67,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkCommand(ctx, executor, "sshd", Command{Name: "sshd", Args: []string{"-V"}}, "OpenSSH serves Git push and dashboard forced-command access.", "install openssh-server and make sure sshd is available")
 	report.checkCommand(ctx, executor, "git", Command{Name: "git", Args: []string{"--version"}}, "Git receives app pushes and manages bare repositories.", "install Git")
 	report.checkCommand(ctx, executor, "systemd", Command{Name: "systemctl", Args: []string{"--version"}}, "The installer manages sshdockd, Docker, Caddy, and sshd through systemd.", "use a systemd-based Ubuntu or Debian VPS")
-	report.checkCommand(ctx, executor, "sshdockd service", Command{Name: "systemctl", Args: []string{"is-active", "sshdockd.service"}}, "The daemon must be active for Git receive hooks and recovery.", "run sudo systemctl enable --now sshdockd.service and inspect sudo systemctl status sshdockd.service")
+	report.checkCommand(ctx, executor, "sshdockd service", Command{Name: "systemctl", Args: []string{"is-active", "sshdockd.service"}}, "The daemon must be active for Git receive hooks and operator access.", "run sudo systemctl enable --now sshdockd.service and inspect sudo systemctl status sshdockd.service")
 	report.checkPorts(ctx, executor)
 	report.checkDNS(ctx, executor, serverConfig, hasServerConfig)
 	report.checkCaddyImport(cfg)
@@ -81,7 +84,9 @@ func (r Report) String() string {
 	var builder strings.Builder
 	for _, check := range r.Checks {
 		status := "ok"
-		if !check.OK {
+		if check.Warning {
+			status = "warn"
+		} else if !check.OK {
 			status = "fail"
 		}
 		builder.WriteString(status)
@@ -121,6 +126,10 @@ func (r *Report) add(name string, ok bool, message string) {
 	r.addFix(name, ok, message, "", "")
 }
 
+func (r *Report) addWarning(name string, message string) {
+	r.Checks = append(r.Checks, Check{Name: name, OK: true, Warning: true, Message: message})
+}
+
 func (r *Report) addFix(name string, ok bool, message string, why string, fix string) {
 	r.Checks = append(r.Checks, Check{Name: name, OK: ok, Message: message, Why: why, Fix: fix})
 	if !ok {
@@ -131,7 +140,7 @@ func (r *Report) addFix(name string, ok bool, message string, why string, fix st
 func (r *Report) checkDir(name string, path string) {
 	info, err := os.Stat(path)
 	if err != nil {
-		r.addFix(name, false, fmt.Sprintf("%s: %v", path, err), "SSHDock runtime files must be present before deploy and recovery commands can work.", "rerun scripts/bootstrap.sh or create the missing directory with the ownership documented in docs/INSTALL.md")
+		r.addFix(name, false, fmt.Sprintf("%s: %v", path, err), "SSHDock runtime files must be present before deploy and lifecycle commands can work.", "rerun scripts/bootstrap.sh or create the missing directory with the ownership documented in docs/INSTALL.md")
 		return
 	}
 	if !info.IsDir() {
@@ -153,8 +162,8 @@ func (r *Report) checkCommand(ctx context.Context, executor CommandExecutor, nam
 	r.add(name, true, strings.TrimSpace(command.Name+" "+strings.Join(command.Args, " ")))
 }
 
-func (r *Report) checkStore(ctx context.Context, dbPath string) (store.ServerConfig, bool) {
-	sqlite, err := store.OpenSQLite(ctx, dbPath)
+func (r *Report) checkStore(ctx context.Context, cfg config.Config, executor CommandExecutor) (store.ServerConfig, bool) {
+	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
 		r.addFix("sqlite migrations", false, err.Error(), "SSHDock stores app, release, route, key, and config metadata in SQLite.", "restore or repair sshdock.db, then rerun sudo sshdock diagnostics")
 		return store.ServerConfig{}, false
@@ -164,11 +173,12 @@ func (r *Report) checkStore(ctx context.Context, dbPath string) (store.ServerCon
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		r.addFix("server config", false, err.Error(), "Diagnostics need the stored base domain to validate DNS.", "repair sshdock.db or rerun sudo sshdock server domain set <domain>")
 	}
+	r.checkRestartPolicies(ctx, cfg, executor, sqlite)
 	if closeErr := sqlite.Close(); closeErr != nil {
 		r.addFix("sqlite migrations", false, closeErr.Error(), "SSHDock stores app, release, route, key, and config metadata in SQLite.", "close other database users and rerun sudo sshdock diagnostics")
 		return serverConfig, hasServerConfig
 	}
-	r.add("sqlite migrations", true, dbPath)
+	r.add("sqlite migrations", true, cfg.SQLiteDBPath)
 	return serverConfig, hasServerConfig
 }
 

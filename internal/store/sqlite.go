@@ -204,24 +204,23 @@ func (s *SQLiteStore) UpdateReleaseStatus(ctx context.Context, id string, status
 	return nil
 }
 
-func (s *SQLiteStore) MarkReleaseFailedUnlessGood(ctx context.Context, id string, updatedAt time.Time) error {
-	return s.markReleaseStatusUnlessGood(ctx, id, app.ReleaseStatusFailed, updatedAt)
+func (s *SQLiteStore) MarkReleaseFailedUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error {
+	return s.markReleaseStatusUnlessSucceeded(ctx, id, app.ReleaseStatusFailed, updatedAt)
 }
 
-func (s *SQLiteStore) MarkReleaseDeployingUnlessGood(ctx context.Context, id string, updatedAt time.Time) error {
-	return s.markReleaseStatusUnlessGood(ctx, id, app.ReleaseStatusDeploying, updatedAt)
+func (s *SQLiteStore) MarkReleaseDeployingUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error {
+	return s.markReleaseStatusUnlessSucceeded(ctx, id, app.ReleaseStatusDeploying, updatedAt)
 }
 
-func (s *SQLiteStore) markReleaseStatusUnlessGood(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error {
+func (s *SQLiteStore) markReleaseStatusUnlessSucceeded(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx, `
 		update releases
 		set status = ?, updated_at = ?
-		where id = ? and status not in (?, ?)`,
+		where id = ? and status != ?`,
 		string(status),
 		formatTime(updatedAt),
 		id,
 		string(app.ReleaseStatusSucceeded),
-		string(app.ReleaseStatusRolledBack),
 	)
 	return err
 }

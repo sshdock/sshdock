@@ -157,15 +157,6 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		return 0
 	}
 
-	if len(args) == 3 && args[0] == "rollback" {
-		if err := r.backend.RollbackApp(args[1], args[2]); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "rolled back %s to %s\n", args[1], args[2])
-		return 0
-	}
-
 	printInvalidUsage(stderr, "apps")
 	return 2
 }

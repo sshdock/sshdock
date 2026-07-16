@@ -168,14 +168,10 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	if err != nil {
 		return fmt.Errorf("get app %q: %w", request.AppName, err)
 	}
-	release, ok, err := b.latestRuntimeRelease(ctx, request.AppName)
+	projectDir, composePath, err := appmodel.CurrentComposeEntry(model)
 	if err != nil {
-		return fmt.Errorf("list releases for logs: %w", err)
+		return fmt.Errorf("resolve current Compose entry for app %q: %w", request.AppName, err)
 	}
-	if !ok || release.ComposePath == "" {
-		return fmt.Errorf("no deployed release for app %q", request.AppName)
-	}
-	projectDir := projectDirFromModel(model, release)
 	env, err := b.configEnv(ctx, request.AppName, projectDir)
 	if err != nil {
 		return err
@@ -184,7 +180,7 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	if err != nil {
 		return err
 	}
-	logsRequest := compose.LogsRequest{AppName: request.AppName, ProjectDir: projectDir, ComposePath: release.ComposePath, ServiceName: request.ServiceName, Lines: request.Lines, Follow: request.Follow, Env: env}
+	logsRequest := compose.LogsRequest{AppName: request.AppName, ProjectDir: projectDir, ComposePath: composePath, ServiceName: request.ServiceName, Lines: request.Lines, Follow: request.Follow, Env: env}
 	if request.Follow {
 		if streamer, ok := b.recoveryRunner.(logStreamer); ok {
 			stdoutRedactor := newRedactingWriter(stdout, redactionValues)

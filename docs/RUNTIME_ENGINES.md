@@ -20,7 +20,7 @@ The current Compose runner is enough for the v0 happy path:
 - start services
 - attach routes
 - inspect logs and status
-- restart, redeploy, and rollback
+- restart, redeploy, and Git-selected revision changes
 
 More advanced stories need stronger runtime primitives than plain Compose provides comfortably:
 
@@ -49,7 +49,7 @@ k3s is a plausible future advanced runtime engine because it packages Kubernetes
 | named volume | PersistentVolumeClaim |
 | service healthcheck | readiness and liveness probes |
 | public route | Ingress |
-| rollback | previous rendered workload bundle |
+| Git-selected revision | rendered workload bundle for the selected commit |
 
 This is not a product promise. SSHDock may still pivot away from k3s if dogfood evidence shows another engine, a narrower Compose extension, or a different deployment model fits better.
 

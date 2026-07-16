@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
@@ -58,14 +59,11 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	report.Checks = append(report.Checks, healthCheckForDomains(report.DomainCount))
 
 	if b.recoveryRunner != nil {
-		release, ok, err := b.latestRuntimeRelease(ctx, name)
+		projectDir, composePath, err := appmodel.CurrentComposeEntry(model)
 		if err != nil {
-			return AppHealth{}, fmt.Errorf("find runtime release for app %q: %w", name, err)
-		}
-		if ok && isRunnableReleaseStatus(release.Status) && release.ComposePath != "" {
-			if err := b.addServiceStatus(ctx, name, model, release, &report); err != nil {
-				return AppHealth{}, compose.RedactError(err, redactionValues)
-			}
+			report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "services", Detail: err.Error()})
+		} else if err := b.addServiceStatus(ctx, name, projectDir, composePath, domains, &report); err != nil {
+			return AppHealth{}, compose.RedactError(err, redactionValues)
 		}
 	}
 	for index := range report.Checks {
@@ -75,13 +73,12 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	return report, nil
 }
 
-func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, model appmodel.App, release appmodel.Release, report *AppHealth) error {
-	projectDir := projectDirFromModel(model, release)
+func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projectDir string, composePath string, domains []appmodel.Domain, report *AppHealth) error {
 	env, err := b.configEnv(ctx, name, projectDir)
 	if err != nil {
 		return err
 	}
-	services, err := b.recoveryRunner.Status(ctx, compose.StatusRequest{AppName: name, ProjectDir: projectDir, ComposePath: release.ComposePath, Env: env})
+	services, err := b.recoveryRunner.Status(ctx, compose.StatusRequest{AppName: name, ProjectDir: projectDir, ComposePath: composePath, Env: env})
 	if err != nil {
 		return fmt.Errorf("load service status for app %q: %w", name, err)
 	}
@@ -94,5 +91,35 @@ func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, model 
 		}
 	}
 	report.Checks = append(report.Checks, healthCheckForServices(report.ServiceCount, report.RunningServiceCount, report.AttentionServiceCount))
+	candidates := make([]string, 0, len(services)+len(domains))
+	for _, domain := range domains {
+		candidates = append(candidates, domain.ServiceName)
+	}
+	for _, service := range services {
+		if service.State == "running" {
+			candidates = append(candidates, service.Name)
+		}
+	}
+	statusRequest := compose.StatusRequest{AppName: name, ProjectDir: projectDir, ComposePath: composePath, Env: env}
+	nonRestarting, err := compose.NonRestartingServices(composePath, env, candidates)
+	if inspector, ok := b.recoveryRunner.(interface {
+		NonRestartingServices(context.Context, compose.StatusRequest, []string) ([]string, error)
+	}); ok {
+		if effective, effectiveErr := inspector.NonRestartingServices(ctx, statusRequest, candidates); effectiveErr == nil {
+			nonRestarting = effective
+			err = nil
+		}
+	}
+	if err != nil {
+		return err
+	}
+	report.Checks = append(report.Checks, healthCheckForRestartPolicy(nonRestarting))
 	return nil
+}
+
+func healthCheckForRestartPolicy(services []string) HealthCheck {
+	if len(services) == 0 {
+		return HealthCheck{Status: "ok", Name: "restart policy", Detail: "configured for routed and running services"}
+	}
+	return HealthCheck{Status: "warn", Name: "restart policy", Detail: "default non-restarting policy: " + strings.Join(services, ", ") + "; set restart: unless-stopped or always for reboot recovery"}
 }

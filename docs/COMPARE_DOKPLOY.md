@@ -60,7 +60,7 @@ Use [`MIGRATE_FROM_DOKPLOY.md`](MIGRATE_FROM_DOKPLOY.md) for a practical migrati
 2. Keep the application in one conventional root Compose file without top-level `include` or external `extends.file` references.
 3. Move UI-managed environment values into SSHDock config.
 4. Push to SSHDock.
-5. Verify health, route, logs, rollback, and backup before DNS cutover.
+5. Verify health, route, logs, Git-based rollback, and backup before DNS cutover.
 
 ## Upstream References
 

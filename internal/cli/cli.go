@@ -215,16 +215,6 @@ func (b *MemoryBackend) RedeployApp(name string) error {
 	return nil
 }
 
-func (b *MemoryBackend) RollbackApp(name string, releaseID string) error {
-	if _, ok := b.apps[name]; !ok {
-		return fmt.Errorf("app %q not found", name)
-	}
-	if strings.TrimSpace(releaseID) == "" {
-		return fmt.Errorf("release ID is required")
-	}
-	return nil
-}
-
 func (b *MemoryBackend) RemoveApp(name string) error {
 	if _, ok := b.apps[name]; !ok {
 		return fmt.Errorf("app %q not found", name)
@@ -1045,7 +1035,7 @@ func healthCheckForAppStatus(status string) HealthCheck {
 func healthCheckForRelease(id string, status string) HealthCheck {
 	detail := strings.TrimSpace(id + " " + status)
 	switch status {
-	case "succeeded", "rolled_back":
+	case "succeeded":
 		return HealthCheck{Status: "ok", Name: "release", Detail: detail}
 	case "failed":
 		return HealthCheck{Status: "fail", Name: "release", Detail: detail}

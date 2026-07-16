@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
@@ -13,30 +12,29 @@ type dashboardConfigRedactor interface {
 	RedactionValues(ctx context.Context, appID string) (map[string]string, error)
 }
 
-func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.App, releases []app.Release) ([]compose.ServiceStatus, map[string]LogsView, error) {
+func (h *DashboardHandler) serviceStatusAndLogs(ctx context.Context, model app.App) ([]compose.ServiceStatus, map[string]LogsView, error) {
 	logsByService := map[string]LogsView{}
 	if h.runner == nil {
 		return nil, logsByService, nil
 	}
-	latest, ok := latestRelease(releases)
-	if !ok || latest.ComposePath == "" {
+	projectDir, composePath, err := app.CurrentComposeEntry(model)
+	if err != nil {
 		return nil, logsByService, nil
 	}
-	projectDir := filepath.Dir(latest.ComposePath)
 	env, err := h.resolveConfigEnv(ctx, model.ID, projectDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
 	}
-	redactionValues, err := h.redactionEnv(ctx, model, releases)
+	redactionValues, err := h.redactionEnv(ctx, model)
 	if err != nil {
 		return nil, nil, err
 	}
-	services, err := h.runner.Status(ctx, compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: latest.ComposePath, Env: env})
+	services, err := h.runner.Status(ctx, compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, Env: env})
 	if err != nil {
 		return nil, nil, compose.RedactError(fmt.Errorf("load service status for %s: %w", model.ID, err), redactionValues)
 	}
 	for _, service := range services {
-		output, err := h.runner.Logs(ctx, compose.LogsRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: latest.ComposePath, ServiceName: service.Name, Lines: 50, Env: env})
+		output, err := h.runner.Logs(ctx, compose.LogsRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, ServiceName: service.Name, Lines: 50, Env: env})
 		if err != nil {
 			return nil, nil, compose.RedactError(fmt.Errorf("load logs for %s/%s: %w", model.ID, service.Name, err), redactionValues)
 		}
@@ -52,7 +50,7 @@ func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, p
 	return h.configResolver.ResolveAppConfig(ctx, appID)
 }
 
-func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App, releases []app.Release) (map[string]string, error) {
+func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App) (map[string]string, error) {
 	if h.configResolver == nil {
 		return nil, nil
 	}
@@ -63,11 +61,7 @@ func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App, rele
 		}
 		return values, nil
 	}
-	latest, ok := latestRelease(releases)
-	if !ok || latest.ComposePath == "" {
-		return nil, nil
-	}
-	env, err := h.resolveConfigEnv(ctx, model.ID, filepath.Dir(latest.ComposePath))
+	env, err := h.resolveConfigEnv(ctx, model.ID, model.WorktreePath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
 	}

@@ -33,8 +33,6 @@ func (m InteractiveDashboardModel) executeAction(request dashboardActionRequest)
 			err = actions.RestartService(appName, request.primary)
 		case dashboardActionRedeploy:
 			err = actions.RedeployApp(appName)
-		case dashboardActionRollback:
-			err = actions.RollbackApp(appName, request.primary)
 		case dashboardActionAttachDomain:
 			err = actions.AttachDomain(appName, request.primary, request.secondary, request.port)
 		case dashboardActionDetachDomain:
@@ -68,8 +66,6 @@ func dashboardActionStatus(request dashboardActionRequest) string {
 		return "restart service " + valueOrDash(request.primary) + " complete"
 	case dashboardActionRedeploy:
 		return "redeploy current main complete"
-	case dashboardActionRollback:
-		return "rollback " + valueOrDash(request.primary) + " complete"
 	case dashboardActionAttachDomain:
 		return "attach " + valueOrDash(request.secondary) + " complete"
 	case dashboardActionDetachDomain:

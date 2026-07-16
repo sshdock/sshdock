@@ -841,8 +841,6 @@ func actionChoiceTitle(kind dashboardActionKind) string {
 	switch kind {
 	case dashboardActionRestartService:
 		return "Choose service"
-	case dashboardActionRollback:
-		return "Choose release"
 	case dashboardActionDetachDomain:
 		return "Choose domain"
 	default:

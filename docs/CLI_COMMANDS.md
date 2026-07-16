@@ -212,7 +212,7 @@ git@sshdock.example.com:<app>.git
 
 Successful deploys also try to create `<app>.example.com` automatically when the Compose file exposes one safely inferred TCP host-published port. Existing legacy stored values that are already Git hosts continue to work for remote output.
 
-Failed deploys print and persist a one-line recovery summary with `stage`, `detail`, `changed`, `fix`, and `retry` fields. Missing config, Compose validation, image pull, build, service health wait, redeploy, and rollback failures use the same field names in push output, event records, release inspection, and dashboard views. Route inference skips and Caddy reload failures use the same fields in event and dashboard views. Stored config values are redacted from these normal inspection paths.
+Failed deploys print and persist a one-line recovery summary with `stage`, `detail`, `changed`, `fix`, and `retry` fields. Missing config, Compose validation, image pull, build, service health wait, and redeploy failures use the same field names in push output, event records, release inspection, and dashboard views. Route inference skips and Caddy reload failures use the same fields in event and dashboard views. Stored config values are redacted from these normal inspection paths.
 
 Native deploys run Compose config, pull, build, and bounded `up -d --wait`. Trusted-owner warnings for all-interface ports and dangerous host coupling are printed during Git push and stored as `deploy.warning` events. They do not reject the deploy or claim to sandbox the Compose workload.
 
@@ -319,7 +319,7 @@ Summarize an app's operational state in one command.
 sudo sshdock apps health my-app
 ```
 
-Output includes app status, node, latest release, latest deployment, domain count, service status when Compose status is available, last failure detail when present, and check rows for app status, release, deployment, domains, and services.
+Output includes app status, node, latest release, latest deployment, domain count, current-worktree service status when Compose status is available, last failure detail when present, and check rows for app status, release, deployment, domains, services, and restart policy. A routed or running service using Compose's default `restart: "no"` produces a `warn` check with the affected service names.
 
 ### `sshdock logs <app> [service] [-f] [--tail <lines>]`
 
@@ -331,7 +331,7 @@ sudo sshdock logs my-app web
 sudo sshdock logs my-app web --tail 200 -f
 ```
 
-The Docker runner maps this to `docker compose logs --tail <lines>` for the app's latest deployed Compose project. The default tail is `100`. `-f` adds Compose `--follow`.
+The Docker runner maps this to `docker compose logs --tail <lines>` for the app's current worktree Compose project. The default tail is `100`. `-f` adds Compose `--follow`.
 
 ### `sshdock apps stop <name>`
 
@@ -342,7 +342,7 @@ sudo sshdock apps stop my-app
 ssh sshdock@server apps stop my-app
 ```
 
-The Docker runner maps this literally to `docker compose stop` for the app's stable Compose project.
+The Docker runner maps this literally to `docker compose stop` for the Compose file in the app's current worktree and its stable project name.
 
 SSHDock supplies the app's stored config as the Compose process environment for stop, start, restart, and remove so native interpolation can parse the deployed file. These literal lifecycle commands still do not recreate containers or apply changed config values; use redeploy when changes should take effect.
 
@@ -366,7 +366,7 @@ sudo sshdock apps restart my-app
 sudo sshdock apps restart my-app web
 ```
 
-Whole-app restart maps to `docker compose restart` for the project when using the default Docker runner. Service restart targets only the selected Compose service. Restart uses the existing containers and does not apply changed Compose or config values.
+Whole-app restart maps to `docker compose restart` for the current worktree's Compose entry when using the default Docker runner. Service restart targets only the selected Compose service. Restart uses the existing containers and does not apply changed Compose or config values.
 
 ### `sshdock apps exec <app> <service> -- <command> [args...]`
 
@@ -402,17 +402,6 @@ sudo sshdock apps redeploy my-app
 
 Redeploy resolves the app bare repository's `refs/heads/main`, checks out that commit into the app worktree, runs the configured Compose runner, and records a new deployment attempt and events in SQLite. Repeating a redeploy of the same commit creates another attempt instead of overwriting its history.
 
-### `sshdock apps rollback <name> <release-id>`
-
-Rollback an app to a selected release.
-
-```bash
-sudo sshdock releases list my-app
-sudo sshdock apps rollback my-app <release-id>
-```
-
-Rollback uses the stored release commit and Compose path, then records app, release, deployment, and event state.
-
 ### `sshdock apps remove <name> [--force]`
 
 Remove an app and its SSHDock-managed server-side runtime resources.
@@ -424,7 +413,7 @@ sudo sshdock apps remove my-app --force
 
 Without `--force`, the command asks you to type the app name before removal.
 
-When a deployed release exists, the Docker runner first runs the equivalent of:
+When the current worktree has a Compose entry, the Docker runner first runs the equivalent of:
 
 ```bash
 docker compose down --remove-orphans
@@ -436,7 +425,7 @@ Successful output includes a Docker-volume preservation note. Remove app-specifi
 
 ### `sshdock releases list <app>`
 
-List releases for an app so rollback ids are discoverable. A release is stable for one app and commit; pushing or redeploying that commit again records a separate deployment attempt against the same release.
+List the immutable commit records retained for an app. Release rows are inspection history, not deployment targets; select a revision by pushing the desired commit or tag to remote `main`. Pushing or redeploying one commit again records a separate deployment attempt against the same release.
 
 ```bash
 sudo sshdock releases list my-app
@@ -449,6 +438,8 @@ Output format:
 ```
 
 `failure-detail` is present when a failed deployment for that release has a persisted error. It uses the same `stage`, `detail`, `changed`, `fix`, and `retry` fields shown by failed push output.
+
+Databases upgraded from older SSHDock versions may still display historical `rolled_back` release rows, `rollback` or `startup_recovery` deployment triggers, and rollback events. They remain readable audit history only and are never selected by current lifecycle or deployment commands.
 
 ### `sshdock deployments list <app>`
 
@@ -578,7 +569,7 @@ Run the daemon process used by `sshdockd.service`.
 sshdockd daemon
 ```
 
-On startup it validates config, opens SQLite, runs migrations, and recovers deployed apps by redeploying each app's latest good release. It stays running until interrupted.
+On startup it validates config, opens SQLite, runs migrations, and starts without checking out app commits or invoking Compose mutations. Docker Compose restart policies own container recovery after Docker or host reboot. It stays running until interrupted.
 
 ### `sshdockd operator`
 
@@ -610,7 +601,7 @@ Useful keys:
 - `r` refreshes the dashboard snapshot.
 - `q` quits.
 
-TUI app actions cover start app, stop app, restart app, restart service, redeploy current main, rollback to a listed release, attach domain, detach a listed domain, and remove app with exact app-name confirmation. These actions call the same backend behavior as the corresponding CLI commands.
+TUI app actions cover start app, stop app, restart app, restart service, redeploy current main, attach domain, detach a listed domain, and remove app with exact app-name confirmation. Revision selection remains a Git operation: push the desired commit or tag to remote `main`.
 
 The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
 
@@ -661,7 +652,7 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
 - `SSHDOCK_CADDY_MAIN_CONFIG_PATH`: Caddy main config file that imports the generated route file. Default: `/etc/caddy/Caddyfile`.
 - `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
-- `SSHDOCK_COMPOSE_RUNNER`: set `docker` for real `sshdockd` runtime hooks and dashboards; set `fake` only for tests. `sshdock` CLI recovery commands default to Docker when this variable is unset.
+- `SSHDOCK_COMPOSE_RUNNER`: set `docker` for real `sshdockd` runtime hooks and dashboards; set `fake` only for tests. `sshdock` Compose runtime commands default to Docker when this variable is unset.
 
 For local development, set `SSHDOCK_DATA_DIR` to avoid writing to `/var/lib/sshdock`:
 

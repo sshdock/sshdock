@@ -13,10 +13,11 @@ const (
 type ReleaseStatus string
 
 const (
-	ReleaseStatusPending    ReleaseStatus = "pending"
-	ReleaseStatusDeploying  ReleaseStatus = "deploying"
-	ReleaseStatusSucceeded  ReleaseStatus = "succeeded"
-	ReleaseStatusFailed     ReleaseStatus = "failed"
+	ReleaseStatusPending   ReleaseStatus = "pending"
+	ReleaseStatusDeploying ReleaseStatus = "deploying"
+	ReleaseStatusSucceeded ReleaseStatus = "succeeded"
+	ReleaseStatusFailed    ReleaseStatus = "failed"
+	// Retained only so historical release rows remain readable after upgrade.
 	ReleaseStatusRolledBack ReleaseStatus = "rolled_back"
 )
 

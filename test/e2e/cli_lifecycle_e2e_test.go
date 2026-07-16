@@ -62,7 +62,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
 	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
 	runGit(t, sourceDir, nil, "checkout", "-b", "main")
-	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte("services:\n  web:\n    image: example/web:latest\n    restart: unless-stopped\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile compose: %v", err)
 	}
 	runGit(t, sourceDir, nil, "add", "compose.yml")

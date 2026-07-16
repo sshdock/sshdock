@@ -289,7 +289,6 @@ func TestInteractiveDashboardActionMenuListsAndCloses(t *testing.T) {
 		"restart app",
 		"restart service",
 		"redeploy current main",
-		"rollback release",
 		"attach domain",
 		"detach domain",
 		"remove app",
@@ -297,6 +296,9 @@ func TestInteractiveDashboardActionMenuListsAndCloses(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("action menu missing %q:\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "rollback release") {
+		t.Fatalf("action menu still exposes rollback:\n%s", view)
 	}
 
 	model = pressDashboardKey(t, model, "esc")
@@ -354,18 +356,13 @@ func TestInteractiveDashboardActionsCallBackendWithSelectedArguments(t *testing.
 			want: "redeploy one",
 		},
 		{
-			name: "rollback release",
-			keys: []string{"a", "down", "down", "down", "down", "down", "enter", "enter"},
-			want: "rollback one rel_one",
-		},
-		{
 			name: "attach domain",
-			keys: append([]string{"a", "down", "down", "down", "down", "down", "down", "enter"}, append(dashboardRuneKeys("web two.example.com 8080"), "enter")...),
+			keys: append([]string{"a", "down", "down", "down", "down", "down", "enter"}, append(dashboardRuneKeys("web two.example.com 8080"), "enter")...),
 			want: "attach one web two.example.com 8080",
 		},
 		{
 			name: "detach domain",
-			keys: []string{"a", "down", "down", "down", "down", "down", "down", "down", "enter", "enter"},
+			keys: []string{"a", "down", "down", "down", "down", "down", "down", "enter", "enter"},
 			want: "detach one one.example.com",
 		},
 	}
@@ -674,10 +671,6 @@ func (f *fakeDashboardActions) RestartService(appName string, serviceName string
 
 func (f *fakeDashboardActions) RedeployApp(appName string) error {
 	return f.record(fmt.Sprintf("redeploy %s", appName))
-}
-
-func (f *fakeDashboardActions) RollbackApp(appName string, releaseID string) error {
-	return f.record(fmt.Sprintf("rollback %s %s", appName, releaseID))
 }
 
 func (f *fakeDashboardActions) AttachDomain(appName string, serviceName string, domainName string, port int) error {

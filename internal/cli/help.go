@@ -20,14 +20,13 @@ Apps:
   apps create <name>                   Create an app repo and print Git remote
   apps list                            List apps
   apps info <name>                     Show app details
-  apps health <name>                   Summarize app health and recovery state
+  apps health <name>                   Summarize app and Compose runtime health
   apps start <name>                    Start existing Compose containers
   apps stop <name>                     Stop and preserve Compose containers
   apps restart <name> [service]        Restart an app or service
   apps exec <app> <service> -- <cmd>   Execute argv in a running service
   apps run <app> <service> -- <cmd>    Run a removable one-off container
   apps redeploy <name>                 Redeploy current remote main
-  apps rollback <name> <release-id>    Roll back to a release
   apps remove <name> [--force]         Remove an app while preserving volumes
 
 Config:
@@ -79,7 +78,6 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock apps exec <app> <service> -- <command> [args...]",
 			"sshdock apps run <app> <service> -- <command> [args...]",
 			"sshdock apps redeploy <name>",
-			"sshdock apps rollback <name> <release-id>",
 			"sshdock apps remove <name> [--force]",
 		}, []string{
 			"sudo sshdock apps create my-app",

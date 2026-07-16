@@ -53,10 +53,6 @@ func latestAppDeployment(deployments []appmodel.Deployment) (appmodel.Deployment
 	return sorted[len(sorted)-1], true
 }
 
-func isRunnableReleaseStatus(status appmodel.ReleaseStatus) bool {
-	return status == appmodel.ReleaseStatusSucceeded || status == appmodel.ReleaseStatusRolledBack
-}
-
 func domainID(appName string, domainName string) string {
 	return "dom_" + sanitizeIDPart(appName) + "_" + sanitizeIDPart(domainName)
 }

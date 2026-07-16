@@ -121,7 +121,7 @@ func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains [
 		Deployments: newDeploymentViews(deployments),
 		Events:      newEventViews(events),
 		Health:      newHealthSummary(services, domains, deployments),
-		Actions:     []string{"restart app", "redeploy current main", "rollback release", "attach domain"},
+		Actions:     []string{"restart app", "redeploy current main", "attach domain"},
 	}
 }
 

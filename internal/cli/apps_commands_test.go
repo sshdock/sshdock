@@ -59,6 +59,29 @@ func TestAppsStartMissingAppReturnsActionableError(t *testing.T) {
 	}
 }
 
+func TestAppsRollbackIsNotACurrentCommand(t *testing.T) {
+	// Given
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runner.Run([]string{"apps", "rollback", "my-app", "rel_old"}, &stdout, &stderr)
+
+	// Then
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid apps command") {
+		t.Fatalf("stderr = %q, want invalid apps command", stderr.String())
+	}
+}
+
 func TestAppsExecAndRunRequireDelimiterAndPreserveCommandArgv(t *testing.T) {
 	// Given
 	backend := &recordingServiceCommandBackend{MemoryBackend: NewMemoryBackend("server")}

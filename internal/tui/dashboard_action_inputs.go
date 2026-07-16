@@ -21,13 +21,6 @@ func (m InteractiveDashboardModel) actionChoices() []dashboardActionChoice {
 			choices = append(choices, dashboardActionChoice{label: service.Name + " " + valueOrDash(service.State), value: service.Name})
 		}
 		return choices
-	case dashboardActionRollback:
-		releases := selected.Detail.Releases()
-		choices := make([]dashboardActionChoice, 0, len(releases))
-		for _, release := range releases {
-			choices = append(choices, dashboardActionChoice{label: release.ID + " " + valueOrDash(release.Status), value: release.ID})
-		}
-		return choices
 	case dashboardActionDetachDomain:
 		domains := selected.Detail.Domains()
 		choices := make([]dashboardActionChoice, 0, len(domains))
@@ -53,7 +46,7 @@ func (m InteractiveDashboardModel) executeSelectedChoice(choices []dashboardActi
 	}
 	choice := choices[m.choiceIndex]
 	switch m.pendingAction {
-	case dashboardActionRestartService, dashboardActionRollback:
+	case dashboardActionRestartService:
 		return m, m.executeAction(dashboardActionRequest{kind: m.pendingAction, primary: choice.value})
 	case dashboardActionDetachDomain:
 		return m, m.executeAction(dashboardActionRequest{kind: m.pendingAction, secondary: choice.value})

@@ -30,7 +30,7 @@ func (s *Service) restart(ctx context.Context, request restartRequest) error {
 	if s.recover == nil {
 		return fmt.Errorf("recovery runner is not configured")
 	}
-	model, release, err := s.latestGoodRelease(ctx, request.appID)
+	target, err := s.currentRuntimeTarget(ctx, request.appID)
 	if err != nil {
 		return err
 	}
@@ -40,12 +40,11 @@ func (s *Service) restart(ctx context.Context, request restartRequest) error {
 		return err
 	}
 
-	worktreePath := projectDir(model, release)
-	env, err := s.resolveDeployEnv(ctx, request.appID, worktreePath)
+	env, err := s.resolveDeployEnv(ctx, request.appID, target.projectDir)
 	if err != nil {
 		err = fmt.Errorf("resolve app config: %w", err)
 	} else {
-		err = s.recover.Restart(ctx, compose.RestartRequest{AppName: request.appID, ProjectDir: worktreePath, ComposePath: release.ComposePath, ServiceName: request.serviceName, Env: env})
+		err = s.recover.Restart(ctx, compose.RestartRequest{AppName: request.appID, ProjectDir: target.projectDir, ComposePath: target.composePath, ServiceName: request.serviceName, Env: env})
 	}
 	if err != nil {
 		_ = s.store.CreateEvent(ctx, Event{ID: eventID(operationID, request.failedType), AppID: request.appID, Type: request.failedType, Message: restartMessage("Restart failed", request.appID, request.serviceName) + ": " + err.Error(), CreatedAt: s.now()})

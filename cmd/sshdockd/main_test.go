@@ -315,9 +315,6 @@ func TestDashboardActionBackendMapsToCLIBackend(t *testing.T) {
 	if err := adapter.RedeployApp("app"); err != nil {
 		t.Fatalf("RedeployApp: %v", err)
 	}
-	if err := adapter.RollbackApp("app", "rel_1"); err != nil {
-		t.Fatalf("RollbackApp: %v", err)
-	}
 	if err := adapter.AttachDomain("app", "web", "example.com", 3000); err != nil {
 		t.Fatalf("AttachDomain: %v", err)
 	}
@@ -332,7 +329,6 @@ func TestDashboardActionBackendMapsToCLIBackend(t *testing.T) {
 		"restart-app app",
 		"restart-service app web",
 		"redeploy app",
-		"rollback app rel_1",
 		"attach app web example.com 3000",
 		"detach app example.com",
 		"remove app",
@@ -385,11 +381,6 @@ func (f *fakeDashboardCLIBackend) RestartService(appName string, serviceName str
 
 func (f *fakeDashboardCLIBackend) RedeployApp(appName string) error {
 	f.calls = append(f.calls, fmt.Sprintf("redeploy %s", appName))
-	return nil
-}
-
-func (f *fakeDashboardCLIBackend) RollbackApp(appName string, releaseID string) error {
-	f.calls = append(f.calls, fmt.Sprintf("rollback %s %s", appName, releaseID))
 	return nil
 }
 

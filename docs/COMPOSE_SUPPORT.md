@@ -51,6 +51,21 @@ The final operation also has a host-side two-minute deadline. Docker Compose dec
 
 SSHDock does not generate release Compose overrides, tag build images with commit or `latest` release tags, prune release images, or automatically roll back a failed deployment. BuildKit and Docker own build cache and image garbage collection. A failed replacement may have changed containers already, and any existing route remains pointed at the same published host port. This is readiness observation, not blue-green or zero-downtime traffic switching.
 
+## Reboot Recovery
+
+SSHDock does not check out commits or run Compose mutations when `sshdockd` starts. Docker and Compose restart policies own container recovery after Docker or host reboot.
+
+Declare a restart policy for routed and long-running services that should return automatically:
+
+```yaml
+services:
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+```
+
+Compose's default `restart: "no"` does not provide reboot recovery. `sshdock apps health <app>` and `sshdock diagnostics` report a warning when a routed or currently running service uses that default. Intentionally finite jobs do not need a restart policy merely because they exist in the Compose file.
+
 ## Trusted Owner Warnings
 
 SSHDock reports warnings without rejecting Compose models that:

@@ -3,6 +3,8 @@ package tui
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,20 +16,24 @@ import (
 func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile Compose: %v", err)
+	}
 	store := &fakeDashboardStore{
 		apps: []app.App{
 			{
 				ID:           "my-app",
 				Name:         "my-app",
 				NodeID:       "local",
-				WorktreePath: "/tmp/apps/my-app/worktree",
+				WorktreePath: worktreePath,
 				Status:       app.AppStatusHealthy,
 			},
 		},
 		releasesByApp: map[string][]app.Release{
 			"my-app": {
-				{ID: "rel_old", AppID: "my-app", CommitSHA: "old", ComposePath: "/tmp/apps/my-app/worktree/compose.yml", Status: app.ReleaseStatusFailed, CreatedAt: now.Add(-time.Hour)},
-				{ID: "rel_new", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/tmp/apps/my-app/worktree/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+				{ID: "rel_old", AppID: "my-app", CommitSHA: "old", ComposePath: "/historical/old/compose.yml", Status: app.ReleaseStatusFailed, CreatedAt: now.Add(-time.Hour)},
+				{ID: "rel_new", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/historical/new/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
 			},
 		},
 		domainsByApp: map[string][]app.Domain{
@@ -105,7 +111,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		t.Fatalf("status requests = %#v", runner.StatusRequests)
 	}
 	statusRequest := runner.StatusRequests[0]
-	if statusRequest.AppName != "my-app" || statusRequest.ComposePath != "/tmp/apps/my-app/worktree/compose.yml" || statusRequest.ProjectDir != "/tmp/apps/my-app/worktree" {
+	if statusRequest.AppName != "my-app" || statusRequest.ComposePath != filepath.Join(worktreePath, "compose.yml") || statusRequest.ProjectDir != worktreePath {
 		t.Fatalf("status request = %#v", statusRequest)
 	}
 	if statusRequest.Env["DATABASE_URL"] != "postgres://secret" {
@@ -126,13 +132,17 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	worktreePath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktreePath, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile Compose: %v", err)
+	}
 	store := &fakeDashboardStore{
 		apps: []app.App{
-			{ID: "my-app", Name: "my-app", NodeID: "local", Status: app.AppStatusHealthy},
+			{ID: "my-app", Name: "my-app", NodeID: "local", WorktreePath: worktreePath, Status: app.AppStatusHealthy},
 		},
 		releasesByApp: map[string][]app.Release{
 			"my-app": {
-				{ID: "rel_new", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/tmp/apps/my-app/worktree/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+				{ID: "rel_new", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/historical/new/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
 			},
 		},
 		domainsByApp: map[string][]app.Domain{

@@ -11,13 +11,14 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
-func TestServiceStartAndStopUseLatestSuccessfulReleaseAndRecordEvents(t *testing.T) {
+func TestServiceStartAndStopUseCurrentWorktreeComposeEntryAndRecordEvents(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	now := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
+	worktreePath, composePath := writeCurrentCompose(t)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: "/apps/app_1/worktree"}
-	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
+	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
+	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/historical/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}
 	service := NewService(store, WithClock(func() time.Time { return now }), WithRecoveryRunner(runner), WithConfigResolver(resolver))
@@ -31,7 +32,7 @@ func TestServiceStartAndStopUseLatestSuccessfulReleaseAndRecordEvents(t *testing
 	}
 
 	// Then
-	wantRequest := compose.LifecycleRequest{AppName: "app_1", ProjectDir: "/apps/app_1/worktree", ComposePath: "/apps/app_1/worktree/compose.yml", Env: resolver.env}
+	wantRequest := compose.LifecycleRequest{AppName: "app_1", ProjectDir: worktreePath, ComposePath: composePath, Env: resolver.env}
 	if len(runner.StopRequests) != 1 || !reflect.DeepEqual(runner.StopRequests[0], wantRequest) {
 		t.Fatalf("StopRequests = %#v, want %#v", runner.StopRequests, wantRequest)
 	}
@@ -46,7 +47,8 @@ func TestServiceStartFailureRecordsActionableRedeployGuidance(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: "/apps/app_1/worktree"}
+	worktreePath, _ := writeCurrentCompose(t)
+	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	failure := errors.New("no containers to start")
 	runner := &compose.FakeRunner{StartErr: failure}
@@ -73,7 +75,8 @@ func TestServiceRestartPassesResolvedConfigEnvironment(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: "/apps/app_1/worktree"}
+	worktreePath, _ := writeCurrentCompose(t)
+	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}

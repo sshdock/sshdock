@@ -25,8 +25,8 @@ type postReceiveStore interface {
 	GetServerConfig(ctx context.Context) (store.ServerConfig, error)
 	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
-	MarkReleaseDeployingUnlessGood(ctx context.Context, id string, updatedAt time.Time) error
-	MarkReleaseFailedUnlessGood(ctx context.Context, id string, updatedAt time.Time) error
+	MarkReleaseDeployingUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
+	MarkReleaseFailedUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	UpdateDeploymentFailure(ctx context.Context, model app.Deployment) error
 	CreateEvent(ctx context.Context, model app.Event) error

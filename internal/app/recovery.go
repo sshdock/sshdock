@@ -2,14 +2,8 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"path/filepath"
-	"sort"
 	"time"
 )
-
-var ErrNoSuccessfulRelease = errors.New("no successful release")
 
 type recoveryStart struct {
 	deployment Deployment
@@ -23,34 +17,15 @@ type recoveryFailure struct {
 	message    string
 }
 
-func (s *Service) latestGoodRelease(ctx context.Context, appID string) (App, Release, error) {
-	model, err := s.store.GetApp(ctx, appID)
-	if err != nil {
-		return App{}, Release{}, err
-	}
-	releases, err := s.store.ListReleasesByApp(ctx, appID)
-	if err != nil {
-		return App{}, Release{}, err
-	}
-	sort.Slice(releases, func(i, j int) bool {
-		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
-			return releases[i].ID < releases[j].ID
-		}
-		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
-	})
-	for i := len(releases) - 1; i >= 0; i-- {
-		if releases[i].Status == ReleaseStatusSucceeded || releases[i].Status == ReleaseStatusRolledBack {
-			return model, releases[i], nil
-		}
-	}
-	return App{}, Release{}, fmt.Errorf("%w for app %q", ErrNoSuccessfulRelease, appID)
-}
-
-func (s *Service) checkoutRelease(ctx context.Context, model App, release Release) error {
+func (s *Service) checkoutCurrentMain(ctx context.Context, model App, commitSHA string) error {
 	if s.checkout == nil {
 		return nil
 	}
-	return s.checkout.Checkout(ctx, model.RepoPath, projectDir(model, release), release.CommitSHA)
+	projectDir, err := currentProjectDir(model)
+	if err != nil {
+		return err
+	}
+	return s.checkout.Checkout(ctx, model.RepoPath, projectDir, commitSHA)
 }
 
 func (s *Service) resolveDeployEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
@@ -103,11 +78,4 @@ func failedDeployment(model Deployment, stage string, detail string, retryGuidan
 	model.RetryGuidance = retryGuidance
 	model.ErrorMessage = detail
 	return model
-}
-
-func projectDir(model App, release Release) string {
-	if model.WorktreePath != "" {
-		return model.WorktreePath
-	}
-	return filepath.Dir(release.ComposePath)
 }

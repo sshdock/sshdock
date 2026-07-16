@@ -116,10 +116,9 @@ ssh -tt sshdock@sshdock.example.com apps exec my-app web -- sh
 ssh sshdock@sshdock.example.com apps run my-app web -- ./bin/migrate up
 ssh sshdock@sshdock.example.com apps redeploy my-app
 ssh sshdock@sshdock.example.com apps remove my-app --force
-sudo sshdock apps rollback my-app <release-id>
 ```
 
-`apps stop` preserves the existing Compose containers, networks, and volumes. `apps start` starts those existing containers; if they no longer exist, SSHDock tells you to redeploy current remote `main`. `apps restart` uses Compose restart and does not apply changed Compose or config values. `apps exec` attaches to an existing service container; `apps run` starts a removable one-off Compose container. The required `--` keeps container argv separate from SSHDock and Compose flags.
+`apps stop` preserves the existing Compose containers, networks, and volumes. `apps start` starts those existing containers; if they no longer exist, SSHDock tells you to redeploy current remote `main`. `apps restart` uses Compose restart and does not apply changed Compose or config values. These commands resolve the Compose file in the current app worktree rather than selecting a historical release. `apps exec` attaches to an existing service container; `apps run` starts a removable one-off Compose container. The required `--` keeps container argv separate from SSHDock and Compose flags.
 
 `apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older revision with Git, push it to remote `main`:
 
@@ -127,6 +126,8 @@ sudo sshdock apps rollback my-app <release-id>
 git push --force sshdock <commit-or-lightweight-tag>:main
 git push --force sshdock '<annotated-tag>^{}:refs/heads/main'
 ```
+
+SSHDock does not redeploy apps when `sshdockd` starts. Docker Compose restart policies own recovery after Docker or host reboot. `apps health` and `diagnostics` warn when a routed or running service still uses Compose's default non-restarting policy; use `restart: unless-stopped` or `restart: always` when that service should return after reboot.
 
 Manual domain attach is available when auto-routing is not enough:
 
@@ -172,7 +173,7 @@ sudo sshdock apps redeploy my-app
 
 Config values are encrypted in SQLite with a host-local key outside the database. Back up the SQLite database and config key together.
 
-See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples covering static sites, build services, config-backed apps, workers, Redis, Postgres, stateful volumes, and rollback. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
+See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples covering static sites, build services, config-backed apps, workers, Redis, Postgres, stateful volumes, and Git-based rollback. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
 
 ## Docs
 

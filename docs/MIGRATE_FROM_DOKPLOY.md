@@ -142,7 +142,7 @@ sudo sshdock apps health my-app
 sudo sshdock backup create
 ```
 
-Also verify HTTPS externally, dashboard output, logs, rollback, and the app's critical user flow.
+Also verify HTTPS externally, dashboard output, logs, Git-based rollback, and the app's critical user flow.
 
 Then update DNS or attach the production domain to the SSHDock app:
 
@@ -153,4 +153,4 @@ sudo sshdock domains check my-app
 
 ## 8. Keep A Fallback
 
-Keep the Dokploy project, backups, and DNS rollback path until SSHDock has handled normal traffic, deploys, rollback, and restart/recovery for the app.
+Keep the Dokploy project, backups, and DNS rollback path until SSHDock has handled normal traffic, deploys, Git-based rollback, and Compose-policy reboot recovery for the app.

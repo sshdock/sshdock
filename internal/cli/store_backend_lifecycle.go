@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
@@ -58,18 +57,6 @@ func (b *StoreBackend) RedeployApp(name string) error {
 	return nil
 }
 
-func (b *StoreBackend) RollbackApp(name string, releaseID string) error {
-	ctx := context.Background()
-	deploymentID, err := b.newDeploymentID()
-	if err != nil {
-		return fmt.Errorf("create rollback attempt for app %q: %w", name, err)
-	}
-	if _, err := b.recoveryService().RollbackRelease(ctx, name, releaseID, deploymentID); err != nil {
-		return fmt.Errorf("rollback app %q to %q: %w", name, releaseID, err)
-	}
-	return nil
-}
-
 func (b *StoreBackend) RemoveApp(name string) error {
 	ctx := context.Background()
 	model, err := b.store.GetApp(ctx, name)
@@ -88,22 +75,21 @@ func (b *StoreBackend) RemoveApp(name string) error {
 	}
 
 	if b.recoveryRunner != nil {
-		if release, ok, err := b.latestRuntimeRelease(ctx, name); err != nil {
-			return audit.fail("list Compose releases", err)
-		} else if ok && release.ComposePath != "" {
-			projectDir := projectDirFromModel(model, release)
-			env, err := b.configEnv(ctx, name, projectDir)
-			if err != nil {
-				return audit.fail("load app config", err)
-			}
-			if err := b.recoveryRunner.Remove(ctx, compose.RemoveRequest{
-				AppName:     name,
-				ProjectDir:  projectDir,
-				ComposePath: release.ComposePath,
-				Env:         env,
-			}); err != nil {
-				return audit.fail("stop and remove Compose project", err)
-			}
+		projectDir, composePath, err := appmodel.CurrentComposeEntry(model)
+		if err != nil {
+			return audit.fail("resolve current Compose entry", err)
+		}
+		env, err := b.configEnv(ctx, name, projectDir)
+		if err != nil {
+			return audit.fail("load app config", err)
+		}
+		if err := b.recoveryRunner.Remove(ctx, compose.RemoveRequest{
+			AppName:     name,
+			ProjectDir:  projectDir,
+			ComposePath: composePath,
+			Env:         env,
+		}); err != nil {
+			return audit.fail("stop and remove Compose project", err)
 		}
 	}
 
@@ -174,35 +160,6 @@ func (b *StoreBackend) recoveryService() *appmodel.Service {
 		options = append(options, appmodel.WithConfigResolver(b.configManager))
 	}
 	return appmodel.NewService(b.store, options...)
-}
-
-func (b *StoreBackend) latestRuntimeRelease(ctx context.Context, appName string) (appmodel.Release, bool, error) {
-	releases, err := b.store.ListReleasesByApp(ctx, appName)
-	if err != nil {
-		return appmodel.Release{}, false, err
-	}
-	sort.Slice(releases, func(i, j int) bool {
-		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
-			return releases[i].ID < releases[j].ID
-		}
-		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
-	})
-	for i := len(releases) - 1; i >= 0; i-- {
-		if releases[i].Status == appmodel.ReleaseStatusSucceeded || releases[i].Status == appmodel.ReleaseStatusRolledBack {
-			return releases[i], true, nil
-		}
-	}
-	if len(releases) > 0 {
-		return releases[len(releases)-1], true, nil
-	}
-	return appmodel.Release{}, false, nil
-}
-
-func projectDirFromModel(model appmodel.App, release appmodel.Release) string {
-	if model.WorktreePath != "" {
-		return model.WorktreePath
-	}
-	return filepath.Dir(release.ComposePath)
 }
 
 func (b *StoreBackend) removeManagedPath(path string, label string) error {

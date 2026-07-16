@@ -95,14 +95,14 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 			return DashboardSnapshot{}, fmt.Errorf("list events for %s: %w", model.ID, err)
 		}
 
-		redactionValues, err := h.redactionEnv(ctx, model, releases)
+		redactionValues, err := h.redactionEnv(ctx, model)
 		if err != nil {
 			return DashboardSnapshot{}, err
 		}
 		deployments = redactDeployments(deployments, redactionValues)
 		events = redactEvents(events, redactionValues)
 
-		services, logsByService, err := h.serviceStatusAndLogs(ctx, model, releases)
+		services, logsByService, err := h.serviceStatusAndLogs(ctx, model)
 		if err != nil {
 			return DashboardSnapshot{}, err
 		}

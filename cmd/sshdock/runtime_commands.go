@@ -84,7 +84,7 @@ func commandNeedsRecoveryRunner(args []string) bool {
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "start" || args[1] == "stop" || args[1] == "restart" || args[1] == "redeploy") {
 		return true
 	}
-	if len(args) == 4 && args[0] == "apps" && (args[1] == "restart" || args[1] == "rollback") {
+	if len(args) == 4 && args[0] == "apps" && args[1] == "restart" {
 		return true
 	}
 	if len(args) >= 6 && args[0] == "apps" && (args[1] == "exec" || args[1] == "run") && args[4] == "--" {

@@ -156,7 +156,7 @@ Before DNS cutover:
 ```bash
 sudo sshdock releases list my-app
 sudo sshdock apps redeploy my-app
-sudo sshdock apps rollback my-app <release-id>
+git push --force sshdock <known-good-commit-or-tag>:main
 sudo sshdock apps health my-app
 sudo sshdock backup create
 ```

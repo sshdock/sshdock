@@ -10,7 +10,7 @@ Run:
 sudo sshdock diagnostics
 ```
 
-Diagnostics checks config, runtime directories, Docker, Compose, Caddy, OpenSSH, Git, `sshdockd.service`, ports, DNS, generated Caddy import wiring, forced-command `authorized_keys`, config-key permissions, and SQLite migrations.
+Diagnostics checks config, runtime directories, Docker, Compose, Caddy, OpenSSH, Git, `sshdockd.service`, ports, DNS, generated Caddy import wiring, forced-command `authorized_keys`, config-key permissions, SQLite migrations, and reboot-risk warnings for routed or running services.
 
 Read the `why` and `fix` lines for the failed check. After an upgrade, also run:
 
@@ -175,7 +175,19 @@ sudo sshdock apps health <app>
 
 This Git push records a normal deployment attempt for the selected commit. Use `apps redeploy` only when you want to retry the commit already at remote `main`, such as after fixing server-side config or a transient runtime failure.
 
-`apps health` reports the newest failed release/deployment and failure detail while checking Compose service status against the latest runnable release when one exists.
+`apps health` reports the newest failed release/deployment and failure detail while checking the Compose file and service state from the app's current worktree.
+
+## Restart Policy Warning After Reboot
+
+SSHDock does not redeploy apps during daemon startup. If `diagnostics` or `apps health` reports a restart-policy warning, add an appropriate Compose policy to each named routed or long-running service, commit it, and push:
+
+```yaml
+services:
+  web:
+    restart: unless-stopped
+```
+
+Use `restart: always` only when that stronger behavior matches the service. Leave intentionally finite jobs without a restart policy. After changing the Compose file, push the commit to remote `main`; a plain `apps restart` does not apply Compose-file changes.
 
 ## App Start Says Containers Are Missing
 

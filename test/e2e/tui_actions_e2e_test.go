@@ -112,12 +112,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("redeploy requests = %#v", composeRunner.DeployRequests)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "enter", "enter"})
-	if len(composeRunner.DeployRequests) != 2 || composeRunner.DeployRequests[1].ReleaseID != "rel_old" {
-		t.Fatalf("rollback requests = %#v", composeRunner.DeployRequests)
-	}
-
-	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys("web new.example.com 8080"), "enter")...))
+	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys("web new.example.com 8080"), "enter")...))
 	domains, err := sqlite.ListDomainsByApp(ctx, appName)
 	if err != nil {
 		t.Fatalf("ListDomainsByApp: %v", err)
@@ -126,7 +121,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("domains after attach = %#v", domains)
 	}
 
-	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "down", "down", "enter", "enter"})
+	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "down", "down", "enter", "enter"})
 	domains, err = sqlite.ListDomainsByApp(ctx, appName)
 	if err != nil {
 		t.Fatalf("ListDomainsByApp after detach: %v", err)
@@ -135,7 +130,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("initial domain still present after detach: %#v", domains)
 	}
 
-	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys(appName), "enter")...))
+	model = runTUIAction(t, model, append([]string{"a", "down", "down", "down", "down", "down", "down", "down", "enter"}, append(tuiActionRuneKeys(appName), "enter")...))
 	_ = model
 	if _, err := sqlite.GetApp(ctx, appName); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetApp after remove error = %v, want ErrNotFound", err)
@@ -286,10 +281,6 @@ func (a tuiCLIActionAdapter) RestartService(appName string, serviceName string) 
 
 func (a tuiCLIActionAdapter) RedeployApp(appName string) error {
 	return a.backend.RedeployApp(appName)
-}
-
-func (a tuiCLIActionAdapter) RollbackApp(appName string, releaseID string) error {
-	return a.backend.RollbackApp(appName, releaseID)
 }
 
 func (a tuiCLIActionAdapter) AttachDomain(appName string, serviceName string, domainName string, port int) error {

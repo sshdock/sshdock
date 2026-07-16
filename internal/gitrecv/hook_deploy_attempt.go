@@ -136,7 +136,7 @@ func (h *PostReceiveHandler) beginPushAttempt(ctx context.Context, event PushEve
 		return pushAttempt{}, err
 	}
 	if releaseStored {
-		if err := h.store.MarkReleaseDeployingUnlessGood(ctx, release.ID, now); err != nil {
+		if err := h.store.MarkReleaseDeployingUnlessSucceeded(ctx, release.ID, now); err != nil {
 			return pushAttempt{}, err
 		}
 	}
@@ -198,7 +198,7 @@ func (h *PostReceiveHandler) markReleaseAttemptFailed(ctx context.Context, attem
 	if !attempt.releaseStored {
 		return nil
 	}
-	return h.store.MarkReleaseFailedUnlessGood(ctx, attempt.release.ID, finishedAt)
+	return h.store.MarkReleaseFailedUnlessSucceeded(ctx, attempt.release.ID, finishedAt)
 }
 
 func gitPushChangedState(releaseID string, deploymentID string, stage string) string {

@@ -241,30 +241,34 @@ func TestSQLiteStoreDeploymentStatus(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreFailedAttemptDoesNotDemoteGoodRelease(t *testing.T) {
+func TestSQLiteStoreFailedAttemptDoesNotDemoteSucceededRelease(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	good := app.Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}
 	deploying := app.Release{ID: "rel_deploying", AppID: "app_1", CommitSHA: "deploying", Status: app.ReleaseStatusDeploying, CreatedAt: now, UpdatedAt: now}
 	failed := app.Release{ID: "rel_failed", AppID: "app_1", CommitSHA: "failed", Status: app.ReleaseStatusFailed, CreatedAt: now, UpdatedAt: now}
-	for _, release := range []app.Release{good, deploying, failed} {
+	legacyRolledBack := app.Release{ID: "rel_legacy_rollback", AppID: "app_1", CommitSHA: "legacy", Status: app.ReleaseStatusRolledBack, CreatedAt: now, UpdatedAt: now}
+	for _, release := range []app.Release{good, deploying, failed, legacyRolledBack} {
 		if err := store.CreateRelease(ctx, release); err != nil {
 			t.Fatalf("CreateRelease %s: %v", release.ID, err)
 		}
 	}
 
-	if err := store.MarkReleaseFailedUnlessGood(ctx, good.ID, now.Add(time.Minute)); err != nil {
-		t.Fatalf("MarkReleaseFailedUnlessGood good: %v", err)
+	if err := store.MarkReleaseFailedUnlessSucceeded(ctx, good.ID, now.Add(time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseFailedUnlessSucceeded good: %v", err)
 	}
-	if err := store.MarkReleaseFailedUnlessGood(ctx, deploying.ID, now.Add(time.Minute)); err != nil {
-		t.Fatalf("MarkReleaseFailedUnlessGood deploying: %v", err)
+	if err := store.MarkReleaseFailedUnlessSucceeded(ctx, deploying.ID, now.Add(time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseFailedUnlessSucceeded deploying: %v", err)
 	}
-	if err := store.MarkReleaseDeployingUnlessGood(ctx, good.ID, now.Add(2*time.Minute)); err != nil {
-		t.Fatalf("MarkReleaseDeployingUnlessGood good: %v", err)
+	if err := store.MarkReleaseDeployingUnlessSucceeded(ctx, good.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseDeployingUnlessSucceeded good: %v", err)
 	}
-	if err := store.MarkReleaseDeployingUnlessGood(ctx, failed.ID, now.Add(2*time.Minute)); err != nil {
-		t.Fatalf("MarkReleaseDeployingUnlessGood failed: %v", err)
+	if err := store.MarkReleaseDeployingUnlessSucceeded(ctx, failed.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseDeployingUnlessSucceeded failed: %v", err)
+	}
+	if err := store.MarkReleaseDeployingUnlessSucceeded(ctx, legacyRolledBack.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("MarkReleaseDeployingUnlessSucceeded legacy rolled back: %v", err)
 	}
 
 	gotGood, err := store.GetRelease(ctx, good.ID)
@@ -279,6 +283,10 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteGoodRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelease failed: %v", err)
 	}
+	gotLegacyRolledBack, err := store.GetRelease(ctx, legacyRolledBack.ID)
+	if err != nil {
+		t.Fatalf("GetRelease legacy rolled back: %v", err)
+	}
 	if gotGood.Status != app.ReleaseStatusSucceeded {
 		t.Fatalf("good release status = %q", gotGood.Status)
 	}
@@ -287,6 +295,9 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteGoodRelease(t *testing.T) {
 	}
 	if gotFailed.Status != app.ReleaseStatusDeploying {
 		t.Fatalf("failed release status = %q", gotFailed.Status)
+	}
+	if gotLegacyRolledBack.Status != app.ReleaseStatusDeploying {
+		t.Fatalf("legacy rolled-back release status = %q, want current deploying state", gotLegacyRolledBack.Status)
 	}
 }
 
@@ -343,10 +354,10 @@ func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 		`create table ssh_keys (name text primary key, public_key text not null, created_at text not null)`,
 		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
 		`insert into apps values ('my-app', 'my-app', 'local', '/apps/my-app/repo.git', '/apps/my-app/worktree', 'compose.yml', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
-		`insert into releases values ('rel_abcdef', 'my-app', 'abcdef', 'compose.yml', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
+		`insert into releases values ('rel_abcdef', 'my-app', 'abcdef', 'compose.yml', 'rolled_back', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
 		`insert into deployments values ('dep_abcdef', 'my-app', 'rel_abcdef', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'stage=build services; detail=legacy failure; retry=push again')`,
 		`insert into domains values ('dom_1', 'my-app', 'web', 'my-app.example.com', 3000, 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z')`,
-		`insert into events values ('evt_1', 'my-app', 'deploy.failed', 'legacy deploy failed', '2026-07-14T09:01:00Z')`,
+		`insert into events values ('evt_1', 'my-app', 'rollback.succeeded', 'legacy rollback succeeded', '2026-07-14T09:01:00Z')`,
 		`insert into app_config_values values ('my-app', 'SECRET', '', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`,
 	}
 	for _, statement := range statements {
@@ -375,7 +386,7 @@ func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 		t.Fatalf("apps = %#v, err = %v", apps, err)
 	}
 	releases, err := migrated.ListReleasesByApp(ctx, "my-app")
-	if err != nil || len(releases) != 1 || releases[0].ID != "rel_abcdef" {
+	if err != nil || len(releases) != 1 || releases[0].ID != "rel_abcdef" || releases[0].Status != app.ReleaseStatusRolledBack {
 		t.Fatalf("releases = %#v, err = %v", releases, err)
 	}
 	deployments, err := migrated.ListDeploymentsByApp(ctx, "my-app")
@@ -391,7 +402,7 @@ func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 		t.Fatalf("domains = %#v, err = %v", domains, err)
 	}
 	events, err := migrated.ListEventsByApp(ctx, "my-app")
-	if err != nil || len(events) != 1 {
+	if err != nil || len(events) != 1 || events[0].Type != "rollback.succeeded" {
 		t.Fatalf("events = %#v, err = %v", events, err)
 	}
 	configValues, err := migrated.ListAppConfigValues(ctx, "my-app")

@@ -861,7 +861,7 @@ func TestStoreBackendAppRemoveCleansRuntimeStateAndPreservesOtherRoutes(t *testi
 	if err := sqlite.CreateApp(ctx, model); err != nil {
 		t.Fatalf("CreateApp my-app: %v", err)
 	}
-	if err := sqlite.CreateRelease(ctx, app.Release{ID: "rel_1", AppID: "my-app", CommitSHA: "abc123", ComposePath: composePath, Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := sqlite.CreateRelease(ctx, app.Release{ID: "rel_1", AppID: "my-app", CommitSHA: "abc123", ComposePath: "/historical/compose.yml", Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateRelease: %v", err)
 	}
 	if err := sqlite.CreateDeployment(ctx, app.Deployment{ID: "dep_1", AppID: "my-app", ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}); err != nil {
@@ -1011,7 +1011,7 @@ func TestStoreBackendDetachDomainSyncsEmptyRoutesWhenDetachingFinalDomain(t *tes
 	}
 }
 
-func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T) {
+func TestStoreBackendCurrentRuntimeCommandsUseComposeRunnerAndRecordState(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	appsDir := filepath.Join(t.TempDir(), "apps")
@@ -1079,21 +1079,6 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 		t.Fatalf("redeploy request = %#v", runner.DeployRequests[0])
 	}
 
-	stdout.Reset()
-	stderr.Reset()
-	if code := cliRunner.Run([]string{"apps", "rollback", "my-app", "rel_old"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("apps rollback exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "rolled back my-app to rel_old") {
-		t.Fatalf("apps rollback stdout = %q", stdout.String())
-	}
-	if len(runner.DeployRequests) != 2 {
-		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
-	}
-	if runner.DeployRequests[1].ReleaseID != "rel_old" || runner.DeployRequests[1].CommitSHA != "old" {
-		t.Fatalf("rollback request = %#v", runner.DeployRequests[1])
-	}
-
 	model, err := sqlite.GetApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("GetApp: %v", err)
@@ -1105,14 +1090,14 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 	if err != nil {
 		t.Fatalf("GetRelease: %v", err)
 	}
-	if release.Status != app.ReleaseStatusRolledBack {
+	if release.Status != app.ReleaseStatusSucceeded {
 		t.Fatalf("release status = %q", release.Status)
 	}
 	deployments, err := sqlite.ListDeploymentsByApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ListDeploymentsByApp: %v", err)
 	}
-	if len(deployments) != 2 {
+	if len(deployments) != 1 {
 		t.Fatalf("deployments = %#v", deployments)
 	}
 	for _, deployment := range deployments {
@@ -1128,7 +1113,7 @@ func TestStoreBackendRecoveryCommandsUseComposeRunnerAndRecordState(t *testing.T
 	for _, event := range events {
 		gotTypes = append(gotTypes, event.Type)
 	}
-	wantTypes := "restart.started,restart.succeeded,service.restart.started,service.restart.succeeded,redeploy.started,redeploy.succeeded,rollback.triggered,rollback.succeeded"
+	wantTypes := "restart.started,restart.succeeded,service.restart.started,service.restart.succeeded,redeploy.started,redeploy.succeeded"
 	if strings.Join(gotTypes, ",") != wantTypes {
 		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
 	}
@@ -1195,12 +1180,18 @@ func seedRecoveryApp(t *testing.T, ctx context.Context, sqlite *store.SQLiteStor
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+	if err := os.MkdirAll(model.WorktreePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(model.WorktreePath, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile Compose: %v", err)
+	}
 	if err := sqlite.CreateApp(ctx, model); err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
 	releases := []app.Release{
-		{ID: "rel_old", AppID: "my-app", CommitSHA: "old", ComposePath: filepath.Join(model.WorktreePath, "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)},
-		{ID: "rel_new", AppID: "my-app", CommitSHA: "new", ComposePath: filepath.Join(model.WorktreePath, "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now},
+		{ID: "rel_old", AppID: "my-app", CommitSHA: "old", ComposePath: filepath.Join(appsDir, "historical", "old", "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)},
+		{ID: "rel_new", AppID: "my-app", CommitSHA: "new", ComposePath: filepath.Join(appsDir, "historical", "new", "compose.yml"), Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now},
 	}
 	for _, release := range releases {
 		if err := sqlite.CreateRelease(ctx, release); err != nil {

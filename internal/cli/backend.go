@@ -13,7 +13,6 @@ type Backend interface {
 	ExecApp(request ServiceCommandRequest) error
 	RunApp(request ServiceCommandRequest) error
 	RedeployApp(name string) error
-	RollbackApp(name string, releaseID string) error
 	RemoveApp(name string) error
 	AppHealth(name string) (AppHealth, error)
 	Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error

@@ -38,7 +38,7 @@ func (s *Service) runServiceCommand(ctx context.Context, action serviceCommandAc
 		return fmt.Errorf("service command is required")
 	}
 
-	model, release, err := s.latestGoodRelease(ctx, request.AppName)
+	target, err := s.currentRuntimeTarget(ctx, request.AppName)
 	if err != nil {
 		return fmt.Errorf("resolve app %q for %s: %w", request.AppName, action, err)
 	}
@@ -55,8 +55,8 @@ func (s *Service) runServiceCommand(ctx context.Context, action serviceCommandAc
 		return fmt.Errorf("record %s start for app %q: %w", action, request.AppName, err)
 	}
 
-	request.ProjectDir = projectDir(model, release)
-	request.ComposePath = release.ComposePath
+	request.ProjectDir = target.projectDir
+	request.ComposePath = target.composePath
 	request.Env, err = s.resolveDeployEnv(ctx, request.AppName, request.ProjectDir)
 	redactionValues := map[string]string(nil)
 	if err == nil {

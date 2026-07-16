@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -235,15 +234,4 @@ func runDiagnostics(stdout io.Writer) int {
 		return 1
 	}
 	return 0
-}
-
-type diagnosticsLocalExecutor struct{}
-
-func (diagnosticsLocalExecutor) Run(ctx context.Context, command diagnostics.Command) (string, error) {
-	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("%s %s: %w: %s", command.Name, strings.Join(command.Args, " "), err, strings.TrimSpace(string(output)))
-	}
-	return string(output), nil
 }

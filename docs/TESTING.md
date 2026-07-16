@@ -19,7 +19,7 @@ The default e2e still uses fake runtime adapters for:
 - SSH dashboard sessions
 
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
-The SSH dashboard is covered by `make tui-e2e`. Recovery state transitions and deploy-failure persistence are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`. Backup archive restore is covered by `make backup-restore-e2e`.
+The SSH dashboard is covered by `make tui-e2e`. Failed-deploy persistence and Git-main recovery are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`. Backup archive restore is covered by `make backup-restore-e2e`.
 
 ## Internal Dogfood Readiness
 
@@ -33,7 +33,7 @@ make hardening-e2e
 make backup-restore-e2e
 ```
 
-The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push representative examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and rollback, verify reboot recovery and final-route cleanup, and complete the documented backup/restore drill. At minimum, a dogfood release should cover static-site, build-service, config-backed, one multi-service dependency example, one stateful volume example, and rollback-lab. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
+The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push representative examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and Git-based rollback, verify Compose-policy reboot recovery and final-route cleanup, and complete the documented backup/restore drill. At minimum, a dogfood release should cover static-site, build-service, config-backed, one multi-service dependency example, one stateful volume example, and rollback-lab. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
 
 ## Command
 
@@ -149,7 +149,7 @@ TUI app action coverage is separate:
 make tui-actions-e2e
 ```
 
-That target drives the interactive dashboard model against SQLite state, the shared CLI lifecycle backend, a fake Compose runner, and a fake router. It covers start app, stop app, restart app, restart service, redeploy, rollback, domain attach, domain detach, app removal, and persisted event visibility. App removal is verified through the shared backend path and the fake Compose remove request.
+That target drives the interactive dashboard model against SQLite state, the shared CLI lifecycle backend, a fake Compose runner, and a fake router. It covers start app, stop app, restart app, restart service, redeploy current main, domain attach, domain detach, app removal, and persisted event visibility. App removal is verified through the shared backend path and the fake Compose remove request.
 
 Docker-backed lifecycle acceptance proves that stop/start/restart keep existing container configuration and that remove preserves named-volume data:
 
@@ -210,7 +210,7 @@ This target does not bootstrap or mutate the server. It only opens `ssh -tt` to 
 - `SSHDOCK_TUI_SCREENSHOT_TIMEOUT`: per-frame wait timeout, default `20s`
 - `SSHDOCK_TUI_SCREENSHOT_TABS`: maximum tab presses before stopping, default `8`
 
-## Recovery Tier
+## Failed-Deploy And Git Recovery Tier
 
 Run:
 
@@ -223,8 +223,8 @@ The recovery test:
 1. Builds `sshdock` and `sshdockd`.
 2. Creates an app and pushes a good Compose release through a local bare repository hook.
 3. Pushes a second release with `SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR` to force a failed deploy.
-4. Runs `sshdock apps rollback <app> <release-id>`.
-5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful rollback.
+4. Force-pushes the saved good commit back to remote `main`.
+5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful Git-selected deployment, with no SSHDock rollback attempt.
 
 This test uses the fake Compose runner so it does not mutate Docker, Caddy, or host SSH state.
 

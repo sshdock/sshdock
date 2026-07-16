@@ -12,7 +12,6 @@ type DashboardActions interface {
 	RestartApp(appName string) error
 	RestartService(appName string, serviceName string) error
 	RedeployApp(appName string) error
-	RollbackApp(appName string, releaseID string) error
 	AttachDomain(appName string, serviceName string, domainName string, port int) error
 	DetachDomain(appName string, domainName string) error
 	RemoveApp(appName string) error
@@ -26,7 +25,6 @@ const (
 	dashboardActionRestartApp
 	dashboardActionRestartService
 	dashboardActionRedeploy
-	dashboardActionRollback
 	dashboardActionAttachDomain
 	dashboardActionDetachDomain
 	dashboardActionRemoveApp
@@ -43,7 +41,6 @@ var dashboardActionItems = []dashboardActionItem{
 	{label: "restart app", kind: dashboardActionRestartApp},
 	{label: "restart service", kind: dashboardActionRestartService},
 	{label: "redeploy current main", kind: dashboardActionRedeploy},
-	{label: "rollback release", kind: dashboardActionRollback},
 	{label: "attach domain", kind: dashboardActionAttachDomain},
 	{label: "detach domain", kind: dashboardActionDetachDomain},
 	{label: "remove app", kind: dashboardActionRemoveApp},
@@ -100,7 +97,7 @@ func (m InteractiveDashboardModel) selectAction() (tea.Model, tea.Cmd) {
 	switch item.kind {
 	case dashboardActionStartApp, dashboardActionStopApp, dashboardActionRestartApp, dashboardActionRedeploy:
 		return m, m.executeAction(dashboardActionRequest{kind: item.kind})
-	case dashboardActionRestartService, dashboardActionRollback, dashboardActionDetachDomain:
+	case dashboardActionRestartService, dashboardActionDetachDomain:
 		if len(m.actionChoices()) == 0 {
 			m.err = fmt.Errorf("no choices available for %s", item.label)
 			return m, nil

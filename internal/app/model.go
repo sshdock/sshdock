@@ -36,9 +36,10 @@ type Release struct {
 type DeploymentTrigger string
 
 const (
-	DeploymentTriggerLegacy          DeploymentTrigger = "legacy"
-	DeploymentTriggerPush            DeploymentTrigger = "push"
-	DeploymentTriggerRedeploy        DeploymentTrigger = "redeploy"
+	DeploymentTriggerLegacy   DeploymentTrigger = "legacy"
+	DeploymentTriggerPush     DeploymentTrigger = "push"
+	DeploymentTriggerRedeploy DeploymentTrigger = "redeploy"
+	// Retained only so historical deployment rows remain readable after upgrade.
 	DeploymentTriggerRollback        DeploymentTrigger = "rollback"
 	DeploymentTriggerStartupRecovery DeploymentTrigger = "startup_recovery"
 )

@@ -21,7 +21,7 @@ func TestAppDetailScreenSections(t *testing.T) {
 			{Type: "deploy.succeeded", Message: "Deploy succeeded"},
 		},
 		Health:  HealthSummary{RouteStatus: "routed", LatestDeploymentStatus: "succeeded"},
-		Actions: []string{"restart app", "rollback release"},
+		Actions: []string{"restart app", "redeploy current main"},
 	}
 	screen := NewAppDetailScreen(view)
 

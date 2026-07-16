@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
-func TestStoreBackendAppsHealthUsesLatestRunnableReleaseForServiceStatus(t *testing.T) {
+func TestStoreBackendAppsHealthUsesCurrentWorktreeForServiceStatus(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
 	appsDir := filepath.Join(t.TempDir(), "apps")
@@ -55,4 +56,66 @@ func TestStoreBackendAppsHealthUsesLatestRunnableReleaseForServiceStatus(t *test
 	if runner.StatusRequests[0].ComposePath != wantComposePath {
 		t.Fatalf("status compose path = %q, want %q", runner.StatusRequests[0].ComposePath, wantComposePath)
 	}
+}
+
+func TestStoreBackendAppsHealthWarnsForRunningServiceWithoutRestartPolicy(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	appsDir := filepath.Join(t.TempDir(), "apps")
+	now := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
+	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	composePath := filepath.Join(appsDir, "my-app", "worktree", "compose.yml")
+	content := "services:\n  web:\n    image: example/web\n  worker:\n    image: example/worker\n    restart: unless-stopped\n"
+	if err := os.WriteFile(composePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_1", AppID: "my-app", ServiceName: "web", DomainName: "app.example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("attach domain: %v", err)
+	}
+	runner := &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "web", State: "running"}, {Name: "worker", State: "running"}}}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{NodeID: "node-a", AppsDir: appsDir, RecoveryRunner: runner, Now: func() time.Time { return now }})
+
+	// When
+	report, err := backend.AppHealth("my-app")
+
+	// Then
+	if err != nil {
+		t.Fatalf("AppHealth: %v", err)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "restart policy" {
+			if check.Status != "warn" || !strings.Contains(check.Detail, "web") || strings.Contains(check.Detail, "worker") {
+				t.Fatalf("restart policy check = %#v", check)
+			}
+			return
+		}
+	}
+	t.Fatalf("health checks = %#v, want restart policy warning", report.Checks)
+}
+
+func TestStoreBackendAppsHealthReportsMissingCurrentComposeEntry(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	sqlite := newStoreBackendTestStore(t, ctx)
+	now := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
+	worktreePath := t.TempDir()
+	if err := sqlite.CreateApp(ctx, app.App{ID: "new-app", Name: "new-app", WorktreePath: worktreePath, Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{RecoveryRunner: &compose.FakeRunner{}, Now: func() time.Time { return now }})
+
+	// When
+	report, err := backend.AppHealth("new-app")
+
+	// Then
+	if err != nil {
+		t.Fatalf("AppHealth: %v", err)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "services" && check.Status == "warn" && strings.Contains(check.Detail, "compose file not found") {
+			return
+		}
+	}
+	t.Fatalf("health checks = %#v, want missing Compose warning", report.Checks)
 }

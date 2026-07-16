@@ -13,7 +13,7 @@ import (
 	"github.com/sshdock/sshdock/internal/config"
 )
 
-func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
+func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T) {
 	requireGit(t)
 
 	root := filepath.Join("..", "..")
@@ -83,30 +83,19 @@ func TestRecoveryRollbackAfterFailedDeployEndToEnd(t *testing.T) {
 		t.Fatalf("bad deployment status = %q", status)
 	}
 
-	runCommand(t, root, baseEnv, sshdockPath, "apps", "rollback", appName, goodReleaseID)
+	runGit(t, sourceDir, baseEnv, "push", "--force", "prod", goodCommit+":main")
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
-	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusRolledBack)
+	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusSucceeded)
 	assertReleaseStatus(t, dbPath, badReleaseID, app.ReleaseStatusFailed)
-	rollbackStatus := queryString(t, dbPath, `select status from deployments where app_id = ? and release_id = ? and trigger = 'rollback' order by started_at desc, id desc limit 1`, appName, goodReleaseID)
-	if rollbackStatus != string(app.DeploymentStatusSucceeded) {
-		t.Fatalf("rollback deployment status = %q", rollbackStatus)
+	if status, err := deploymentStatusForCommit(dbPath, appName, goodCommit, app.DeploymentTriggerPush); err != nil {
+		t.Fatalf("deploymentStatus recovered good commit: %v", err)
+	} else if status != string(app.DeploymentStatusSucceeded) {
+		t.Fatalf("recovered good deployment status = %q", status)
 	}
-	rollbackCommit := queryString(t, dbPath, `select commit_sha from deployments where app_id = ? and release_id = ? and trigger = 'rollback' order by started_at desc, id desc limit 1`, appName, goodReleaseID)
-	if rollbackCommit != goodCommit {
-		t.Fatalf("rollback deployment commit = %q, want %q", rollbackCommit, goodCommit)
+	if rollbackAttempts := queryString(t, dbPath, `select count(*) from deployments where app_id = ? and trigger = 'rollback'`, appName); rollbackAttempts != "0" {
+		t.Fatalf("SSHDock rollback attempts = %q, want 0", rollbackAttempts)
 	}
-	assertEventTypes(t, dbPath, appName, []string{
-		"git.ref_accepted",
-		"deploy.started",
-		"deploy.succeeded",
-		"git.ref_accepted",
-		"deploy.started",
-		"deploy.failed",
-		"rollback.triggered",
-		"rollback.succeeded",
-		"route.auto_skipped",
-	})
 }
 
 func writeRecoveryCompose(t *testing.T, sourceDir string, image string) {

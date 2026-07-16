@@ -260,7 +260,7 @@ Interactive dashboard controls:
 [j/k] select   select apps
 [g/G] jump     first or last app
 [tab] tabs     Summary, Services, Routes, Releases, Deploys, Events, Logs
-[a] actions    start, stop, restart, redeploy, rollback, domains, remove
+[a] actions    start, stop, restart, redeploy, domains, remove
 [u/d] logs     scroll logs
 [f] follow     periodic refresh on Logs tab
 [r] refresh    refresh snapshot
@@ -269,7 +269,7 @@ Interactive dashboard controls:
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
-The dashboard is the v0 operator surface for deployed apps. It can start or stop existing containers, restart apps or services, redeploy current remote main, rollback to a listed release, attach or detach domains, and remove an app after exact app-name confirmation. App removal preserves Docker volumes, matching `sshdock apps remove`.
+The dashboard is the v0 operator surface for deployed apps. It can start or stop existing containers, restart apps or services, redeploy current remote main, attach or detach domains, and remove an app after exact app-name confirmation. Select older revisions with Git by pushing the desired commit or tag to remote `main`. App removal preserves Docker volumes, matching `sshdock apps remove`.
 
 Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
 
@@ -396,7 +396,8 @@ Expected service behavior:
 - use `/var/lib/sshdock/git/.ssh/authorized_keys` as the Git receive key file unless overridden
 - use `/etc/caddy/sshdock/sshdock.caddyfile` as the generated Caddy config path unless overridden
 - run SQLite migrations on startup
-- redeploy each deployed app's latest good release on startup so Compose stacks recover after a host reboot
+- perform no app checkout or Compose mutation during daemon startup
+- leave Docker or host reboot recovery to each service's committed Compose restart policy
 - write logs to journald
 
 Administrators should be able to inspect status with:
@@ -527,7 +528,7 @@ sudo systemctl start sshdockd
 
 Restore extracts the archive to a temporary directory and validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths. Run restore as a user that can preserve SSHDock state ownership and file modes.
 
-After a reboot or restore, startup recovery may take a short time while `sshdockd` replays Compose deployments for apps that were previously deployed.
+After a reboot or restore, `sshdockd` runs migrations but does not replay deployments. Docker restores only the containers covered by their Compose restart policies. Use `restart: unless-stopped` or `restart: always` for routed or long-running services that should return automatically, then run `sudo sshdock diagnostics` and `sudo sshdock apps health <app>` to inspect warnings.
 
 ## Verification
 

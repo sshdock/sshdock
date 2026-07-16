@@ -106,7 +106,6 @@ type dashboardCLIBackend interface {
 	RestartApp(appName string) error
 	RestartService(appName string, serviceName string) error
 	RedeployApp(appName string) error
-	RollbackApp(appName string, releaseID string) error
 	AttachDomain(domain cli.Domain) error
 	DetachDomain(appName string, domainName string) error
 	RemoveApp(appName string) error
@@ -160,10 +159,6 @@ func (b dashboardActionBackend) RestartService(appName string, serviceName strin
 
 func (b dashboardActionBackend) RedeployApp(appName string) error {
 	return b.backend.RedeployApp(appName)
-}
-
-func (b dashboardActionBackend) RollbackApp(appName string, releaseID string) error {
-	return b.backend.RollbackApp(appName, releaseID)
 }
 
 func (b dashboardActionBackend) AttachDomain(appName string, serviceName string, domainName string, port int) error {

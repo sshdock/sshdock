@@ -5,8 +5,11 @@ package e2e
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,6 +124,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 
 	tests := []struct {
 		name        string
+		appName     string
 		directory   string
 		env         map[string]string
 		wantService string
@@ -130,6 +134,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "wordpress lite", directory: "wordpress-lite", wantService: "web", wantPort: 18081},
 		{name: "build service", directory: "build-service", wantService: "web", wantPort: 18083},
 		{name: "config app", directory: "config-app", env: map[string]string{"APP_MESSAGE": "example route test"}, wantService: "web", wantPort: 18082},
+		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -137,8 +142,12 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Abs example directory: %v", err)
 			}
+			appName := test.appName
+			if appName == "" {
+				appName = "example-" + test.directory
+			}
 			result, err := compose.NewDockerRunner(effectiveConfigOnlyExecutor{}).Deploy(context.Background(), compose.DeployRequest{
-				AppName:     "example-" + test.directory,
+				AppName:     appName,
 				ProjectDir:  projectDir,
 				ComposePath: filepath.Join(projectDir, "compose.yml"),
 				Env:         test.env,
@@ -150,6 +159,51 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 				t.Fatalf("route result = %#v, want %s:%d", result, test.wantService, test.wantPort)
 			}
 		})
+	}
+}
+
+func TestNextJSQuickstartDockerEndToEnd(t *testing.T) {
+	if os.Getenv("SSHDOCK_E2E_DOCKER") != "1" {
+		t.Skip("set SSHDOCK_E2E_DOCKER=1 to run the Next.js quickstart Docker test")
+	}
+	requireDocker(t)
+
+	// Given the registered Next.js quickstart and a clean Compose project.
+	projectDir, err := filepath.Abs(filepath.Join("..", "..", "examples", "frameworks", "nextjs"))
+	if err != nil {
+		t.Fatalf("Abs Next.js example directory: %v", err)
+	}
+	projectName := compose.ProjectName("nextjs-public-example-e2e")
+	t.Cleanup(func() {
+		_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
+	})
+
+	// When Docker Compose builds and waits for the root-page healthcheck.
+	runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "up", "--build", "--wait")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:18100", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET Next.js quickstart: %v", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		t.Fatalf("read Next.js quickstart response: %v", err)
+	}
+
+	// Then the production container serves the official template user surface.
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+	for _, want := range []string{"Welcome to Next.js", "Docker"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("Next.js response missing %q", want)
+		}
 	}
 }
 

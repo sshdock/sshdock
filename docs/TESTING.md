@@ -166,7 +166,13 @@ go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendA
 Focused adoption and example docs checks cover the comparison, migration, troubleshooting, and runnable example contracts:
 
 ```bash
-go test ./test/harness -run 'Test(AdoptionDocs|Examples|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSQuickstart|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+```
+
+The maintained public-example Docker target validates route inference for every registered shape, builds the Next.js production image, waits for Compose health, and requests the real user surface:
+
+```bash
+make public-examples-e2e
 ```
 
 ### Real SSH Dashboard Screenshot Capture

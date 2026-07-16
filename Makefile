@@ -4,7 +4,7 @@ APP_NAME := sshdock
 DAEMON_NAME := sshdockd
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke e2e e2e-docker ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e lifecycle-volume-e2e wildcard-domain-e2e config-e2e backup-restore-e2e ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e e2e-docker public-examples-e2e ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e lifecycle-volume-e2e wildcard-domain-e2e config-e2e backup-restore-e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -26,7 +26,10 @@ e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd|ReceiveInvalidAppNameEndToEnd)' -v
 
 e2e-docker:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|NextJSQuickstartDocker|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
+
+public-examples-e2e:
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(PublicExamplesEffectiveRoute|NextJSQuickstartDocker)EndToEnd' -v
 
 ssh-e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'Test(CLI|OpenSSH)' -v

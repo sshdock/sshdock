@@ -1,16 +1,88 @@
 # SSHDock Examples
 
-These examples are public confidence checks for SSHDock user stories:
+The maintained public suite is organized around four questions: which framework to deploy, which recognizable software to run, how to connect databases safely, and how to exercise SSHDock-specific workflows.
 
 ```text
 git push -> first app creation -> Compose deploy -> optional route -> SSH dashboard visibility
 ```
 
-Some examples prove the routed web happy path. Others prove background workers, private service dependencies, stateful volumes, config, and rollback.
+Each registered example is meant to be copied into a new local directory and pushed to a real SSHDock server. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`. Release-tagged URLs are used only after a release contains the referenced files; pre-release examples name the `main` branch explicitly.
 
-They are meant to be copied into a new local directory and pushed to a real SSHDock server. The deploy commands below fetch the example files from GitHub without cloning this repository. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`.
+## Framework quickstarts
 
-Examples already included in the latest stable release use release-tagged raw URLs. New scenario examples use `main` until the next release includes them.
+Framework quickstarts teach the SSHDock integration path, not the framework itself. Each one uses a production runtime, one root Compose file, a health signal, restart behavior, Git-push deployment, HTTPS verification, day-two inspection, upgrade guidance, and cleanup.
+
+### Next.js
+
+Path: [`examples/frameworks/nextjs`](../examples/frameworks/nextjs/README.md)
+
+The Next.js quickstart starts from Vercel's official Docker standalone template, then adds exact dependency pins, one loopback-bound web port, a Compose healthcheck, and SSHDock operations guidance.
+
+Until a release tag contains the quickstart, copy it explicitly from `main`:
+
+```bash
+mkdir nextjs
+cd nextjs
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/nextjs
+git init -b main
+git add .
+git commit -m "Deploy Next.js"
+git remote add sshdock git@sshdock.example.com:nextjs.git
+git push sshdock main
+```
+
+Verify and operate the deployed application:
+
+```bash
+curl -I http://nextjs.example.com
+curl -fsS https://nextjs.example.com
+sudo sshdock apps health nextjs
+sudo sshdock logs nextjs web --tail 100
+sudo sshdock apps restart nextjs
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nextjs.example.com
+```
+
+Upgrade exact dependency pins, verify the production build, and push the new commit:
+
+```bash
+npm install --save-exact next@<version> react@<version> react-dom@<version>
+npm run typecheck
+npm run build
+git add package.json package-lock.json
+git commit -m "Upgrade Next.js"
+git push sshdock main
+```
+
+Clean up the stateless example:
+
+```bash
+sudo sshdock apps remove nextjs --force
+```
+
+See the quickstart README for topology, pinned versions, expected evidence, persistence, limitations, and security boundaries.
+
+## Software recipes
+
+Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.
+
+No software recipe is registered in the maintained contract yet. The existing WordPress Lite fixture below remains a feature demonstration until its replacement recipe is verified.
+
+## Database examples
+
+Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.
+
+No database example is registered in the maintained contract yet. The API and PostgreSQL fixture below remains a local multi-service demonstration.
+
+## Feature labs
+
+Feature labs reuse registered framework, software, or database examples to teach SSHDock config, Git recovery, restricted operations, routing, inspection, and backup boundaries. They do not introduce another toy application for each command.
+
+No feature lab is registered in the maintained contract yet. The existing fixtures remain available while their workflows are moved onto verified public examples.
+
+## Existing feature demonstrations
+
+The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.
 
 ## User-Story Matrix
 

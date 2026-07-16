@@ -100,6 +100,24 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		return 0
 	}
 
+	if request, action, ok := parseServiceCommandArgs(args); ok {
+		request.Interactive = r.interactiveTerminal
+		request.Stdin = stdin
+		request.Stdout = stdout
+		request.Stderr = stderr
+		var err error
+		if action == "exec" {
+			err = r.backend.ExecApp(request)
+		} else {
+			err = r.backend.RunApp(request)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
+
 	if len(args) >= 2 && args[0] == "remove" {
 		appName, force, ok := parseRemoveArgs(args[1:])
 		if !ok {
@@ -150,6 +168,17 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 
 	printInvalidUsage(stderr, "apps")
 	return 2
+}
+
+func parseServiceCommandArgs(args []string) (ServiceCommandRequest, string, bool) {
+	if len(args) < 5 || args[0] != "exec" && args[0] != "run" || args[3] != "--" {
+		return ServiceCommandRequest{}, "", false
+	}
+	return ServiceCommandRequest{
+		AppName:     args[1],
+		ServiceName: args[2],
+		Command:     append([]string(nil), args[4:]...),
+	}, args[0], true
 }
 
 func parseRemoveArgs(args []string) (string, bool, bool) {

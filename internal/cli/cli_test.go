@@ -55,6 +55,8 @@ func TestRootHelpPrintsGroupedCommands(t *testing.T) {
 				"Apps:",
 				"Start existing Compose containers",
 				"Stop and preserve Compose containers",
+				"Execute argv in a running service",
+				"Run a removable one-off container",
 				"Redeploy current remote main",
 				"Config:",
 				"Domains:",
@@ -99,6 +101,27 @@ func TestGroupHelpPrintsUsageAndExamples(t *testing.T) {
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAppsHelpIncludesRestrictedServiceCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := NewRunner(NewMemoryBackend("server"), "dev")
+
+	code := runner.Run([]string{"help", "apps"}, &stdout, &stderr)
+
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"sshdock apps exec <app> <service> -- <command> [args...]",
+		"sshdock apps run <app> <service> -- <command> [args...]",
+		"ssh -tt sshdock@<host> apps exec my-app web -- sh",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
 		}
 	}
 }

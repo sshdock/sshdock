@@ -368,6 +368,30 @@ sudo sshdock apps restart my-app web
 
 Whole-app restart maps to `docker compose restart` for the project when using the default Docker runner. Service restart targets only the selected Compose service. Restart uses the existing containers and does not apply changed Compose or config values.
 
+### `sshdock apps exec <app> <service> -- <command> [args...]`
+
+Execute an argv-safe command inside an existing Compose service container.
+
+```bash
+ssh sshdock@server apps exec my-app web -- printenv PATH
+ssh -tt sshdock@server apps exec my-app web -- sh
+```
+
+The `--` delimiter is required. SSHDock does not invoke a host shell and does not expose Compose exec flags. Quoted arguments remain separate argv entries when quoted in the remote SSH command. A PTY-backed SSH session lets Compose allocate a container TTY; a non-PTY session adds Compose `-T` for script-friendly input and output.
+
+The command fails when the app or service is missing, the service container is stopped, or no command follows `--`. SSHDock records `exec.started`, `exec.succeeded`, or `exec.failed` events without storing the command argv.
+
+### `sshdock apps run <app> <service> -- <command> [args...]`
+
+Run a removable one-off container from a Compose service definition.
+
+```bash
+ssh sshdock@server apps run my-app web -- ./bin/migrate up
+ssh -tt sshdock@server apps run my-app web -- sh
+```
+
+The Docker runner maps this to `docker compose run --rm`, adding `-T` for non-PTY sessions. The required `--` prevents callers from supplying Compose flags that could mutate the persistent app definition. SSHDock forwards stdin, stdout, stderr, and the exact command argv, then records `run.started`, `run.succeeded`, or `run.failed` without persisting argv or stored config values.
+
 ### `sshdock apps redeploy <name>`
 
 Redeploy the commit currently stored at remote `main`.
@@ -570,7 +594,7 @@ With a PTY, this opens the interactive TUI. Without a PTY, it renders a plain te
 ssh -T sshdock@server
 ```
 
-When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lifecycle operations, domain inspection, logs, release/deployment/event inspection, and config commands. Lifecycle forms are restricted to `apps start`, `apps stop`, `apps restart`, `apps redeploy`, and `apps remove <name> --force`. It preserves quoted argv boundaries, rejects local administration and unsupported arguments, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
+When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lifecycle operations, domain inspection, logs, release/deployment/event inspection, config commands, restricted service exec, and removable one-off runs. Lifecycle forms are restricted to `apps start`, `apps stop`, `apps restart`, `apps exec`, `apps run`, `apps redeploy`, and `apps remove <name> --force`. Exec and run require `--` before a non-empty container command. The operator preserves quoted argv boundaries, rejects local administration and unsupported arguments, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
 

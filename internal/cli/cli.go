@@ -485,8 +485,14 @@ func (b *MemoryBackend) UnsetConfig(appName string, name string) error {
 }
 
 type Runner struct {
-	backend Backend
-	version string
+	backend             Backend
+	version             string
+	interactiveTerminal bool
+}
+
+func (r *Runner) WithInteractiveTerminal(interactive bool) *Runner {
+	r.interactiveTerminal = interactive
+	return r
 }
 
 func NewRunner(backend Backend, version string) *Runner {

@@ -180,7 +180,7 @@ func TestRunOperatorHelpListsOnlyRemoteCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	for _, want := range []string{"apps list", "apps health", "apps start", "apps stop", "apps restart", "apps redeploy", "apps remove", "config set", "domains check", "logs"} {
+	for _, want := range []string{"apps list", "apps health", "apps start", "apps stop", "apps restart", "apps exec", "apps run", "apps redeploy", "apps remove", "config set", "domains check", "logs"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
 		}
@@ -229,6 +229,31 @@ func TestOperatorOriginalCommandArgs(t *testing.T) {
 			name:    "allows current main redeploy",
 			command: `apps redeploy my-app`,
 			want:    []string{"apps", "redeploy", "my-app"},
+		},
+		{
+			name:    "preserves exec command boundaries",
+			command: `apps exec my-app web -- sh -c 'printf "%s\n" "$1"' _ 'value with spaces'`,
+			want:    []string{"apps", "exec", "my-app", "web", "--", "sh", "-c", `printf "%s\n" "$1"`, "_", "value with spaces"},
+		},
+		{
+			name:    "allows one-off command beginning with dashes after delimiter",
+			command: `apps run my-app worker -- --check 'value with spaces'`,
+			want:    []string{"apps", "run", "my-app", "worker", "--", "--check", "value with spaces"},
+		},
+		{
+			name:         "rejects exec without delimiter",
+			command:      `apps exec my-app web sh`,
+			errorMessage: "not available over SSH",
+		},
+		{
+			name:         "rejects one-off Compose flags",
+			command:      `apps run my-app worker --rm -- sh`,
+			errorMessage: "not available over SSH",
+		},
+		{
+			name:         "rejects absent exec command",
+			command:      `apps exec my-app web --`,
+			errorMessage: "not available over SSH",
 		},
 		{
 			name:    "allows forced app removal",

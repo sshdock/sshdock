@@ -1,6 +1,9 @@
 package compose
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type Command struct {
 	Name string
@@ -19,6 +22,8 @@ type Runner interface {
 	Start(ctx context.Context, request LifecycleRequest) error
 	Stop(ctx context.Context, request LifecycleRequest) error
 	Restart(ctx context.Context, request RestartRequest) error
+	Exec(ctx context.Context, request ServiceCommandRequest) error
+	RunOneOff(ctx context.Context, request ServiceCommandRequest) error
 	Remove(ctx context.Context, request RemoveRequest) error
 	Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error)
 	Logs(ctx context.Context, request LogsRequest) (string, error)
@@ -53,6 +58,19 @@ type LifecycleRequest struct {
 	ProjectDir  string
 	ComposePath string
 	Env         map[string]string
+}
+
+type ServiceCommandRequest struct {
+	AppName     string
+	ProjectDir  string
+	ComposePath string
+	ServiceName string
+	Command     []string
+	TTY         bool
+	Env         map[string]string
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
 }
 
 type RemoveRequest struct {

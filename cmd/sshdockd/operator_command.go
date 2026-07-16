@@ -112,6 +112,8 @@ Usage:
   apps start <app>
   apps stop <app>
   apps restart <app> [service]
+  apps exec <app> <service> -- <command> [args...]
+  apps run <app> <service> -- <command> [args...]
   apps redeploy <app>
   apps remove <app> --force
 `,
@@ -161,6 +163,9 @@ Usage:
 }
 
 func appOperatorCommandAllowed(args []string) bool {
+	if len(args) >= 5 && (args[0] == "exec" || args[0] == "run") {
+		return args[3] == "--"
+	}
 	if len(args) == 1 {
 		return args[0] == "list"
 	}
@@ -248,6 +253,8 @@ Lifecycle:
   apps start <app>
   apps stop <app>
   apps restart <app> [service]
+  apps exec <app> <service> -- <command> [args...]
+  apps run <app> <service> -- <command> [args...]
   apps redeploy <app>
   apps remove <app> --force
 

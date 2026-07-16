@@ -1,18 +1,26 @@
 package compose
 
-import "context"
+import (
+	"context"
+	"errors"
+	"io"
+)
 
 type FakeRunner struct {
 	Validation   ValidationResult
 	DeployResult DeployResult
 	Services     []ServiceStatus
 	LogOutput    string
+	ExecOutput   string
+	RunOutput    string
 
 	ValidateErr error
 	DeployErr   error
 	StartErr    error
 	StopErr     error
 	RestartErr  error
+	ExecErr     error
+	RunErr      error
 	RemoveErr   error
 	StatusErr   error
 	LogsErr     error
@@ -23,6 +31,8 @@ type FakeRunner struct {
 	StartRequests    []LifecycleRequest
 	StopRequests     []LifecycleRequest
 	RestartRequests  []RestartRequest
+	ExecRequests     []ServiceCommandRequest
+	RunRequests      []ServiceCommandRequest
 	RemoveRequests   []RemoveRequest
 	StatusRequests   []StatusRequest
 	LogsRequests     []LogsRequest
@@ -56,6 +66,24 @@ func (f *FakeRunner) Stop(_ context.Context, request LifecycleRequest) error {
 func (f *FakeRunner) Restart(_ context.Context, request RestartRequest) error {
 	f.RestartRequests = append(f.RestartRequests, request)
 	return f.RestartErr
+}
+
+func (f *FakeRunner) Exec(_ context.Context, request ServiceCommandRequest) error {
+	f.ExecRequests = append(f.ExecRequests, request)
+	return writeFakeServiceCommandOutput(request.Stdout, f.ExecOutput, f.ExecErr)
+}
+
+func (f *FakeRunner) RunOneOff(_ context.Context, request ServiceCommandRequest) error {
+	f.RunRequests = append(f.RunRequests, request)
+	return writeFakeServiceCommandOutput(request.Stdout, f.RunOutput, f.RunErr)
+}
+
+func writeFakeServiceCommandOutput(stdout io.Writer, output string, operationErr error) error {
+	if stdout == nil || output == "" {
+		return operationErr
+	}
+	_, writeErr := io.WriteString(stdout, output)
+	return errors.Join(operationErr, writeErr)
 }
 
 func (f *FakeRunner) Remove(_ context.Context, request RemoveRequest) error {

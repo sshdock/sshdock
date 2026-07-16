@@ -185,6 +185,17 @@ This Git push records a normal deployment attempt for the selected commit. Use `
 sudo sshdock apps redeploy <app>
 ```
 
+## App Exec Says A Service Is Missing Or Stopped
+
+`apps exec` only targets an existing running Compose service container. Check current service state first:
+
+```bash
+sudo sshdock apps health <app>
+sudo sshdock apps start <app>
+```
+
+If the service is absent because its containers were removed or the Compose model changed, redeploy current remote `main`. Use `apps run <app> <service> -- <command>` when the operation should run in a new removable one-off container instead of an existing service.
+
 ## Removing An App Did Not Remove Data
 
 This is expected. SSHDock removes app metadata, app repo/worktree, and containers, but it does not pass Compose `--volumes` or prune Docker images and build cache.

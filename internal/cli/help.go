@@ -24,6 +24,8 @@ Apps:
   apps start <name>                    Start existing Compose containers
   apps stop <name>                     Stop and preserve Compose containers
   apps restart <name> [service]        Restart an app or service
+  apps exec <app> <service> -- <cmd>   Execute argv in a running service
+  apps run <app> <service> -- <cmd>    Run a removable one-off container
   apps redeploy <name>                 Redeploy current remote main
   apps rollback <name> <release-id>    Roll back to a release
   apps remove <name> [--force]         Remove an app while preserving volumes
@@ -74,6 +76,8 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock apps start <name>",
 			"sshdock apps stop <name>",
 			"sshdock apps restart <name> [service]",
+			"sshdock apps exec <app> <service> -- <command> [args...]",
+			"sshdock apps run <app> <service> -- <command> [args...]",
 			"sshdock apps redeploy <name>",
 			"sshdock apps rollback <name> <release-id>",
 			"sshdock apps remove <name> [--force]",
@@ -82,6 +86,8 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"ssh sshdock@<host> apps stop my-app",
 			"ssh sshdock@<host> apps start my-app",
 			"sudo sshdock apps restart my-app web",
+			`ssh -tt sshdock@<host> apps exec my-app web -- sh`,
+			`ssh sshdock@<host> apps run my-app web -- ./bin/migrate up`,
 		})
 	case "config":
 		printTopicHelp(stdout, "Config commands store encrypted app config.", []string{

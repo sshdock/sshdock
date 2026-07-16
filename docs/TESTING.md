@@ -138,7 +138,8 @@ The dashboard test:
 5. Starts a temporary local OpenSSH server using the operator `authorized_keys` file.
 6. Connects with `ssh -T` and verifies the plain render-once fallback.
 7. Connects with `ssh -tt`, lets the forced command run interactive `sshdockd operator`, sends `q`, and verifies PTY allocation succeeds.
-8. Verifies the dashboard includes the app list, app detail, service status, route, release, deployment, event, and service log views.
+8. Runs restricted non-PTY `apps exec` and `apps run`, plus PTY-backed `apps exec`, and verifies attached output and events.
+9. Verifies the dashboard includes the app list, app detail, service status, route, release, deployment, event, and service log views.
 
 This test uses the fake Compose runner for dashboard service status/log output so it does not require the deployed app to be running in Docker.
 
@@ -336,7 +337,8 @@ SSHDOCK_COMPOSE_RUNNER=docker
 7. Verify SQLite contains a succeeded deployment.
 8. Verify image-only and build-based apps use native Compose images without SSHDock release overrides or tags.
 9. Verify healthy and no-healthcheck services succeed while unhealthy, timed-out, and immediately exited services fail at the health-wait stage.
-10. Tear down every Docker Compose project after the test.
+10. Execute argv with spaces in an existing service and a removable one-off container, then prove missing/stopped service failures and one-off cleanup.
+11. Tear down every Docker Compose project after the test.
 
 This test is opt-in because it uses the local Docker daemon and may pull images.
 

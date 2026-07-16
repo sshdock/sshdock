@@ -47,6 +47,25 @@ func (LocalCommandExecutor) Stream(ctx context.Context, command Command, stdout 
 	return nil
 }
 
+func (LocalCommandExecutor) RunAttached(ctx context.Context, command Command, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
+	cmd.Dir = command.Dir
+	cmd.Env = commandEnv(command.Env, command.Dir)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s failed: %w", command.Name, strings.Join(command.Args, " "), err)
+	}
+	return nil
+}
+
 func commandEnv(extra map[string]string, directory string) []string {
 	env := os.Environ()
 	for key, value := range extra {

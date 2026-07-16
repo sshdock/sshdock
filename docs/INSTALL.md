@@ -250,7 +250,7 @@ Expected operator entry point:
 ssh sshdock@server
 ```
 
-The production operator surface uses host `sshd` on port `22`, like the Git receive path. Each authorized key for the `sshdock` account is restricted to one forced command. A commandless PTY session opens the interactive TUI; a commandless non-PTY session renders a plain snapshot. Supplied commands are parsed into argv without a host shell and are limited to app inspection, config management, and explicit app lifecycle commands. Host setup and administration remain local `sudo sshdock` operations.
+The production operator surface uses host `sshd` on port `22`, like the Git receive path. Each authorized key for the `sshdock` account is restricted to one forced command. A commandless PTY session opens the interactive TUI; a commandless non-PTY session renders a plain snapshot. Supplied commands are parsed into argv without a host shell and are limited to app inspection, config management, explicit app lifecycle commands, argv-safe service exec, and removable one-off runs. Host setup and administration remain local `sudo sshdock` operations.
 
 Interactive dashboard controls:
 
@@ -303,7 +303,15 @@ Each rendered operator key is restricted with:
 command="exec /usr/local/bin/sshdock-operator",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc
 ```
 
-The operator wrapper runs `sshdockd operator`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for commandless `ssh sshdock@server` sessions, writes plain output for commandless non-PTY sessions, and dispatches supported remote commands without invoking `sh -c`. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
+The operator wrapper runs `sshdockd operator`, which reads SQLite state, queries Docker Compose for service status/logs, and routes TUI app actions through the same backend used by the CLI. It launches the interactive TUI for commandless `ssh sshdock@server` sessions, writes plain output for commandless non-PTY sessions, and dispatches supported remote commands without invoking `sh -c`.
+
+For an interactive service shell, request a PTY explicitly:
+
+```bash
+ssh -tt sshdock@server apps exec my-app web -- sh
+```
+
+For scripts and one-off jobs, omit the PTY. `apps exec` and `apps run` require `--` before the container command; callers cannot pass arbitrary Compose flags. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
 
 ## SSH Git Receive User
 

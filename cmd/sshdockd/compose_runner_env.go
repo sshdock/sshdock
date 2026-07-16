@@ -28,6 +28,8 @@ func dashboardRunnerFromEnv() (compose.Runner, error) {
 		fake := fakeRunnerFromEnv()
 		fake.Services = parseFakeServices(os.Getenv("SSHDOCK_FAKE_COMPOSE_SERVICES"))
 		fake.LogOutput = os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS")
+		fake.ExecOutput = os.Getenv("SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT")
+		fake.RunOutput = os.Getenv("SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT")
 		return fake, nil
 	}
 	if runner == "docker" {
@@ -48,6 +50,8 @@ func fakeRunnerFromEnv() *compose.FakeRunner {
 		StartErr:     envError("SSHDOCK_FAKE_COMPOSE_START_ERROR"),
 		StopErr:      envError("SSHDOCK_FAKE_COMPOSE_STOP_ERROR"),
 		RestartErr:   envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
+		ExecErr:      envError("SSHDOCK_FAKE_COMPOSE_EXEC_ERROR"),
+		RunErr:       envError("SSHDOCK_FAKE_COMPOSE_RUN_ERROR"),
 		RemoveErr:    envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 	}
 }

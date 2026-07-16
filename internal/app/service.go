@@ -31,6 +31,7 @@ type Service struct {
 	logs            logsRunner
 	deploy          deployRunner
 	recover         recoveryRunner
+	serviceCommands serviceCommandRunner
 	checkout        WorktreeCheckout
 	currentMain     CurrentMainResolver
 	configResolver  configResolver
@@ -52,6 +53,11 @@ type recoveryRunner interface {
 	Start(ctx context.Context, request compose.LifecycleRequest) error
 	Stop(ctx context.Context, request compose.LifecycleRequest) error
 	Restart(ctx context.Context, request compose.RestartRequest) error
+}
+
+type serviceCommandRunner interface {
+	Exec(ctx context.Context, request compose.ServiceCommandRequest) error
+	RunOneOff(ctx context.Context, request compose.ServiceCommandRequest) error
 }
 
 type WorktreeCheckout interface {
@@ -110,6 +116,9 @@ func WithDeployRunner(runner deployRunner) ServiceOption {
 		if recovery, ok := runner.(recoveryRunner); ok {
 			service.recover = recovery
 		}
+		if commands, ok := runner.(serviceCommandRunner); ok {
+			service.serviceCommands = commands
+		}
 	}
 }
 
@@ -117,6 +126,15 @@ func WithRecoveryRunner(runner recoveryRunner) ServiceOption {
 	return func(service *Service) {
 		service.deploy = runner
 		service.recover = runner
+		if commands, ok := runner.(serviceCommandRunner); ok {
+			service.serviceCommands = commands
+		}
+	}
+}
+
+func WithServiceCommandRunner(runner serviceCommandRunner) ServiceOption {
+	return func(service *Service) {
+		service.serviceCommands = runner
 	}
 }
 

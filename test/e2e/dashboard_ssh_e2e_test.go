@@ -135,6 +135,18 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 		sshPath,
 		append(dashboardSSHArgs(paths, server, false), "apps", "redeploy", appName)...,
 	)
+	execOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), `apps exec `+appName+` web -- printf "%s" "value with spaces"`)...,
+	)
+	runOutput := runCommand(t, paths.tmp, nil,
+		sshPath,
+		append(dashboardSSHArgs(paths, server, false), `apps run `+appName+` web -- sh -c "printf one-off"`)...,
+	)
+	ptyExecOutput := runCommand(t, paths.tmp, append(os.Environ(), "TERM=xterm-256color"),
+		sshPath,
+		append(dashboardSSHArgs(paths, server, true), `apps exec `+appName+` web -- printf interactive`)...,
+	)
 	eventsOutput := runCommand(t, paths.tmp, nil,
 		sshPath,
 		append(dashboardSSHArgs(paths, server, false), "events", "list", appName)...,
@@ -156,8 +168,11 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	if !strings.Contains(domainsOutput, "unavailable") || !strings.Contains(domainsOutput, "check Caddy") {
 		t.Fatalf("domains check output did not report unavailable active Caddy state:\n%s", domainsOutput)
 	}
-	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") || !strings.Contains(helpOutput, "apps start") || !strings.Contains(helpOutput, "apps remove") {
+	if strings.Contains(helpOutput, "server domain") || !strings.Contains(helpOutput, "apps health") || !strings.Contains(helpOutput, "apps start") || !strings.Contains(helpOutput, "apps exec") || !strings.Contains(helpOutput, "apps run") || !strings.Contains(helpOutput, "apps remove") {
 		t.Fatalf("restricted help exposes local commands or omits inspection commands:\n%s", helpOutput)
+	}
+	if !strings.Contains(execOutput, "exec-output") || !strings.Contains(runOutput, "run-output") || !strings.Contains(ptyExecOutput, "exec-output") {
+		t.Fatalf("restricted service command output missing: exec=%q run=%q pty-exec=%q", execOutput, runOutput, ptyExecOutput)
 	}
 	for label, output := range map[string]string{
 		"stop":     stopOutput,
@@ -169,7 +184,7 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 			t.Fatalf("apps %s output missing app name:\n%s", label, output)
 		}
 	}
-	for _, eventType := range []string{"stop.started", "stop.succeeded", "start.started", "start.succeeded", "restart.started", "restart.succeeded", "redeploy.started", "redeploy.succeeded"} {
+	for _, eventType := range []string{"stop.started", "stop.succeeded", "start.started", "start.succeeded", "restart.started", "restart.succeeded", "redeploy.started", "redeploy.succeeded", "exec.started", "exec.succeeded", "run.started", "run.succeeded"} {
 		if !strings.Contains(eventsOutput, eventType) {
 			t.Fatalf("events output missing %q:\n%s", eventType, eventsOutput)
 		}

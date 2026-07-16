@@ -87,6 +87,9 @@ func commandNeedsRecoveryRunner(args []string) bool {
 	if len(args) == 4 && args[0] == "apps" && (args[1] == "restart" || args[1] == "rollback") {
 		return true
 	}
+	if len(args) >= 6 && args[0] == "apps" && (args[1] == "exec" || args[1] == "run") && args[4] == "--" {
+		return true
+	}
 	if len(args) >= 3 && len(args) <= 4 && args[0] == "apps" && args[1] == "remove" {
 		return true
 	}
@@ -104,7 +107,11 @@ func cliRunnerFromEnv() (compose.Runner, error) {
 			StartErr:   envError("SSHDOCK_FAKE_COMPOSE_START_ERROR"),
 			StopErr:    envError("SSHDOCK_FAKE_COMPOSE_STOP_ERROR"),
 			RestartErr: envError("SSHDOCK_FAKE_COMPOSE_RESTART_ERROR"),
+			ExecErr:    envError("SSHDOCK_FAKE_COMPOSE_EXEC_ERROR"),
+			RunErr:     envError("SSHDOCK_FAKE_COMPOSE_RUN_ERROR"),
 			RemoveErr:  envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
+			ExecOutput: os.Getenv("SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT"),
+			RunOutput:  os.Getenv("SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT"),
 			Services:   parseFakeServices(os.Getenv("SSHDOCK_FAKE_COMPOSE_SERVICES")),
 			LogOutput:  os.Getenv("SSHDOCK_FAKE_COMPOSE_LOGS"),
 		}, nil

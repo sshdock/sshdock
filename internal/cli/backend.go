@@ -10,6 +10,8 @@ type Backend interface {
 	StopApp(name string) error
 	RestartApp(name string) error
 	RestartService(appName string, serviceName string) error
+	ExecApp(request ServiceCommandRequest) error
+	RunApp(request ServiceCommandRequest) error
 	RedeployApp(name string) error
 	RollbackApp(name string, releaseID string) error
 	RemoveApp(name string) error
@@ -31,4 +33,14 @@ type Backend interface {
 	ListConfig(appName string) ([]ConfigEntry, error)
 	GetConfig(appName string, name string) (string, error)
 	UnsetConfig(appName string, name string) error
+}
+
+type ServiceCommandRequest struct {
+	AppName     string
+	ServiceName string
+	Command     []string
+	Interactive bool
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
 }

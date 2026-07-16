@@ -26,7 +26,7 @@ e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd|ReceiveInvalidAppNameEndToEnd)' -v
 
 e2e-docker:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|ServerPushBuildServiceDocker)EndToEnd' -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
 
 ssh-e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'Test(CLI|OpenSSH)' -v

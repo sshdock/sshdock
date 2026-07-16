@@ -58,7 +58,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 			return 2
 		}
 		backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
-		cliRunner := cli.NewRunner(backend, version.String())
+		cliRunner := cli.NewRunner(backend, version.String()).WithInteractiveTerminal(dashboardHasInteractiveTerminal(stdin, stdout))
 		if operatorHelpRequested(args) {
 			printOperatorHelp(stdout, args)
 			return 0

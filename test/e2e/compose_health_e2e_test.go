@@ -136,6 +136,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "config app", directory: "config-app", env: map[string]string{"APP_MESSAGE": "example route test"}, wantService: "web", wantPort: 18082},
 		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
 		{name: "NestJS", appName: "example-nestjs", directory: filepath.Join("frameworks", "nestjs"), wantService: "web", wantPort: 18101},
+		{name: "Laravel", appName: "example-laravel", directory: filepath.Join("frameworks", "laravel"), env: map[string]string{"APP_KEY": "public-example-route-key"}, wantService: "web", wantPort: 18102},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -175,6 +176,7 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 		projectName string
 		url         string
 		wantBody    []string
+		env         map[string]string
 	}{
 		{
 			name:        "Next.js",
@@ -190,9 +192,20 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			url:         "http://127.0.0.1:18101",
 			wantBody:    []string{"Hello World!"},
 		},
+		{
+			name:        "Laravel",
+			directory:   "laravel",
+			projectName: "laravel-public-example-e2e",
+			url:         "http://127.0.0.1:18102",
+			wantBody:    []string{"Documentation", "Deploy now"},
+			env:         map[string]string{"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			for key, value := range test.env {
+				t.Setenv(key, value)
+			}
 			// Given a registered framework quickstart and a clean Compose project.
 			projectDir, err := filepath.Abs(filepath.Join("..", "..", "examples", "frameworks", test.directory))
 			if err != nil {

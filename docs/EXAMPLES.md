@@ -103,6 +103,56 @@ sudo sshdock apps remove nestjs --force
 
 See the quickstart README for exact provenance, topology, upgrade boundaries, expected evidence, persistence, limitations, and security boundaries.
 
+### Laravel
+
+Path: [`examples/frameworks/laravel`](../examples/frameworks/laravel/README.md)
+
+The Laravel quickstart preserves the official application skeleton and adds a multi-stage FrankenPHP production image, required `APP_KEY` interpolation, one loopback-bound web port, persistent writable storage, Compose health, and SSHDock operations guidance.
+
+Until a release tag contains the quickstart, copy it explicitly from `main`:
+
+```bash
+mkdir laravel
+cd laravel
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/laravel
+git init -b main
+git add .
+git commit -m "Deploy Laravel"
+git remote add sshdock git@sshdock.example.com:laravel.git
+git push sshdock main
+```
+
+The accepted push creates the app and stops safely at the required `APP_KEY`. Store the key, redeploy current remote `main`, and attach the conventional domain explicitly because automatic first-route creation belongs to a successful Git-receive deployment:
+
+```bash
+printf 'base64:%s' "$(openssl rand -base64 32)" \
+  | ssh sshdock@sshdock.example.com config set laravel APP_KEY
+sudo sshdock apps redeploy laravel
+sudo sshdock domains attach laravel web laravel.example.com --port 18102
+```
+
+Verify and operate the application:
+
+```bash
+curl -I http://laravel.example.com
+curl -fsS https://laravel.example.com
+sudo sshdock apps health laravel
+sudo sshdock logs laravel web --tail 100
+sudo sshdock apps restart laravel
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://laravel.example.com
+```
+
+Upgrade by regenerating the official starter as one unit at an exact version, reapply the SSHDock deployment envelope, regenerate the lockfiles, run the starter tests and production build, and push the replacement commit.
+
+Clean up the app while preserving its named storage volume:
+
+```bash
+sudo sshdock apps remove laravel --force
+```
+
+See the quickstart README for exact provenance, required config, topology, persistence, restricted operations, upgrade boundaries, limitations, and security boundaries.
+
 ## Software recipes
 
 Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.

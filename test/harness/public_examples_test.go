@@ -45,6 +45,33 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 				filepath.Join("app", "page.tsx"),
 			},
 		},
+		{
+			name:      "NestJS",
+			category:  "Framework quickstarts",
+			guidePath: "examples/frameworks/nestjs",
+			path:      filepath.Join(root, "examples", "frameworks", "nestjs"),
+			requiredFiles: []string{
+				".dockerignore",
+				".gitignore",
+				".prettierrc",
+				"Dockerfile",
+				"README.md",
+				"compose.yml",
+				"eslint.config.mjs",
+				"nest-cli.json",
+				"package-lock.json",
+				"package.json",
+				"tsconfig.build.json",
+				"tsconfig.json",
+				filepath.Join("src", "app.controller.spec.ts"),
+				filepath.Join("src", "app.controller.ts"),
+				filepath.Join("src", "app.module.ts"),
+				filepath.Join("src", "app.service.ts"),
+				filepath.Join("src", "main.ts"),
+				filepath.Join("test", "app.e2e-spec.ts"),
+				filepath.Join("test", "jest-e2e.json"),
+			},
+		},
 	}
 	requiredSections := []string{
 		"Purpose",
@@ -70,7 +97,6 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 					t.Fatalf("required file %s does not exist", path)
 				}
 			}
-
 			composePath, err := compose.DetectFile(example.path)
 			if err != nil {
 				t.Fatalf("DetectFile(%s): %v", example.path, err)
@@ -160,6 +186,55 @@ func TestNextJSQuickstart_contract_when_built_for_production(t *testing.T) {
 }
 
 var exactVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`)
+
+func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
+	// Given the official Nest CLI starter with its additive SSHDock envelope.
+	root := repoRoot(t)
+	dir := filepath.Join(root, "examples", "frameworks", "nestjs")
+
+	// When its image, runtime, and Compose contracts are inspected.
+	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
+	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
+	for _, want := range []string{
+		"FROM node:24.18.0-alpine3.24 AS build",
+		"FROM node:24.18.0-alpine3.24 AS runtime",
+		"npm ci",
+		"npm run build",
+		"npm ci --omit=dev",
+		"USER node",
+		"CMD [\"node\", \"dist/main\"]",
+	} {
+		if !strings.Contains(dockerfile, want) {
+			t.Fatalf("Dockerfile missing production marker %q", want)
+		}
+	}
+	if strings.Contains(dockerfile, "start:dev") || strings.Contains(composeFile, "start:dev") {
+		t.Fatal("production quickstart must not run the NestJS development server")
+	}
+	for _, want := range []string{"127.0.0.1:18101:3000", "healthcheck:", "restart: unless-stopped"} {
+		if !strings.Contains(composeFile, want) {
+			t.Fatalf("compose.yml missing production marker %q", want)
+		}
+	}
+
+	// Then its public workflow records provenance and covers the complete lifecycle.
+	readme := readTextFile(t, filepath.Join(dir, "README.md"))
+	for _, want := range []string{
+		"@nestjs/cli@11.0.24 new nestjs --package-manager npm --strict",
+		"git push sshdock main",
+		"curl -fsS https://nestjs.example.com",
+		"sshdock apps health nestjs",
+		"sshdock logs nestjs web",
+		"sshdock apps restart nestjs",
+		"sshdock apps redeploy nestjs",
+		"npm run test:e2e",
+		"sshdock apps remove nestjs --force",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing workflow command %q", want)
+		}
+	}
+}
 
 type packageManifest struct {
 	Dependencies    map[string]string `json:"dependencies"`

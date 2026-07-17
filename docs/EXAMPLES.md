@@ -62,6 +62,47 @@ sudo sshdock apps remove nextjs --force
 
 See the quickstart README for topology, pinned versions, expected evidence, persistence, limitations, and security boundaries.
 
+### NestJS
+
+Path: [`examples/frameworks/nestjs`](../examples/frameworks/nestjs/README.md)
+
+The NestJS quickstart preserves the official Nest CLI TypeScript starter and adds a two-stage production image, one loopback-bound web port, Compose health, and SSHDock operations guidance.
+
+Until a release tag contains the quickstart, copy it explicitly from `main`:
+
+```bash
+mkdir nestjs
+cd nestjs
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/nestjs
+git init -b main
+git add .
+git commit -m "Deploy NestJS"
+git remote add sshdock git@sshdock.example.com:nestjs.git
+git push sshdock main
+```
+
+Verify and operate the API:
+
+```bash
+curl -I http://nestjs.example.com
+curl -fsS https://nestjs.example.com
+sudo sshdock apps health nestjs
+sudo sshdock logs nestjs web --tail 100
+sudo sshdock apps restart nestjs
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nestjs.example.com
+```
+
+Upgrade by regenerating the official starter as one unit with an exact Nest CLI version, reapply the SSHDock deployment envelope, run the generated tests and production build, and push the replacement commit.
+
+Clean up the stateless example:
+
+```bash
+sudo sshdock apps remove nestjs --force
+```
+
+See the quickstart README for exact provenance, topology, upgrade boundaries, expected evidence, persistence, limitations, and security boundaries.
+
 ## Software recipes
 
 Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.

@@ -135,6 +135,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "build service", directory: "build-service", wantService: "web", wantPort: 18083},
 		{name: "config app", directory: "config-app", env: map[string]string{"APP_MESSAGE": "example route test"}, wantService: "web", wantPort: 18082},
 		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
+		{name: "NestJS", appName: "example-nestjs", directory: filepath.Join("frameworks", "nestjs"), wantService: "web", wantPort: 18101},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -162,48 +163,74 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 	}
 }
 
-func TestNextJSQuickstartDockerEndToEnd(t *testing.T) {
+func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 	if os.Getenv("SSHDOCK_E2E_DOCKER") != "1" {
-		t.Skip("set SSHDOCK_E2E_DOCKER=1 to run the Next.js quickstart Docker test")
+		t.Skip("set SSHDOCK_E2E_DOCKER=1 to run the framework quickstart Docker tests")
 	}
 	requireDocker(t)
 
-	// Given the registered Next.js quickstart and a clean Compose project.
-	projectDir, err := filepath.Abs(filepath.Join("..", "..", "examples", "frameworks", "nextjs"))
-	if err != nil {
-		t.Fatalf("Abs Next.js example directory: %v", err)
+	tests := []struct {
+		name        string
+		directory   string
+		projectName string
+		url         string
+		wantBody    []string
+	}{
+		{
+			name:        "Next.js",
+			directory:   "nextjs",
+			projectName: "nextjs-public-example-e2e",
+			url:         "http://127.0.0.1:18100",
+			wantBody:    []string{"Welcome to Next.js", "Docker"},
+		},
+		{
+			name:        "NestJS",
+			directory:   "nestjs",
+			projectName: "nestjs-public-example-e2e",
+			url:         "http://127.0.0.1:18101",
+			wantBody:    []string{"Hello World!"},
+		},
 	}
-	projectName := compose.ProjectName("nextjs-public-example-e2e")
-	t.Cleanup(func() {
-		_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
-	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given a registered framework quickstart and a clean Compose project.
+			projectDir, err := filepath.Abs(filepath.Join("..", "..", "examples", "frameworks", test.directory))
+			if err != nil {
+				t.Fatalf("Abs %s example directory: %v", test.name, err)
+			}
+			projectName := compose.ProjectName(test.projectName)
+			t.Cleanup(func() {
+				_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
+			})
 
-	// When Docker Compose builds and waits for the root-page healthcheck.
-	runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "up", "--build", "--wait")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:18100", nil)
-	if err != nil {
-		t.Fatalf("NewRequestWithContext: %v", err)
-	}
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("GET Next.js quickstart: %v", err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		t.Fatalf("read Next.js quickstart response: %v", err)
-	}
+			// When Docker Compose builds and waits for the root-page healthcheck.
+			runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "up", "--build", "--wait")
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, test.url, nil)
+			if err != nil {
+				t.Fatalf("NewRequestWithContext: %v", err)
+			}
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatalf("GET %s quickstart: %v", test.name, err)
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+			if err != nil {
+				t.Fatalf("read %s quickstart response: %v", test.name, err)
+			}
 
-	// Then the production container serves the official template user surface.
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("GET status = %d, want %d", response.StatusCode, http.StatusOK)
-	}
-	for _, want := range []string{"Welcome to Next.js", "Docker"} {
-		if !strings.Contains(string(body), want) {
-			t.Fatalf("Next.js response missing %q", want)
-		}
+			// Then the production container serves the official starter surface.
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("GET status = %d, want %d", response.StatusCode, http.StatusOK)
+			}
+			for _, want := range test.wantBody {
+				if !strings.Contains(string(body), want) {
+					t.Fatalf("%s response missing %q", test.name, want)
+				}
+			}
+		})
 	}
 }
 

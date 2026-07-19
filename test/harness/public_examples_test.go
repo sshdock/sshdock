@@ -57,6 +57,17 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 				"compose.yml",
 			},
 		},
+		{
+			name:      "Gin",
+			category:  "Framework quickstarts",
+			guidePath: "examples/frameworks/gin",
+			path:      filepath.Join(root, "examples", "frameworks", "gin"),
+			exactFiles: []string{
+				"Dockerfile",
+				"README.md",
+				"compose.yml",
+			},
+		},
 	}
 	requiredSections := []string{
 		"Purpose",

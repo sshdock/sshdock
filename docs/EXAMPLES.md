@@ -153,6 +153,47 @@ sudo sshdock apps remove laravel --force
 
 See the probe README for exact provenance, config recovery, topology, persistence, restricted operations, upgrade boundaries, limitations, and security boundaries.
 
+### Gin
+
+Path: [`examples/frameworks/gin`](../examples/frameworks/gin/README.md)
+
+The Gin compatibility probe checks out the official `gin-gonic/examples/basic` source at an exact commit during its pinned image build. The repository keeps only the three-file SSHDock deployment envelope: a multi-stage Dockerfile, one loopback-bound Compose service with health and restart behavior, and an operations README.
+
+Until a release tag contains the probe, copy it explicitly from `main`:
+
+```bash
+mkdir gin
+cd gin
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/gin
+git init -b main
+git add .
+git commit -m "Deploy Gin"
+git remote add sshdock git@sshdock.example.com:gin.git
+git push sshdock main
+```
+
+Verify and operate the compiled service:
+
+```bash
+curl -I http://gin.example.com/ping
+curl -fsS https://gin.example.com/ping
+sudo sshdock apps health gin
+sudo sshdock logs gin web --tail 100
+sudo sshdock apps restart gin
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://gin.example.com/ping
+```
+
+Upgrade the pinned source revision and Go and Alpine image inputs, verify the official service, and push only the three-file envelope. Upstream source, module manifests, caches, and build output stay outside the repository.
+
+Clean up the stateless example:
+
+```bash
+sudo sshdock apps remove gin --force
+```
+
+See the probe README for exact source and image provenance, topology, expected evidence, transient state, limitations, and security boundaries.
+
 ## Software recipes
 
 Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.

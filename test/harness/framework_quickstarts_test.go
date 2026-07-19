@@ -196,3 +196,65 @@ func TestLaravelCompatibilityProbe_contract_when_generated_for_production(t *tes
 		}
 	}
 }
+
+func TestGinCompatibilityProbe_contract_when_built_from_official_source(t *testing.T) {
+	// Given the registered Gin compatibility probe.
+	root := repoRoot(t)
+	dir := filepath.Join(root, "examples", "frameworks", "gin")
+
+	// When its source, image, build, runtime, and Compose contracts are inspected.
+	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
+	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
+	for _, want := range []string{
+		"ARG GIN_EXAMPLES_REVISION=70ea0357aca8fab6638a85709ff74d51c1bb0e73",
+		"ARG GO_IMAGE=golang:1.26.5-alpine3.23@sha256:622e56dbc11a8cfe87cafa2331e9a201877271cbff918af53d3be315f3da88cc",
+		"ARG ALPINE_IMAGE=alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659",
+		"FROM ${GO_IMAGE} AS source",
+		"git clone https://github.com/gin-gonic/examples.git .",
+		"git checkout --detach ${GIN_EXAMPLES_REVISION}",
+		"FROM source AS build",
+		"CGO_ENABLED=0 go build",
+		"./basic",
+		"FROM ${ALPINE_IMAGE} AS runtime",
+		"COPY --from=build --chown=65532:65532 /out/gin-basic ./gin-basic",
+		"USER 65532:65532",
+		"CMD [\"./gin-basic\"]",
+	} {
+		if !strings.Contains(dockerfile, want) {
+			t.Fatalf("Dockerfile missing production marker %q", want)
+		}
+	}
+	for _, forbidden := range []string{"go run", "air", "gin --appPort"} {
+		if strings.Contains(dockerfile, forbidden) || strings.Contains(composeFile, forbidden) {
+			t.Fatalf("production compatibility probe must not contain development command %q", forbidden)
+		}
+	}
+	for _, want := range []string{"127.0.0.1:18103:8080", "healthcheck:", "restart: unless-stopped"} {
+		if !strings.Contains(composeFile, want) {
+			t.Fatalf("compose.yml missing production marker %q", want)
+		}
+	}
+
+	// Then its public workflow records exact provenance and covers the complete lifecycle.
+	readme := readTextFile(t, filepath.Join(dir, "README.md"))
+	for _, want := range []string{
+		"Gin framework compatibility probe",
+		"gin-gonic/examples@70ea0357aca8fab6638a85709ff74d51c1bb0e73",
+		"golang:1.26.5-alpine3.23@sha256:622e56dbc11a8cfe87cafa2331e9a201877271cbff918af53d3be315f3da88cc",
+		"alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659",
+		"https://github.com/gin-gonic/examples/tree/70ea0357aca8fab6638a85709ff74d51c1bb0e73/basic",
+		"https://gin-gonic.com/en/docs/quickstart",
+		"go mod init example-app",
+		"git push sshdock main",
+		"curl -fsS https://gin.example.com/ping",
+		"sshdock apps health gin",
+		"sshdock logs gin web",
+		"sshdock apps restart gin",
+		"sshdock apps redeploy gin",
+		"sshdock apps remove gin --force",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing workflow or provenance marker %q", want)
+		}
+	}
+}

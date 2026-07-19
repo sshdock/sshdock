@@ -137,6 +137,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
 		{name: "NestJS", appName: "example-nestjs", directory: filepath.Join("frameworks", "nestjs"), wantService: "web", wantPort: 18101},
 		{name: "Laravel", appName: "example-laravel", directory: filepath.Join("frameworks", "laravel"), env: map[string]string{"APP_KEY": "public-example-route-key"}, wantService: "web", wantPort: 18102},
+		{name: "Gin", appName: "example-gin", directory: filepath.Join("frameworks", "gin"), wantService: "web", wantPort: 18103},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -202,6 +203,14 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			wantBody:     []string{"Documentation", "Deploy now"},
 			env:          map[string]string{"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
 			runtimeCheck: `test -z "$(find /app -name .gitignore -print -quit)" && test ! -e /app/storage/framework/testing && test ! -e /app/composer.json && test ! -e /app/package.json && test ! -e /app/tests && test ! -e /app/vendor/bin/phpunit`,
+		},
+		{
+			name:         "Gin",
+			directory:    "gin",
+			projectName:  "gin-public-example-e2e",
+			url:          "http://127.0.0.1:18103/ping",
+			wantBody:     []string{"pong"},
+			runtimeCheck: `test ! -e /workspace && test ! -e /usr/local/go && ! command -v git && ! command -v go && test "$(id -u)" = 65532`,
 		},
 	}
 	for _, test := range tests {

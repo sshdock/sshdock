@@ -1,10 +1,14 @@
-# Next.js framework quickstart
+# Next.js framework compatibility probe
 
 ## Purpose
 
-Deploy the official Next.js Docker standalone template through SSHDock's public Git SSH path. The example proves a production build, a standalone Node.js runtime, automatic HTTPS routing, Compose health, logs, restart behavior, and a copyable upgrade path.
+This probe builds the unmodified official `create-next-app` starter inside the image and deploys its production server through SSHDock. It is point-in-time compatibility evidence, not editable application source or a framework tutorial.
 
-The application source, styling, Dockerfile, and Next.js configuration come from Vercel's [`with-docker`](https://github.com/vercel/next.js/tree/153bf8ac5fa00888ef5fbb2b65cac12f0942a44f/examples/with-docker) template. SSHDock adds exact dependency pins, one Compose service, loopback-only publication, health and restart policy, and this operator guide.
+Create a real user-owned Next.js application with the [official `create-next-app` workflow](https://nextjs.org/docs/app/getting-started/installation):
+
+```bash
+npx create-next-app@latest my-app --yes
+```
 
 ## Prerequisites
 
@@ -13,26 +17,22 @@ The application source, styling, Dockerfile, and Next.js configuration come from
 - Your public key added to the `sshdock` operator account.
 - Local `curl`, `git`, and `tar` commands.
 
-Replace `example.com` in the commands below with your SSHDock base domain.
+Replace `example.com` below with the server's base domain.
 
 ## Topology
 
-The root `compose.yml` defines one `web` service. The upstream multi-stage Dockerfile builds standalone output and runs it as the non-root `node` user on port `3000`. Compose publishes that service only on `127.0.0.1:18100`, checks the real root page, and applies `restart: unless-stopped`. SSHDock can infer the single web target and route HTTPS through Caddy.
+The root `compose.yml` builds one `web` service. The Dockerfile generates the official starter in a source stage, builds it in an intermediate stage, prunes development dependencies, and copies only production output and runtime dependencies into the final non-root image. Compose publishes port `3000` only on `127.0.0.1:18100`, checks the real starter page, and applies `restart: unless-stopped`.
 
 ## Pinned versions
 
-- Upstream template revision `153bf8ac5fa00888ef5fbb2b65cac12f0942a44f`
-- Next.js `16.2.10`
-- React and React DOM `19.2.7`
-- Tailwind CSS `4.3.2`
-- TypeScript `5.9.3`
-- Node image `24.13.0-slim`
+- Generator and framework source: `create-next-app@16.2.10`
+- Builder and runtime: `node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f`
 
-Direct dependencies are exact pins. `package-lock.json` keeps transitive npm dependencies reproducible, including an override to the patched PostCSS `8.5.10` release.
+The generator version and multi-platform Node manifest are immutable inputs. npm registry availability and transitive resolution can still change, so this is a tested compatibility claim for this SSHDock commit, not a promise of bit-for-bit rebuilds forever.
 
 ## Deploy
 
-Until a release tag contains this quickstart, copy it explicitly from the `main` branch:
+Until a release tag contains this probe, copy its three-file envelope from `main`:
 
 ```bash
 mkdir nextjs
@@ -46,34 +46,26 @@ git remote add sshdock git@sshdock.example.com:nextjs.git
 git push sshdock main
 ```
 
-The first push creates the `nextjs` app, builds the production image, waits for the root page to become healthy, and creates the default route when the server has a base domain.
+The first push creates the app, builds the generated production application, waits for its healthcheck, and creates the default route when the server has a base domain.
 
 ## Verify
 
-Verify the public user surface from your machine:
+Verify HTTPS and the official generated starter page:
 
 ```bash
 curl -I http://nextjs.example.com
 curl -fsS https://nextjs.example.com
-```
-
-Expected evidence:
-
-- HTTP redirects to HTTPS.
-- HTTPS contains `Welcome to Next.js on Docker` from the upstream template.
-
-Verify SSHDock's view from the server:
-
-```bash
 sudo sshdock apps health nextjs
 sudo sshdock domains check nextjs
 sudo sshdock deployments list nextjs
 sudo sshdock events list nextjs
 ```
 
+HTTP redirects to HTTPS, and HTTPS returns the official `create-next-app` starter.
+
 ## Operate
 
-Inspect bounded logs, restart the application, and confirm the route recovers:
+Inspect bounded logs, restart the Compose service, and verify recovery:
 
 ```bash
 sudo sshdock logs nextjs web --tail 100
@@ -82,42 +74,43 @@ sudo sshdock apps health nextjs
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nextjs.example.com
 ```
 
-The Compose restart policy also restarts the service after Docker or the host restarts.
+To rebuild and deploy the same Git commit explicitly:
+
+```bash
+sudo sshdock apps redeploy nextjs
+```
 
 ## Upgrade
 
-Review the current supported releases in the official Next.js and React release notes. Then update the exact direct dependency pins and lockfile, build locally, and push the tested commit:
+Choose a tested `create-next-app` release and supported Node image, update the two Dockerfile arguments and recorded digest, then build the complete generated probe before pushing:
 
 ```bash
-npm install --save-exact next@<version> react@<version> react-dom@<version>
-npm run typecheck
-npm run build
-git add package.json package-lock.json
-git commit -m "Upgrade Next.js"
+docker compose build --pull
+docker compose up --wait
+curl -fsS http://127.0.0.1:18100
+git add Dockerfile README.md
+git commit -m "Upgrade Next.js probe"
 git push sshdock main
 ```
 
-When updating from the upstream Docker template, inspect its changes instead of replacing SSHDock's loopback port, healthcheck, or restart policy. Update the exact Node image tag when the template moves to a supported Node LTS patch.
+Review the generated starter and official Next.js release notes when changing versions. Do not commit the generated application tree or dependency manifests.
 
 ## Cleanup
 
-Ordinary removal deletes SSHDock metadata, routes, and Compose containers for this stateless example:
+Ordinary removal deletes SSHDock metadata, routes, and Compose containers:
 
 ```bash
 sudo sshdock apps remove nextjs --force
-sudo sshdock apps list
 ```
-
-No Docker volume cleanup is needed because this quickstart declares no named volumes.
 
 ## Persistence
 
-The application is stateless. Source comes from Git, and the image is rebuilt from the pushed commit. Add a named volume only when an application has data that must outlive a container.
+The generated starter is stateless. The probe declares no named volumes, so no volume cleanup is required.
 
 ## Limitations
 
-This quickstart proves the official Next.js Node.js server and App Router Docker shape. It does not demonstrate a database, external object storage, background jobs, image-optimization storage, zero-downtime deployment, or platform-specific Next.js adapters.
+This probe proves the official generated App Router starter, production build and server, health, logs, restart, redeploy, and HTTPS routing. It does not demonstrate a database, object storage, background jobs, zero-downtime deployment, or platform-specific adapters.
 
 ## Security boundaries
 
-The public HTTP port binds to IPv4 loopback so Caddy is the external HTTP and HTTPS entry point. The container runs as a non-root user. SSHDock accepts trusted-owner Compose files; it does not sandbox malicious images or application code. Host patching, firewall policy, Docker maintenance, and Caddy maintenance remain operator responsibilities.
+The public HTTP port binds to IPv4 loopback so Caddy remains the external HTTP and HTTPS entry point. The final container runs as the non-root `node` user. SSHDock accepts trusted-owner Compose files; it does not sandbox malicious images or application code. Host patching, firewall policy, Docker maintenance, and Caddy maintenance remain operator responsibilities.

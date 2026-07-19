@@ -3,6 +3,7 @@ package harness
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ type publicExampleContract struct {
 	guidePath     string
 	path          string
 	requiredFiles []string
+	exactFiles    []string
 }
 
 func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
@@ -27,21 +29,10 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Framework quickstarts",
 			guidePath: "examples/frameworks/nextjs",
 			path:      filepath.Join(root, "examples", "frameworks", "nextjs"),
-			requiredFiles: []string{
-				".dockerignore",
-				".gitignore",
+			exactFiles: []string{
 				"Dockerfile",
 				"README.md",
 				"compose.yml",
-				"next.config.ts",
-				"package-lock.json",
-				"package.json",
-				"postcss.config.js",
-				"tsconfig.json",
-				filepath.Join("public", "next.svg"),
-				filepath.Join("app", "globals.css"),
-				filepath.Join("app", "layout.tsx"),
-				filepath.Join("app", "page.tsx"),
 			},
 		},
 		{
@@ -124,6 +115,12 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 				path := filepath.Join(example.path, requiredFile)
 				if !fileExists(path) {
 					t.Fatalf("required file %s does not exist", path)
+				}
+			}
+			if example.exactFiles != nil {
+				files := repositoryFiles(t, example.path)
+				if !slices.Equal(files, example.exactFiles) {
+					t.Fatalf("repository files = %v, want %v", files, example.exactFiles)
 				}
 			}
 			composePath, err := compose.DetectFile(example.path)

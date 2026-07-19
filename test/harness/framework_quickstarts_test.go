@@ -1,36 +1,35 @@
 package harness
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
 
-func TestNextJSQuickstart_contract_when_built_for_production(t *testing.T) {
-	// Given the registered Next.js quickstart.
+func TestNextJSCompatibilityProbe_contract_when_generated_for_production(t *testing.T) {
+	// Given the registered Next.js compatibility probe.
 	root := repoRoot(t)
 	dir := filepath.Join(root, "examples", "frameworks", "nextjs")
 
-	// When its dependency, image, and Compose contracts are inspected.
-	packageJSON := readPackageJSON(t, filepath.Join(dir, "package.json"))
-	for group, dependencies := range map[string]map[string]string{
-		"dependencies":    packageJSON.Dependencies,
-		"devDependencies": packageJSON.DevDependencies,
-		"overrides":       packageJSON.Overrides,
-	} {
-		for name, version := range dependencies {
-			if !exactVersionPattern.MatchString(version) {
-				t.Fatalf("%s %s version %q is not pinned exactly", group, name, version)
-			}
-		}
-	}
-
+	// When its generator, image, production, and Compose contracts are inspected.
 	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
 	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
-	for _, want := range []string{"npm ci", "npm run build", ".next/standalone", "CMD [\"node\", \"server.js\"]"} {
+	for _, want := range []string{
+		"ARG CREATE_NEXT_APP_VERSION=16.2.10",
+		"ARG NODE_IMAGE=node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f",
+		"FROM ${NODE_IMAGE} AS source",
+		"npx --yes create-next-app@${CREATE_NEXT_APP_VERSION} . --yes --use-npm --disable-git",
+		"FROM ${NODE_IMAGE} AS build",
+		"npm run build",
+		"npm prune --omit=dev",
+		"FROM build AS runtime-output",
+		"rm -rf .next/cache .next/diagnostics .next/types",
+		"FROM ${NODE_IMAGE} AS runtime",
+		"COPY --from=runtime-output --chown=node:node /app/.next ./.next",
+		"COPY --from=runtime-output --chown=node:node /app/node_modules ./node_modules",
+		"USER node",
+		"CMD [\"npm\", \"start\"]",
+	} {
 		if !strings.Contains(dockerfile, want) {
 			t.Fatalf("Dockerfile missing production marker %q", want)
 		}
@@ -47,12 +46,16 @@ func TestNextJSQuickstart_contract_when_built_for_production(t *testing.T) {
 	// Then the documented workflow covers the complete user-visible lifecycle.
 	readme := readTextFile(t, filepath.Join(dir, "README.md"))
 	for _, want := range []string{
+		"create-next-app@16.2.10",
+		"node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f",
+		"npx create-next-app@latest my-app --yes",
+		"https://nextjs.org/docs/app/getting-started/installation",
 		"git push sshdock main",
 		"curl -fsS https://nextjs.example.com",
 		"sshdock apps health nextjs",
 		"sshdock logs nextjs web",
 		"sshdock apps restart nextjs",
-		"npm install --save-exact",
+		"sshdock apps redeploy nextjs",
 		"sshdock apps remove nextjs --force",
 	} {
 		if !strings.Contains(readme, want) {
@@ -60,8 +63,6 @@ func TestNextJSQuickstart_contract_when_built_for_production(t *testing.T) {
 		}
 	}
 }
-
-var exactVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`)
 
 func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
 	// Given the official Nest CLI starter with its additive SSHDock envelope.
@@ -171,23 +172,4 @@ func TestLaravelQuickstart_contract_when_built_for_production(t *testing.T) {
 			t.Fatalf("README missing workflow or provenance marker %q", want)
 		}
 	}
-}
-
-type packageManifest struct {
-	Dependencies    map[string]string `json:"dependencies"`
-	DevDependencies map[string]string `json:"devDependencies"`
-	Overrides       map[string]string `json:"overrides"`
-}
-
-func readPackageJSON(t *testing.T, path string) packageManifest {
-	t.Helper()
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%s): %v", path, err)
-	}
-	var manifest packageManifest
-	if err := json.Unmarshal(contents, &manifest); err != nil {
-		t.Fatalf("decode %s: %v", path, err)
-	}
-	return manifest
 }

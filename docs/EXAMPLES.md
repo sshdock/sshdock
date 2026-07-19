@@ -16,9 +16,9 @@ Framework quickstarts teach the SSHDock integration path, not the framework itse
 
 Path: [`examples/frameworks/nextjs`](../examples/frameworks/nextjs/README.md)
 
-The Next.js quickstart starts from Vercel's official Docker standalone template, then adds exact dependency pins, one loopback-bound web port, a Compose healthcheck, and SSHDock operations guidance.
+The Next.js compatibility probe generates the unmodified official starter during its pinned image build. The repository keeps only the three-file SSHDock deployment envelope: a multi-stage Dockerfile, one loopback-bound Compose service with health and restart behavior, and an operations README.
 
-Until a release tag contains the quickstart, copy it explicitly from `main`:
+Until a release tag contains the probe, copy it explicitly from `main`:
 
 ```bash
 mkdir nextjs
@@ -43,14 +43,14 @@ sudo sshdock apps restart nextjs
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nextjs.example.com
 ```
 
-Upgrade exact dependency pins, verify the production build, and push the new commit:
+Upgrade the pinned generator and Node image inputs, verify the generated production application, and push the new commit:
 
 ```bash
-npm install --save-exact next@<version> react@<version> react-dom@<version>
-npm run typecheck
-npm run build
-git add package.json package-lock.json
-git commit -m "Upgrade Next.js"
+docker compose build --pull
+docker compose up --wait
+curl -fsS http://127.0.0.1:18100
+git add Dockerfile README.md
+git commit -m "Upgrade Next.js probe"
 git push sshdock main
 ```
 
@@ -60,7 +60,7 @@ Clean up the stateless example:
 sudo sshdock apps remove nextjs --force
 ```
 
-See the quickstart README for topology, pinned versions, expected evidence, persistence, limitations, and security boundaries.
+See the probe README for exact generator and image provenance, topology, expected evidence, persistence, limitations, and security boundaries.
 
 ### NestJS
 

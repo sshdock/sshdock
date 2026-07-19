@@ -171,12 +171,13 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 	requireDocker(t)
 
 	tests := []struct {
-		name        string
-		directory   string
-		projectName string
-		url         string
-		wantBody    []string
-		env         map[string]string
+		name         string
+		directory    string
+		projectName  string
+		url          string
+		wantBody     []string
+		env          map[string]string
+		runtimeCheck string
 	}{
 		{
 			name:        "Next.js",
@@ -193,12 +194,13 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			wantBody:    []string{"Hello World!"},
 		},
 		{
-			name:        "Laravel",
-			directory:   "laravel",
-			projectName: "laravel-public-example-e2e",
-			url:         "http://127.0.0.1:18102",
-			wantBody:    []string{"Documentation", "Deploy now"},
-			env:         map[string]string{"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+			name:         "Laravel",
+			directory:    "laravel",
+			projectName:  "laravel-public-example-e2e",
+			url:          "http://127.0.0.1:18102",
+			wantBody:     []string{"Documentation", "Deploy now"},
+			env:          map[string]string{"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+			runtimeCheck: `test -z "$(find /app -name .gitignore -print -quit)" && test ! -e /app/storage/framework/testing && test ! -e /app/composer.json && test ! -e /app/package.json && test ! -e /app/tests && test ! -e /app/vendor/bin/phpunit`,
 		},
 	}
 	for _, test := range tests {
@@ -242,6 +244,9 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 				if !strings.Contains(string(body), want) {
 					t.Fatalf("%s response missing %q", test.name, want)
 				}
+			}
+			if test.runtimeCheck != "" {
+				runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "exec", "-T", "web", "sh", "-c", test.runtimeCheck)
 			}
 		})
 	}

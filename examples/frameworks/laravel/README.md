@@ -1,44 +1,44 @@
-# Laravel on SSHDock
+# Laravel framework compatibility probe
 
 ## Purpose
 
-Deploy Laravel's smallest official application skeleton through a production FrankenPHP runtime without changing the starter application, tests, or dependency manifests.
+This probe generates the unmodified official Laravel application skeleton inside the image and serves its production output with FrankenPHP through SSHDock. It is point-in-time compatibility evidence, not editable starter source or a Laravel tutorial.
+
+Create a real user-owned application with the [official Laravel installation workflow](https://laravel.com/docs/13.x/installation):
+
+```bash
+laravel new example-app
+```
+
+The equivalent Composer package bootstrap used by this probe is `composer create-project laravel/laravel example-app` with an exact skeleton version.
 
 ## Prerequisites
 
-- An SSHDock server with a base domain and deploy key configured
-- Git, curl, and OpenSSL on the local machine
-- Docker only when verifying or regenerating the starter locally
+- A working SSHDock server with a base domain and deploy key configured.
+- DNS for `*.example.com` pointing at the server.
+- Local `curl`, `git`, `openssl`, and `tar` commands.
+
+Replace `example.com` below with the server's base domain.
 
 ## Topology
 
-The root Compose file builds one `web` service, publishes FrankenPHP only on `127.0.0.1:18102`, checks Laravel's built-in `/up` health route, and restarts the container after a host reboot. SSHDock routes HTTPS traffic to that loopback-bound port.
+The root `compose.yml` builds one `web` service. Intermediate stages generate `laravel/laravel:13.8.0`, install production Composer dependencies, and build Vite assets. The final image contains only the production application and runtime dependencies, runs FrankenPHP as `www-data`, and never bootstraps the application at container startup.
 
-The production image builds Vite assets with Node, installs locked Composer dependencies, enables PHP production settings and SQLite, and runs FrankenPHP as `www-data`. A named volume mounted at `/app/storage` preserves logs, file sessions, cache data, and the optional SQLite database across redeploys.
+Compose publishes port `8080` only on `127.0.0.1:18102`, checks Laravel's real `/up` route, applies `restart: unless-stopped`, and mounts named `laravel_storage` at `/app/storage` for writable persistence. `APP_URL` and `ASSET_URL` default to the HTTPS route.
 
 ## Pinned versions
 
-- Official skeleton: `laravel/laravel:v13.8.0`
-- Source commit: `e196bfdfc96903f2e10219749fcbca7c0aefe99f`
-- PHP web runtime: `dunglas/frankenphp:1.12.3-php8.5-alpine`
-- Composer image: `composer:2.10.2`
-- Asset image: `node:24.18.0-alpine3.24`
-- Generated PHP dependency tree: `composer.lock`
-- Generated JavaScript dependency tree: `package-lock.json`
+- Official skeleton: `laravel/laravel:13.8.0`
+- Skeleton source tag: [`v13.8.0`](https://github.com/laravel/laravel/releases/tag/v13.8.0)
+- Generator: `composer:2.10.2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760`
+- Asset builder: `node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd`
+- PHP runtime: `dunglas/frankenphp:1.12.3-php8.5-alpine@sha256:19eda5f22186afeda3aaa70f103a7019bbcff57980da8069f7861c1034aa81ae`
 
-The starter and lockfiles were generated with:
-
-```bash
-composer create-project --no-interaction --prefer-dist laravel/laravel laravel v13.8.0
-cd laravel
-npm install --package-lock-only --ignore-scripts
-```
-
-The generated `.env`, `vendor`, `node_modules`, Composer cache files, migrated SQLite file, and upstream README are not part of this quickstart. Starter-owned application files and both dependency manifests remain unchanged; only `.dockerignore`, `Dockerfile`, `compose.yml`, and this operations README form the SSHDock envelope.
+The skeleton version and multi-platform image manifests are immutable inputs. Composer and npm registry availability can still change, so this is a tested compatibility claim for this SSHDock commit, not a promise of bit-for-bit rebuilds forever.
 
 ## Deploy
 
-Until a release tag contains this quickstart, copy it explicitly from `main`:
+Until a release tag contains this probe, copy its three-file envelope from `main`:
 
 ```bash
 mkdir laravel
@@ -52,7 +52,7 @@ git remote add sshdock git@sshdock.example.com:laravel.git
 git push sshdock main
 ```
 
-The first accepted push creates `laravel` but deployment stops before startup because `APP_KEY` is required. Store a fresh application key through the restricted SSH config surface, inspect the redacted key list, redeploy current remote `main`, then attach the conventional domain explicitly:
+The accepted push creates the app but stops before build because Compose requires `APP_KEY`. Recover through the restricted config surface, confirm the value is redacted, redeploy current remote `main`, and attach the conventional route:
 
 ```bash
 printf 'base64:%s' "$(openssl rand -base64 32)" \
@@ -62,9 +62,7 @@ sudo sshdock apps redeploy laravel
 sudo sshdock domains attach laravel web laravel.example.com --port 18102
 ```
 
-The redeploy builds the production image and waits for `/up`. Automatic first-route creation belongs to a successful Git-receive deployment, so recovery from required config uses the supported manual attach command before verifying `https://laravel.example.com`.
-
-The Compose defaults make both the application URL and generated asset URLs use `https://laravel.example.com`. If you deploy under a different hostname, store that HTTPS URL as `APP_URL` before redeploying.
+Set `APP_URL` through the same config surface before redeploying when the hostname differs. Automatic first-route creation belongs to a successful Git-receive deployment, so required-config recovery attaches the route explicitly.
 
 ## Verify
 
@@ -73,40 +71,41 @@ curl -I http://laravel.example.com
 curl -fsS https://laravel.example.com
 curl -fsS https://laravel.example.com/up
 sudo sshdock apps health laravel
+sudo sshdock domains check laravel
+sudo sshdock deployments list laravel
+sudo sshdock events list laravel
 ```
 
-The HTTPS response is Laravel's official welcome page. The health endpoint returns a successful empty response.
+HTTP redirects to HTTPS, HTTPS returns the official generated welcome page, and `/up` reports healthy.
 
 ## Operate
 
 ```bash
 sudo sshdock logs laravel web --tail 100
-sudo sshdock apps restart laravel
-curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://laravel.example.com
 ssh sshdock@sshdock.example.com apps exec laravel web -- php artisan about
 ssh sshdock@sshdock.example.com apps run laravel web -- php artisan migrate --force
+sudo sshdock apps restart laravel
+sudo sshdock apps health laravel
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://laravel.example.com
+sudo sshdock apps redeploy laravel
 ```
 
-Use `sudo sshdock apps redeploy laravel` when you need another deployment attempt for current remote `main`, such as after later config changes. Existing routes remain attached.
+The named volume preserves storage and the SQLite database across restart and redeploy.
 
 ## Upgrade
 
-Generate the desired exact `laravel/laravel` version in a temporary directory. Replace the starter as one unit, retain the four SSHDock envelope files, regenerate both lockfiles, run the starter tests and production image, and push the replacement commit:
+Choose a tested `laravel/laravel` release and supported Composer, Node, and FrankenPHP images. Update the four Dockerfile arguments and recorded digests, then build the complete generated probe before pushing:
 
 ```bash
-composer create-project --no-interaction --prefer-dist laravel/laravel laravel <version>
-cd laravel
-npm install --package-lock-only --ignore-scripts
-php artisan test
-npm ci
-npm run build
-docker build .
-git add .
-git commit -m "Upgrade Laravel"
+APP_KEY='base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' docker compose build --pull
+APP_KEY='base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' docker compose up --wait
+curl -fsS http://127.0.0.1:18102
+git add Dockerfile README.md
+git commit -m "Upgrade Laravel probe"
 git push sshdock main
 ```
 
-Update the recorded source commit and image versions. Do not hand-edit starter application files or dependency manifests during the upgrade.
+Review the generated skeleton and official Laravel upgrade guide when changing versions. Do not commit generated application source, manifests, lockfiles, caches, or build output.
 
 ## Cleanup
 
@@ -114,16 +113,16 @@ Update the recorded source commit and image versions. Do not hand-edit starter a
 sudo sshdock apps remove laravel --force
 ```
 
-Ordinary app removal preserves the Docker volume. Delete that volume separately through server administration only when its sessions, logs, cache data, and SQLite data are intentionally disposable.
+Ordinary app removal preserves `laravel_storage`. Delete the volume separately through server administration only when its sessions, logs, cache, and SQLite data are intentionally disposable.
 
 ## Persistence
 
-The `laravel_storage` named volume persists Laravel's writable storage and SQLite database across restart, redeploy, and app removal. The official starter does not add an external database service.
+`laravel_storage` persists Laravel's writable storage and SQLite database across restart, redeploy, and app removal. The probe adds no external database service.
 
 ## Limitations
 
-The quickstart proves the official Laravel welcome page, production serving, required secret config, health, logs, restricted exec and one-off commands, persistence, restart, redeploy, and HTTPS routing. It intentionally adds no authentication starter kit, application feature, queue worker, scheduler, Redis, or external database.
+This probe proves the official generated welcome page, production serving, required config recovery, HTTPS URLs, health, logs, restricted exec and one-off commands, persistence, restart, redeploy, and routing. It adds no starter kit, application feature, queue worker, scheduler, Redis, or external database.
 
 ## Security boundaries
 
-The application port is bound to IPv4 loopback, so public access is expected through SSHDock's Caddy route. FrankenPHP runs as `www-data`, and `APP_KEY` enters only through SSHDock config. Normal config listings stay redacted. The application remains trusted-owner Compose code; the example does not claim workload sandboxing.
+The application port binds to IPv4 loopback so Caddy remains the public HTTP and HTTPS entry point. The final container runs as non-root `www-data`, and `APP_KEY` enters only through SSHDock config with redacted listings. SSHDock accepts trusted-owner Compose code; it does not sandbox malicious images or application code.

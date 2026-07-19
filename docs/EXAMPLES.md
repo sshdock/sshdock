@@ -107,9 +107,9 @@ See the quickstart README for exact provenance, topology, upgrade boundaries, ex
 
 Path: [`examples/frameworks/laravel`](../examples/frameworks/laravel/README.md)
 
-The Laravel quickstart preserves the official application skeleton and adds a multi-stage FrankenPHP production image, required `APP_KEY` interpolation, one loopback-bound web port, persistent writable storage, Compose health, and SSHDock operations guidance.
+The Laravel compatibility probe generates the unmodified official skeleton during its pinned image build. The repository keeps only a three-file SSHDock envelope: a multi-stage FrankenPHP Dockerfile, one loopback-bound Compose service with required `APP_KEY`, HTTPS URLs, health, restart behavior and named storage, and an operations README.
 
-Until a release tag contains the quickstart, copy it explicitly from `main`:
+Until a release tag contains the probe, copy it explicitly from `main`:
 
 ```bash
 mkdir laravel
@@ -143,7 +143,7 @@ sudo sshdock apps restart laravel
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://laravel.example.com
 ```
 
-Upgrade by regenerating the official starter as one unit at an exact version, reapply the SSHDock deployment envelope, regenerate the lockfiles, run the starter tests and production build, and push the replacement commit.
+Upgrade by changing the exact skeleton and image inputs in the Dockerfile, verifying the generated production image, and pushing only the three-file envelope. Generated source, manifests, lockfiles, caches, and build output stay outside the repository.
 
 Clean up the app while preserving its named storage volume:
 
@@ -151,7 +151,7 @@ Clean up the app while preserving its named storage volume:
 sudo sshdock apps remove laravel --force
 ```
 
-See the quickstart README for exact provenance, required config, topology, persistence, restricted operations, upgrade boundaries, limitations, and security boundaries.
+See the probe README for exact provenance, config recovery, topology, persistence, restricted operations, upgrade boundaries, limitations, and security boundaries.
 
 ## Software recipes
 

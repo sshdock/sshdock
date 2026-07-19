@@ -113,21 +113,30 @@ func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
 	}
 }
 
-func TestLaravelQuickstart_contract_when_built_for_production(t *testing.T) {
-	// Given the official Laravel application skeleton with its additive SSHDock envelope.
+func TestLaravelCompatibilityProbe_contract_when_generated_for_production(t *testing.T) {
+	// Given the registered Laravel compatibility probe.
 	root := repoRoot(t)
 	dir := filepath.Join(root, "examples", "frameworks", "laravel")
 
-	// When its image, runtime, config, persistence, and Compose contracts are inspected.
+	// When its generator, image, runtime, config, persistence, and Compose contracts are inspected.
 	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
 	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
 	for _, want := range []string{
-		"FROM node:24.18.0-alpine3.24 AS assets",
-		"FROM dunglas/frankenphp:1.12.3-php8.5-alpine AS base",
-		"COPY --from=composer:2.10.2 /usr/bin/composer /usr/bin/composer",
-		"npm ci",
-		"npm run build",
+		"ARG LARAVEL_SKELETON_VERSION=13.8.0",
+		"ARG COMPOSER_IMAGE=composer:2.10.2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760",
+		"ARG NODE_IMAGE=node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+		"ARG FRANKENPHP_IMAGE=dunglas/frankenphp:1.12.3-php8.5-alpine@sha256:19eda5f22186afeda3aaa70f103a7019bbcff57980da8069f7861c1034aa81ae",
+		"FROM ${COMPOSER_IMAGE} AS source",
+		"composer create-project --no-interaction --prefer-dist --no-install --no-scripts laravel/laravel:${LARAVEL_SKELETON_VERSION} .",
+		"FROM ${FRANKENPHP_IMAGE} AS base",
+		"FROM base AS dependencies",
 		"composer install --no-dev",
+		"FROM ${NODE_IMAGE} AS assets",
+		"npm install --no-audit --no-fund",
+		"npm run build",
+		"FROM dependencies AS runtime-output",
+		"FROM base AS runtime",
+		"COPY --from=runtime-output --chown=www-data:www-data /app ./",
 		"php.ini-production",
 		"USER www-data",
 	} {
@@ -136,7 +145,7 @@ func TestLaravelQuickstart_contract_when_built_for_production(t *testing.T) {
 		}
 	}
 	if strings.Contains(dockerfile, "artisan serve") || strings.Contains(composeFile, "artisan serve") {
-		t.Fatal("production quickstart must not run Laravel's development server")
+		t.Fatal("production compatibility probe must not run Laravel's development server")
 	}
 	for _, want := range []string{
 		"127.0.0.1:18102:8080",
@@ -154,8 +163,13 @@ func TestLaravelQuickstart_contract_when_built_for_production(t *testing.T) {
 	// Then its public workflow records exact provenance and covers the complete lifecycle.
 	readme := readTextFile(t, filepath.Join(dir, "README.md"))
 	for _, want := range []string{
-		"laravel/laravel:v13.8.0",
-		"e196bfdfc96903f2e10219749fcbca7c0aefe99f",
+		"Laravel framework compatibility probe",
+		"laravel/laravel:13.8.0",
+		"composer:2.10.2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760",
+		"node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+		"dunglas/frankenphp:1.12.3-php8.5-alpine@sha256:19eda5f22186afeda3aaa70f103a7019bbcff57980da8069f7861c1034aa81ae",
+		"https://laravel.com/docs/13.x/installation",
+		"composer create-project laravel/laravel example-app",
 		"git push sshdock main",
 		"config set laravel APP_KEY",
 		"domains attach laravel web laravel.example.com --port 18102",

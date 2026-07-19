@@ -64,20 +64,26 @@ func TestNextJSCompatibilityProbe_contract_when_generated_for_production(t *test
 	}
 }
 
-func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
-	// Given the official Nest CLI starter with its additive SSHDock envelope.
+func TestNestJSCompatibilityProbe_contract_when_generated_for_production(t *testing.T) {
+	// Given the registered NestJS compatibility probe.
 	root := repoRoot(t)
 	dir := filepath.Join(root, "examples", "frameworks", "nestjs")
 
-	// When its image, runtime, and Compose contracts are inspected.
+	// When its generator, image, runtime, and Compose contracts are inspected.
 	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
 	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
 	for _, want := range []string{
-		"FROM node:24.18.0-alpine3.24 AS build",
-		"FROM node:24.18.0-alpine3.24 AS runtime",
-		"npm ci",
+		"ARG NEST_CLI_VERSION=11.0.24",
+		"ARG NODE_IMAGE=node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+		"FROM ${NODE_IMAGE} AS source",
+		"npx --yes @nestjs/cli@${NEST_CLI_VERSION} new app --package-manager npm --strict --skip-git",
+		"FROM source AS build",
 		"npm run build",
-		"npm ci --omit=dev",
+		"npm prune --omit=dev --no-audit --no-fund",
+		"FROM build AS runtime-output",
+		"FROM ${NODE_IMAGE} AS runtime",
+		"COPY --from=runtime-output --chown=node:node /workspace/app/dist ./dist",
+		"COPY --from=runtime-output --chown=node:node /workspace/app/node_modules ./node_modules",
 		"USER node",
 		"CMD [\"node\", \"dist/main\"]",
 	} {
@@ -86,7 +92,7 @@ func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
 		}
 	}
 	if strings.Contains(dockerfile, "start:dev") || strings.Contains(composeFile, "start:dev") {
-		t.Fatal("production quickstart must not run the NestJS development server")
+		t.Fatal("production compatibility probe must not run the NestJS development server")
 	}
 	for _, want := range []string{"127.0.0.1:18101:3000", "healthcheck:", "restart: unless-stopped"} {
 		if !strings.Contains(composeFile, want) {
@@ -94,21 +100,24 @@ func TestNestJSQuickstart_contract_when_built_for_production(t *testing.T) {
 		}
 	}
 
-	// Then its public workflow records provenance and covers the complete lifecycle.
+	// Then its public workflow records exact provenance and covers the complete lifecycle.
 	readme := readTextFile(t, filepath.Join(dir, "README.md"))
 	for _, want := range []string{
-		"@nestjs/cli@11.0.24 new nestjs --package-manager npm --strict",
+		"NestJS framework compatibility probe",
+		"@nestjs/cli@11.0.24",
+		"node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+		"https://docs.nestjs.com/first-steps",
+		"npx @nestjs/cli@latest new my-app --package-manager npm --strict",
 		"git push sshdock main",
 		"curl -fsS https://nestjs.example.com",
 		"sshdock apps health nestjs",
 		"sshdock logs nestjs web",
 		"sshdock apps restart nestjs",
 		"sshdock apps redeploy nestjs",
-		"npm run test:e2e",
 		"sshdock apps remove nestjs --force",
 	} {
 		if !strings.Contains(readme, want) {
-			t.Fatalf("README missing workflow command %q", want)
+			t.Fatalf("README missing workflow or provenance marker %q", want)
 		}
 	}
 }

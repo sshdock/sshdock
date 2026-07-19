@@ -66,9 +66,9 @@ See the probe README for exact generator and image provenance, topology, expecte
 
 Path: [`examples/frameworks/nestjs`](../examples/frameworks/nestjs/README.md)
 
-The NestJS quickstart preserves the official Nest CLI TypeScript starter and adds a two-stage production image, one loopback-bound web port, Compose health, and SSHDock operations guidance.
+The NestJS compatibility probe generates the unmodified official starter during its pinned image build. The repository keeps only the three-file SSHDock deployment envelope: a multi-stage Dockerfile, one loopback-bound Compose service with health and restart behavior, and an operations README.
 
-Until a release tag contains the quickstart, copy it explicitly from `main`:
+Until a release tag contains the probe, copy it explicitly from `main`:
 
 ```bash
 mkdir nestjs
@@ -93,7 +93,7 @@ sudo sshdock apps restart nestjs
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nestjs.example.com
 ```
 
-Upgrade by regenerating the official starter as one unit with an exact Nest CLI version, reapply the SSHDock deployment envelope, run the generated tests and production build, and push the replacement commit.
+Upgrade the pinned generator and Node image inputs, verify the generated production API, and push only the three-file envelope. Generated source, manifests, lockfiles, caches, and build output stay outside the repository.
 
 Clean up the stateless example:
 
@@ -101,7 +101,7 @@ Clean up the stateless example:
 sudo sshdock apps remove nestjs --force
 ```
 
-See the quickstart README for exact provenance, topology, upgrade boundaries, expected evidence, persistence, limitations, and security boundaries.
+See the probe README for exact generator and image provenance, topology, expected evidence, persistence, limitations, and security boundaries.
 
 ### Laravel
 

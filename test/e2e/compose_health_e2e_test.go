@@ -187,11 +187,12 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			wantBody:    []string{"To get started, edit the page.tsx file.", "Deploy Now"},
 		},
 		{
-			name:        "NestJS",
-			directory:   "nestjs",
-			projectName: "nestjs-public-example-e2e",
-			url:         "http://127.0.0.1:18101",
-			wantBody:    []string{"Hello World!"},
+			name:         "NestJS",
+			directory:    "nestjs",
+			projectName:  "nestjs-public-example-e2e",
+			url:          "http://127.0.0.1:18101",
+			wantBody:     []string{"Hello World!"},
+			runtimeCheck: "test ! -e /app/src && test ! -e /app/test && test ! -e /app/package.json && test ! -e /app/package-lock.json && test ! -e /app/nest-cli.json && test ! -e /app/tsconfig.json && test ! -e /app/node_modules/@nestjs/cli",
 		},
 		{
 			name:         "Laravel",

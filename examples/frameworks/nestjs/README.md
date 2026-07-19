@@ -1,38 +1,38 @@
-# NestJS on SSHDock
+# NestJS framework compatibility probe
 
 ## Purpose
 
-Deploy Nest's smallest official TypeScript starter as a production API without changing its generated application, tests, dependency manifest, or lockfile.
+This probe builds the unmodified official Nest CLI TypeScript starter inside the image and deploys its production API through SSHDock. It is point-in-time compatibility evidence, not editable application source or a framework tutorial.
+
+Create a real user-owned application with the [official NestJS first-steps workflow](https://docs.nestjs.com/first-steps):
+
+```bash
+npx @nestjs/cli@latest new my-app --package-manager npm --strict
+```
 
 ## Prerequisites
 
-- An SSHDock server with a base domain and deploy key configured
-- Git and curl on the local machine
-- Node.js and npm only when verifying or regenerating the starter locally
+- A working SSHDock server with a base domain configured.
+- DNS for `*.example.com` pointing at the server.
+- Your public key added to the `sshdock` operator account.
+- Local `curl`, `git`, and `tar` commands.
+
+Replace `example.com` below with the server's base domain.
 
 ## Topology
 
-The root Compose file builds one `web` service, publishes its HTTP port only on `127.0.0.1:18101`, checks the official starter's `GET /` response, and restarts the container after a host reboot. SSHDock routes HTTPS traffic to that loopback-bound port.
-
-The image uses separate build and runtime stages. The runtime contains production dependencies and compiled JavaScript, runs as the image's non-root `node` user, and starts with `node dist/main`.
+The root `compose.yml` builds one `web` service. The Dockerfile runs the official generator in a source stage, builds and prunes development dependencies in intermediate stages, and copies only compiled output and production dependencies into the final non-root image. Compose publishes port `3000` only on `127.0.0.1:18101`, checks the official generated `GET /` response, and applies `restart: unless-stopped`.
 
 ## Pinned versions
 
-- Generator: `@nestjs/cli@11.0.24`
-- Runtime and build image: `node:24.18.0-alpine3.24`
-- Generated dependency tree: `package-lock.json`
+- Generator and framework source: `@nestjs/cli@11.0.24`
+- Builder and runtime: `node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd`
 
-The starter was generated with:
-
-```bash
-npx --yes @nestjs/cli@11.0.24 new nestjs --package-manager npm --strict
-```
-
-The generated `.git` directory is not part of this example, and the generated Nest README is replaced by this SSHDock operations README. Every other generated file is preserved as created and registered in the shared contract harness.
+The generator version and multi-platform Node manifest are immutable inputs. npm registry availability and transitive resolution can still change, so this is a tested compatibility claim for this SSHDock commit, not a promise of bit-for-bit rebuilds forever.
 
 ## Deploy
 
-Until a release tag contains this quickstart, copy it explicitly from `main`:
+Until a release tag contains this probe, copy its three-file envelope from `main`:
 
 ```bash
 mkdir nestjs
@@ -46,7 +46,7 @@ git remote add sshdock git@sshdock.example.com:nestjs.git
 git push sshdock main
 ```
 
-SSHDock builds the image, waits for the Compose healthcheck, and creates the default `https://nestjs.example.com` route.
+The first push creates the app, builds the generated production API, waits for its healthcheck, and creates the default route when the server has a base domain.
 
 ## Verify
 
@@ -54,6 +54,9 @@ SSHDock builds the image, waits for the Compose healthcheck, and creates the def
 curl -I http://nestjs.example.com
 curl -fsS https://nestjs.example.com
 sudo sshdock apps health nestjs
+sudo sshdock domains check nestjs
+sudo sshdock deployments list nestjs
+sudo sshdock events list nestjs
 ```
 
 The HTTPS response is the official starter result:
@@ -67,26 +70,30 @@ Hello World!
 ```bash
 sudo sshdock logs nestjs web --tail 100
 sudo sshdock apps restart nestjs
+sudo sshdock apps health nestjs
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://nestjs.example.com
 ```
 
-Use `sudo sshdock apps redeploy nestjs` instead when you need a new deployment attempt for the current Git `main`.
+To rebuild and deploy the same Git commit explicitly:
+
+```bash
+sudo sshdock apps redeploy nestjs
+```
 
 ## Upgrade
 
-Regenerate the official starter as one unit with the desired exact CLI version in a temporary directory. Replace the generated starter files together, retain the four SSHDock envelope files (`.dockerignore`, `Dockerfile`, `compose.yml`, and this README), then rebuild and push:
+Choose a tested Nest CLI release and supported Node image, update the two Dockerfile arguments and recorded digest, then build the complete generated probe before pushing:
 
 ```bash
-npx --yes @nestjs/cli@<version> new nestjs --package-manager npm --strict
-npm test -- --runInBand --no-watchman
-npm run test:e2e -- --runInBand --no-watchman
-npm run build
-git add .
-git commit -m "Upgrade NestJS"
+docker compose build --pull
+docker compose up --wait
+curl -fsS http://127.0.0.1:18101
+git add Dockerfile README.md
+git commit -m "Upgrade NestJS probe"
 git push sshdock main
 ```
 
-Update the recorded generator and Node image versions with the regenerated lockfile. Do not hand-edit the generated application or dependency manifest during the upgrade.
+Review the generated starter and official NestJS release notes when changing versions. Do not commit the generated application tree, dependency manifests, lockfiles, caches, or build output.
 
 ## Cleanup
 
@@ -96,12 +103,12 @@ sudo sshdock apps remove nestjs --force
 
 ## Persistence
 
-This official starter is stateless. It declares no volumes, database, or external service.
+The generated starter is stateless. The probe declares no volumes, so no volume cleanup is required.
 
 ## Limitations
 
-The quickstart proves NestJS production build, HTTP serving, health, logs, restart, redeploy, and HTTPS routing. It intentionally adds no API features, database, authentication, or framework tutorial.
+This probe proves the official generated API, production build and runtime, health, logs, restart, redeploy, and HTTPS routing. It does not demonstrate a database, authentication, background jobs, zero-downtime deployment, or framework development.
 
 ## Security boundaries
 
-The application port is bound to IPv4 loopback, so public access is expected through SSHDock's Caddy route. The container runs as the non-root `node` user. The example contains no secrets; add required values through SSHDock config and reference only the needed keys from Compose.
+The public HTTP port binds to IPv4 loopback so Caddy remains the external HTTP and HTTPS entry point. The final container runs as the non-root `node` user. SSHDock accepts trusted-owner Compose files; it does not sandbox malicious images or application code. Host patching, firewall policy, Docker maintenance, and Caddy maintenance remain operator responsibilities.

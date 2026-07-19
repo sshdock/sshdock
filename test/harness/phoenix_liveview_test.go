@@ -21,6 +21,7 @@ func TestPhoenixLiveViewCompatibilityProbe_contract_when_generated_for_productio
 		"mix archive.install hex phx_new ${PHX_NEW_VERSION} --force",
 		"mix phx.new app --database sqlite3 --no-mailer --no-dashboard --no-install --no-agents-md --no-version-check",
 		"mix phx.gen.live Catalog Item items name:string --no-scope",
+		`sed -i '/get "\/", PageController`,
 		"live \"/items\", ItemLive.Index, :index",
 		"mix phx.gen.release",
 		"MIX_ENV=prod mix compile",

@@ -13,10 +13,10 @@ RUN mix phx.new app --database sqlite3 --no-mailer --no-dashboard --no-install -
 WORKDIR /workspace/app
 RUN mix deps.get \
     && mix phx.gen.live Catalog Item items name:string --no-scope
-RUN sed -i '/get "\\/", PageController, :home/a\    live "/items/:id/edit", ItemLive.Form, :edit' lib/app_web/router.ex \
-    && sed -i '/get "\\/", PageController, :home/a\    live "/items/:id", ItemLive.Show, :show' lib/app_web/router.ex \
-    && sed -i '/get "\\/", PageController, :home/a\    live "/items/new", ItemLive.Form, :new' lib/app_web/router.ex \
-    && sed -i '/get "\\/", PageController, :home/a\    live "/items", ItemLive.Index, :index' lib/app_web/router.ex \
+RUN sed -i '/get "\/", PageController, :home/a\    live "/items/:id/edit", ItemLive.Form, :edit' lib/app_web/router.ex \
+    && sed -i '/get "\/", PageController, :home/a\    live "/items/:id", ItemLive.Show, :show' lib/app_web/router.ex \
+    && sed -i '/get "\/", PageController, :home/a\    live "/items/new", ItemLive.Form, :new' lib/app_web/router.ex \
+    && sed -i '/get "\/", PageController, :home/a\    live "/items", ItemLive.Index, :index' lib/app_web/router.ex \
     && mix phx.gen.release
 
 FROM source AS build

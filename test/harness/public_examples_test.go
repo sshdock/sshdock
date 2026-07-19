@@ -22,6 +22,8 @@ type publicExampleContract struct {
 func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	// Given the public example registry and its shared documentation contract.
 	t.Setenv("APP_KEY", "public-example-contract-key")
+	t.Setenv("SECRET_KEY_BASE", "phoenix-public-example-secret-key-base-must-be-at-least-sixty-four-bytes")
+	t.Setenv("PHX_HOST", "phoenix.example.com")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -62,6 +64,17 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Framework quickstarts",
 			guidePath: "examples/frameworks/gin",
 			path:      filepath.Join(root, "examples", "frameworks", "gin"),
+			exactFiles: []string{
+				"Dockerfile",
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "Phoenix LiveView",
+			category:  "Framework quickstarts",
+			guidePath: "examples/frameworks/phoenix",
+			path:      filepath.Join(root, "examples", "frameworks", "phoenix"),
 			exactFiles: []string{
 				"Dockerfile",
 				"README.md",

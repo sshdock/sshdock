@@ -194,6 +194,58 @@ sudo sshdock apps remove gin --force
 
 See the probe README for exact source and image provenance, topology, expected evidence, transient state, limitations, and security boundaries.
 
+### Phoenix LiveView
+
+Path: [`examples/frameworks/phoenix`](../examples/frameworks/phoenix/README.md)
+
+The Phoenix LiveView compatibility probe generates an official one-field LiveView resource during its pinned image build. The repository keeps only the three-file SSHDock deployment envelope: a multi-stage Dockerfile, one loopback-bound Compose service with health, restart behavior, and named SQLite persistence, and an operations README.
+
+Until a release tag contains the probe, copy it explicitly from `main`:
+
+```bash
+mkdir phoenix
+cd phoenix
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/phoenix
+git init -b main
+git add .
+git commit -m "Deploy Phoenix LiveView"
+git remote add sshdock git@sshdock.example.com:phoenix.git
+git push sshdock main
+```
+
+Store the required Phoenix signing secret, redeploy the accepted commit, and attach the conventional domain after the initial config-gated deployment:
+
+```bash
+openssl rand -base64 48 \
+  | ssh sshdock@sshdock.example.com config set phoenix SECRET_KEY_BASE
+printf '%s' 'phoenix.example.com' \
+  | ssh sshdock@sshdock.example.com config set phoenix PHX_HOST
+sudo sshdock apps redeploy phoenix
+sudo sshdock domains attach phoenix web phoenix.example.com --port 18104
+```
+
+Verify and operate the generated LiveView:
+
+```bash
+curl -I http://phoenix.example.com/items
+curl -fsS https://phoenix.example.com/items
+sudo sshdock apps health phoenix
+sudo sshdock logs phoenix web --tail 100
+sudo sshdock apps restart phoenix
+curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://phoenix.example.com/items
+```
+
+Keep the browser tab open across the supported restart to observe LiveView reconnect, then submit another generated Item through the secure WebSocket. Upgrade the pinned generator, Elixir/Erlang builder, and Alpine runtime together; verify the fresh generated production release before pushing only the three-file envelope.
+
+Clean up the app while preserving its named SQLite volume:
+
+```bash
+sudo sshdock apps remove phoenix --force
+```
+
+See the probe README for exact provenance, required config, LiveView interaction and reconnect evidence, topology, persistence, limitations, and security boundaries.
+
 ## Software recipes
 
 Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.

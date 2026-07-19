@@ -1,0 +1,22 @@
+services:
+  web:
+    build:
+      context: .
+    environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE with sshdock config set}
+      PHX_HOST: ${PHX_HOST:?set PHX_HOST with sshdock config set}
+      DATABASE_PATH: /app/data/phoenix_liveview.sqlite3
+    ports:
+      - "127.0.0.1:18104:4000"
+    volumes:
+      - phoenix_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/items"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  phoenix_data:

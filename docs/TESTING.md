@@ -166,7 +166,7 @@ go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendA
 Focused adoption and example docs checks cover the comparison, migration, troubleshooting, and runnable example contracts:
 
 ```bash
-go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
 ```
 
 The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, and requests each official starter surface:
@@ -174,6 +174,17 @@ The maintained public-example Docker target validates route inference for every 
 ```bash
 make public-examples-e2e
 ```
+
+The distinct Phoenix LiveView protocol seam runs against an individually deployed HTTPS probe. It submits generated state through LiveView, restarts the app through restricted SSH, waits for the same browser session to disconnect and reconnect, then submits a second update:
+
+```bash
+SSHDOCK_E2E_PHOENIX_URL=https://phoenix.example.com \
+SSHDOCK_E2E_PHOENIX_SSH_TARGET=sshdock@sshdock.example.com \
+SSHDOCK_E2E_PHOENIX_SSH_KEY=/path/to/deploy-key \
+make phoenix-liveview-e2e
+```
+
+The target requires `agent-browser`, a deployed `phoenix` app by default, and an SSH key authorized for the restricted operator surface. Set `SSHDOCK_E2E_PHOENIX_APP` when the deployed app has another name.
 
 ### Real SSH Dashboard Screenshot Capture
 

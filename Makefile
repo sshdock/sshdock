@@ -4,7 +4,7 @@ APP_NAME := sshdock
 DAEMON_NAME := sshdockd
 GO_PACKAGES := ./...
 
-.PHONY: setup fmt lint test smoke e2e e2e-docker public-examples-e2e ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e lifecycle-volume-e2e wildcard-domain-e2e config-e2e backup-restore-e2e ci build clean check-tools
+.PHONY: setup fmt lint test smoke e2e e2e-docker public-examples-e2e phoenix-liveview-e2e ssh-e2e bootstrap-e2e server-push-e2e route-e2e tui-e2e tui-actions-e2e tui-screenshots-real tui-screenshots-vps recovery-e2e hardening-e2e cli-lifecycle-e2e lifecycle-volume-e2e wildcard-domain-e2e config-e2e backup-restore-e2e ci build clean check-tools
 
 setup:
 	go mod download
@@ -30,6 +30,13 @@ e2e-docker:
 
 public-examples-e2e:
 	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker)EndToEnd' -v
+
+phoenix-liveview-e2e:
+	@test -n "$(SSHDOCK_E2E_PHOENIX_URL)" || (echo "SSHDOCK_E2E_PHOENIX_URL is required" && exit 1)
+	@test -n "$(SSHDOCK_E2E_PHOENIX_SSH_TARGET)" || (echo "SSHDOCK_E2E_PHOENIX_SSH_TARGET is required" && exit 1)
+	@test -n "$(SSHDOCK_E2E_PHOENIX_SSH_KEY)" || (echo "SSHDOCK_E2E_PHOENIX_SSH_KEY is required" && exit 1)
+	@command -v agent-browser >/dev/null 2>&1 || (echo "agent-browser is required" && exit 1)
+	go test -count=1 -tags e2e ./test/e2e -run TestPhoenixLiveViewBrowserEndToEnd -v
 
 ssh-e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'Test(CLI|OpenSSH)' -v

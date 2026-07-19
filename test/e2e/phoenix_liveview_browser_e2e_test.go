@@ -102,9 +102,11 @@ func createPhoenixItem(t *testing.T, acceptance phoenixBrowserAcceptance, itemNa
 	t.Helper()
 	runAgentBrowserRequired(t, acceptance, "open", acceptance.baseURL+"/items")
 	runAgentBrowserRequired(t, acceptance, "click", `a[href="/items/new"]`)
-	runAgentBrowserRequired(t, acceptance, "wait", "--url", "**/items/new")
-	runAgentBrowserRequired(t, acceptance, "find", "label", "Name", "fill", itemName)
-	runAgentBrowserRequired(t, acceptance, "click", `button[type="submit"]`)
+	runAgentBrowserRequired(t, acceptance, "wait", "--text", "New Item")
+	runAgentBrowserRequired(t, acceptance, "wait", "--fn", "window.liveSocket?.isConnected()")
+	runAgentBrowserRequired(t, acceptance, "type", "#item_name", itemName)
+	runAgentBrowserRequired(t, acceptance, "wait", "500")
+	runAgentBrowserRequired(t, acceptance, "find", "role", "button", "click", "--name", "Save Item")
 	runAgentBrowserRequired(t, acceptance, "wait", "--text", itemName)
 }
 

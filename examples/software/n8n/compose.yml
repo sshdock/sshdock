@@ -1,0 +1,25 @@
+services:
+  web:
+    image: docker.n8n.io/n8nio/n8n:2.30.5@sha256:450853cd21a2ce36587c4c860eb26927c1ceba9496bf55f4c213b5d3a6dc8c6f
+    ports:
+      - "127.0.0.1:18202:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:?set N8N_HOST with SSHDock config}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      N8N_PROXY_HOPS: "1"
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:?set N8N_WEBHOOK_URL with SSHDock config}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY with SSHDock config}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5678/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  n8n-data:

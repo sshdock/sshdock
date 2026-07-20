@@ -32,6 +32,9 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("GITEA_ROOT_URL", "https://gitea.example.com/")
 	t.Setenv("GITEA_SECRET_KEY", "public-example-gitea-secret-key")
 	t.Setenv("GITEA_INTERNAL_TOKEN", "public-example-gitea-internal-token")
+	t.Setenv("N8N_HOST", "n8n.example.com")
+	t.Setenv("N8N_WEBHOOK_URL", "https://n8n.example.com/")
+	t.Setenv("N8N_ENCRYPTION_KEY", "public-example-n8n-encryption-key")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -104,6 +107,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Software recipes",
 			guidePath: "examples/software/gitea",
 			path:      filepath.Join(root, "examples", "software", "gitea"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "n8n",
+			category:  "Software recipes",
+			guidePath: "examples/software/n8n",
+			path:      filepath.Join(root, "examples", "software", "n8n"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

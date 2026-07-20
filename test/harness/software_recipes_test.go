@@ -96,6 +96,38 @@ func TestSoftwareRecipes_contract_when_pinned_and_stateful(t *testing.T) {
 				"`gitea-config` volume",
 			},
 		},
+		{
+			name:      "n8n",
+			directory: "n8n",
+			env: map[string]string{
+				"N8N_HOST":           "n8n.example.com",
+				"N8N_WEBHOOK_URL":    "https://n8n.example.com/",
+				"N8N_ENCRYPTION_KEY": "contract-encryption-key",
+			},
+			services: []string{"web"},
+			composeRequired: []string{
+				"docker.n8n.io/n8nio/n8n:2.30.5@sha256:450853cd21a2ce36587c4c860eb26927c1ceba9496bf55f4c213b5d3a6dc8c6f",
+				"127.0.0.1:18202:5678",
+				"N8N_HOST: ${N8N_HOST:?",
+				"N8N_PROTOCOL: https",
+				"N8N_PROXY_HOPS: \"1\"",
+				"N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?",
+				"WEBHOOK_URL: ${N8N_WEBHOOK_URL:?",
+				"N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: \"true\"",
+				"N8N_RUNNERS_ENABLED: \"true\"",
+				"n8n-data:/home/node/.n8n",
+				"restart: unless-stopped",
+			},
+			healthcheckCount:      1,
+			publishedPortSections: 1,
+			composeForbidden:      []string{"build:", "latest", "postgres:", "redis:"},
+			readmeRequired: []string{
+				"config set n8n N8N_ENCRYPTION_KEY",
+				"Webhook",
+				"docker volume rm sshdock_n8n_n8n-data",
+				"scheduling belongs to n8n",
+			},
+		},
 	}
 
 	for _, test := range tests {

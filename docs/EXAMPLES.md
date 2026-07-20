@@ -266,6 +266,14 @@ The Gitea recipe runs the exact official rootless image with its supported SQLit
 
 Follow the recipe README for required SSHDock config, first-run setup, repository creation, real SSH Git push and clone verification, a Git-selected exact-image update, routine operation, ordinary removal, destructive volume cleanup, port ownership, persistence, limitations, and security boundaries.
 
+### n8n
+
+Path: [`examples/software/n8n`](../examples/software/n8n)
+
+The n8n recipe runs one exact official image with n8n's default SQLite topology. It keeps the editor and published webhook endpoints behind a loopback-bound Caddy route, stores the encryption key through SSHDock config, and preserves the upstream `.n8n` state directory in a named volume.
+
+Follow the recipe README for first-run setup, a persistent published webhook workflow, exact-image upgrades, routine operation, ordinary removal, destructive volume cleanup, scheduling ownership, persistence, limitations, and security boundaries.
+
 ## Database examples
 
 Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.

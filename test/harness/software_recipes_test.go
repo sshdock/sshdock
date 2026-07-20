@@ -128,6 +128,11 @@ func TestGiteaSoftwareRecipe_contract_when_pinned_and_stateful(t *testing.T) {
 		"select SQLite3 and set the path to `/var/lib/gitea/data/gitea.db`",
 		"git clone ssh://git@gitea.example.com:18222/acceptance/recipe-proof.git",
 		"docker volume rm sshdock_gitea_gitea-data sshdock_gitea_gitea-config",
+		"`GITEA__security__*`",
+		"`/etc/gitea/app.ini`",
+		"plaintext copies",
+		"Docker container inspection",
+		"`gitea-config` volume",
 	} {
 		if !strings.Contains(readme, want) {
 			t.Fatalf("README.md missing executable contract %q", want)

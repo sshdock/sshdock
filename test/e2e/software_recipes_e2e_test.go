@@ -118,16 +118,7 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 	}
 
 	// Then the public WordPress surface exposes the representative content.
-	request, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:18200", nil)
-	if err != nil {
-		t.Fatalf("NewRequest WordPress home: %v", err)
-	}
-	status, body = doWordPressRequest(t, client, request)
-	for _, want := range []string{"SSHDock WordPress", "SSHDock persistence"} {
-		if status != http.StatusOK || !strings.Contains(body, want) {
-			t.Fatalf("home response status = %d, body missing %q", status, want)
-		}
-	}
+	assertWordPressHomepage(t, client)
 
 	// When Compose applies the current exact image pin over the same named volumes.
 	if err := os.WriteFile(composePath, currentCompose, 0o644); err != nil {
@@ -136,20 +127,25 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 	runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "up", "--pull", "always", "--wait")
 
 	// Then content remains public and the running service uses the selected image.
-	request, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:18200", nil)
-	if err != nil {
-		t.Fatalf("NewRequest upgraded WordPress home: %v", err)
-	}
-	status, body = doWordPressRequest(t, client, request)
-	for _, want := range []string{"SSHDock WordPress", "SSHDock persistence"} {
-		if status != http.StatusOK || !strings.Contains(body, want) {
-			t.Fatalf("upgraded home status = %d, body missing %q", status, want)
-		}
-	}
+	assertWordPressHomepage(t, client)
 	containerID := strings.TrimSpace(runCommand(t, projectDir, nil, "docker", "compose", "-p", projectName, "ps", "-q", "web"))
 	image := strings.TrimSpace(runCommand(t, projectDir, nil, "docker", "inspect", "--format", "{{.Config.Image}}", containerID))
 	if image != wordpressCurrentImage {
 		t.Fatalf("running image = %q, want %q", image, wordpressCurrentImage)
+	}
+}
+
+func assertWordPressHomepage(t *testing.T, client *http.Client) {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:18200", nil)
+	if err != nil {
+		t.Fatalf("NewRequest WordPress home: %v", err)
+	}
+	status, body := doWordPressRequest(t, client, request)
+	for _, want := range []string{"SSHDock WordPress", "SSHDock persistence"} {
+		if status != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("home response status = %d, body missing %q", status, want)
+		}
 	}
 }
 

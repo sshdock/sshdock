@@ -24,6 +24,10 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("APP_KEY", "public-example-contract-key")
 	t.Setenv("SECRET_KEY_BASE", "phoenix-public-example-secret-key-base-must-be-at-least-sixty-four-bytes")
 	t.Setenv("PHX_HOST", "phoenix.example.com")
+	t.Setenv("WORDPRESS_DB_NAME", "wordpress")
+	t.Setenv("WORDPRESS_DB_USER", "wordpress")
+	t.Setenv("WORDPRESS_DB_PASSWORD", "public-example-contract-password")
+	t.Setenv("WORDPRESS_DB_ROOT_PASSWORD", "public-example-contract-root-password")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -77,6 +81,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			path:      filepath.Join(root, "examples", "frameworks", "phoenix"),
 			exactFiles: []string{
 				"Dockerfile",
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "WordPress",
+			category:  "Software recipes",
+			guidePath: "examples/software/wordpress",
+			path:      filepath.Join(root, "examples", "software", "wordpress"),
+			exactFiles: []string{
 				"README.md",
 				"compose.yml",
 			},

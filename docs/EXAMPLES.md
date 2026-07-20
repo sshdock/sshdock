@@ -250,7 +250,13 @@ See the probe README for exact provenance, required config, LiveView interaction
 
 Software recipes run recognizable upstream applications while preserving their supported architecture where it fits SSHDock's v0 boundary. A registered recipe pins versions, stores non-public values through SSHDock config, declares persistence, proves the real first-run surface, and separates ordinary removal from destructive volume cleanup.
 
-No software recipe is registered in the maintained contract yet. The existing WordPress Lite fixture below remains a feature demonstration until its replacement recipe is verified.
+### WordPress
+
+Path: [`examples/software/wordpress`](../examples/software/wordpress)
+
+The WordPress recipe runs exact official WordPress Apache and MariaDB images in the smallest viable two-service topology. It keeps the database private, stores database values through SSHDock config, publishes one loopback-bound HTTP port, gates the public service on database readiness, and preserves site files, uploads, and database content in named volumes.
+
+Follow the recipe README for first-run setup, representative-content verification, routine operation, a Git-selected exact-image update, ordinary removal, destructive volume cleanup, persistence, limitations, and security boundaries. The existing WordPress Lite fixture below remains a feature demonstration until the canonical-suite cleanup ticket removes old examples.
 
 ## Database examples
 

@@ -1,0 +1,41 @@
+services:
+  web:
+    image: wordpress:7.0.1-php8.3-apache@sha256:d40b86dbdfcfad808a2029acf6543c670c4a61c29f70b9d24605e7d0b31ab83d
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18200:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:?set WORDPRESS_DB_NAME with SSHDock config}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:?set WORDPRESS_DB_USER with SSHDock config}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:?set WORDPRESS_DB_PASSWORD with SSHDock config}
+    volumes:
+      - wordpress-data:/var/www/html
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$socket = @fsockopen('127.0.0.1', 80); if (!$$socket) { exit(1); } fclose($$socket);"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  db:
+    image: mariadb:12.3.2-noble@sha256:628f228f0fd5913a220438693576b29b6fe4dc1fa0a1298c0e98579fae28635f
+    environment:
+      MARIADB_DATABASE: ${WORDPRESS_DB_NAME:?set WORDPRESS_DB_NAME with SSHDock config}
+      MARIADB_USER: ${WORDPRESS_DB_USER:?set WORDPRESS_DB_USER with SSHDock config}
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD:?set WORDPRESS_DB_PASSWORD with SSHDock config}
+      MARIADB_ROOT_PASSWORD: ${WORDPRESS_DB_ROOT_PASSWORD:?set WORDPRESS_DB_ROOT_PASSWORD with SSHDock config}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  wordpress-data:
+  mariadb-data:

@@ -136,6 +136,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "Laravel", appName: "example-laravel", directory: filepath.Join("frameworks", "laravel"), env: map[string]string{"APP_KEY": "public-example-route-key"}, wantService: "web", wantPort: 18102},
 		{name: "Gin", appName: "example-gin", directory: filepath.Join("frameworks", "gin"), wantService: "web", wantPort: 18103},
 		{name: "Phoenix LiveView", appName: "example-phoenix", directory: filepath.Join("frameworks", "phoenix"), env: map[string]string{"SECRET_KEY_BASE": "phoenix-public-example-secret-key-base-must-be-at-least-sixty-four-bytes", "PHX_HOST": "127.0.0.1"}, wantService: "web", wantPort: 18104},
+		{name: "WordPress", appName: "example-wordpress", directory: filepath.Join("software", "wordpress"), env: map[string]string{"WORDPRESS_DB_NAME": "wordpress", "WORDPRESS_DB_USER": "wordpress", "WORDPRESS_DB_PASSWORD": "public-example-route-password", "WORDPRESS_DB_ROOT_PASSWORD": "public-example-route-root-password"}, wantService: "web", wantPort: 18200},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -169,7 +169,7 @@ func createGiteaRepository(t *testing.T, client *http.Client, password string) {
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.SetBasicAuth("acceptance", password)
-	status, body := doGiteaRequest(t, client, request)
+	status, body := doSoftwareRecipeRequest(t, client, request)
 	if status != http.StatusCreated || !strings.Contains(body, `"name":"recipe-proof"`) {
 		t.Fatalf("create Gitea repository status = %d: %s", status, body)
 	}
@@ -187,7 +187,7 @@ func addGiteaSSHKey(t *testing.T, client *http.Client, password, publicKey strin
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.SetBasicAuth("acceptance", password)
-	status, body := doGiteaRequest(t, client, request)
+	status, body := doSoftwareRecipeRequest(t, client, request)
 	if status != http.StatusCreated {
 		t.Fatalf("add Gitea SSH key status = %d: %s", status, body)
 	}
@@ -204,18 +204,4 @@ func assertGiteaClone(t *testing.T, gitEnv []string, remoteURL string) {
 	if string(contents) != "Gitea persistence through SSHDock\n" {
 		t.Fatalf("cloned Gitea README = %q", contents)
 	}
-}
-
-func doGiteaRequest(t *testing.T, client *http.Client, request *http.Request) (int, string) {
-	t.Helper()
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("%s %s: %v", request.Method, request.URL, err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		t.Fatalf("read %s %s: %v", request.Method, request.URL, err)
-	}
-	return response.StatusCode, string(body)
 }

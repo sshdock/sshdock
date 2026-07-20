@@ -5,7 +5,6 @@ package e2e
 import (
 	"bytes"
 	"encoding/xml"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -62,7 +61,7 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest WordPress installer: %v", err)
 	}
-	status, body := doWordPressRequest(t, client, request)
+	status, body := doSoftwareRecipeRequest(t, client, request)
 	if status != http.StatusOK || !strings.Contains(body, "Information needed") {
 		t.Fatalf("installer response status = %d, body missing installation form", status)
 	}
@@ -83,7 +82,7 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 		t.Fatalf("NewRequest WordPress setup: %v", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	status, body = doWordPressRequest(t, client, request)
+	status, body = doSoftwareRecipeRequest(t, client, request)
 	if status != http.StatusOK || !strings.Contains(body, "Success!") {
 		t.Fatalf("setup response status = %d, body missing success", status)
 	}
@@ -105,7 +104,7 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 		t.Fatalf("NewRequest WordPress XML-RPC: %v", err)
 	}
 	request.Header.Set("Content-Type", "text/xml")
-	status, body = doWordPressRequest(t, client, request)
+	status, body = doSoftwareRecipeRequest(t, client, request)
 	var postResponse struct {
 		PostID string    `xml:"params>param>value>string"`
 		Fault  *struct{} `xml:"fault"`
@@ -141,24 +140,10 @@ func assertWordPressHomepage(t *testing.T, client *http.Client) {
 	if err != nil {
 		t.Fatalf("NewRequest WordPress home: %v", err)
 	}
-	status, body := doWordPressRequest(t, client, request)
+	status, body := doSoftwareRecipeRequest(t, client, request)
 	for _, want := range []string{"SSHDock WordPress", "SSHDock persistence"} {
 		if status != http.StatusOK || !strings.Contains(body, want) {
 			t.Fatalf("home response status = %d, body missing %q", status, want)
 		}
 	}
-}
-
-func doWordPressRequest(t *testing.T, client *http.Client, request *http.Request) (int, string) {
-	t.Helper()
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("%s %s: %v", request.Method, request.URL, err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		t.Fatalf("read %s %s: %v", request.Method, request.URL, err)
-	}
-	return response.StatusCode, string(body)
 }

@@ -166,16 +166,16 @@ go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendA
 Focused adoption and example docs checks cover the comparison, migration, troubleshooting, and runnable example contracts:
 
 ```bash
-go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|WordPressSoftwareRecipe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|WordPressSoftwareRecipe|GiteaSoftwareRecipe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
 ```
 
-The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises WordPress first-run setup, representative content, persistence, and an exact-image update:
+The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises the software recipes through first-run setup, representative state, persistence, and exact-image updates:
 
 ```bash
 make public-examples-e2e
 ```
 
-Run only the stateful WordPress recipe narrative with:
+Run only the stateful software-recipe narratives with:
 
 ```bash
 make software-recipes-e2e

@@ -28,6 +28,10 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("WORDPRESS_DB_USER", "wordpress")
 	t.Setenv("WORDPRESS_DB_PASSWORD", "public-example-contract-password")
 	t.Setenv("WORDPRESS_DB_ROOT_PASSWORD", "public-example-contract-root-password")
+	t.Setenv("GITEA_DOMAIN", "gitea.example.com")
+	t.Setenv("GITEA_ROOT_URL", "https://gitea.example.com/")
+	t.Setenv("GITEA_SECRET_KEY", "public-example-gitea-secret-key")
+	t.Setenv("GITEA_INTERNAL_TOKEN", "public-example-gitea-internal-token")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -90,6 +94,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Software recipes",
 			guidePath: "examples/software/wordpress",
 			path:      filepath.Join(root, "examples", "software", "wordpress"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "Gitea",
+			category:  "Software recipes",
+			guidePath: "examples/software/gitea",
+			path:      filepath.Join(root, "examples", "software", "gitea"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

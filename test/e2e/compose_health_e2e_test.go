@@ -137,6 +137,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "Gin", appName: "example-gin", directory: filepath.Join("frameworks", "gin"), wantService: "web", wantPort: 18103},
 		{name: "Phoenix LiveView", appName: "example-phoenix", directory: filepath.Join("frameworks", "phoenix"), env: map[string]string{"SECRET_KEY_BASE": "phoenix-public-example-secret-key-base-must-be-at-least-sixty-four-bytes", "PHX_HOST": "127.0.0.1"}, wantService: "web", wantPort: 18104},
 		{name: "WordPress", appName: "example-wordpress", directory: filepath.Join("software", "wordpress"), env: map[string]string{"WORDPRESS_DB_NAME": "wordpress", "WORDPRESS_DB_USER": "wordpress", "WORDPRESS_DB_PASSWORD": "public-example-route-password", "WORDPRESS_DB_ROOT_PASSWORD": "public-example-route-root-password"}, wantService: "web", wantPort: 18200},
+		{name: "Gitea", appName: "example-gitea", directory: filepath.Join("software", "gitea"), env: map[string]string{"GITEA_DOMAIN": "gitea.example.com", "GITEA_ROOT_URL": "https://gitea.example.com/", "GITEA_SECRET_KEY": "public-example-gitea-secret-key", "GITEA_INTERNAL_TOKEN": "public-example-gitea-internal-token"}, wantService: "web", wantPort: 18201},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

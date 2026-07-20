@@ -26,13 +26,13 @@ e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd|ReceiveInvalidAppNameEndToEnd)' -v
 
 e2e-docker:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|WordPressSoftwareRecipeDocker|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|(WordPress|Gitea)SoftwareRecipeDocker|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
 
 public-examples-e2e:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|WordPressSoftwareRecipeDocker)EndToEnd' -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|(WordPress|Gitea)SoftwareRecipeDocker)EndToEnd' -v
 
 software-recipes-e2e:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestWordPressSoftwareRecipeDockerEndToEnd -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(WordPress|Gitea)SoftwareRecipeDockerEndToEnd' -v
 
 phoenix-liveview-e2e:
 	@test -n "$(SSHDOCK_E2E_PHOENIX_URL)" || (echo "SSHDOCK_E2E_PHOENIX_URL is required" && exit 1)

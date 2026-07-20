@@ -1,0 +1,32 @@
+services:
+  web:
+    image: docker.gitea.com/gitea:1.27.0-rootless@sha256:414ba5b2b1163480e9ed4213a989cd798579cfa88582a2359303273009b2b852
+    ports:
+      - "127.0.0.1:18201:3000"
+      - "18222:2222"
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /var/lib/gitea/data/gitea.db
+      GITEA__repository__ROOT: /var/lib/gitea/git/repositories
+      GITEA__server__DOMAIN: ${GITEA_DOMAIN:?set GITEA_DOMAIN with SSHDock config}
+      GITEA__server__ROOT_URL: ${GITEA_ROOT_URL:?set GITEA_ROOT_URL with SSHDock config}
+      GITEA__server__SSH_DOMAIN: ${GITEA_DOMAIN:?set GITEA_DOMAIN with SSHDock config}
+      GITEA__server__SSH_PORT: "18222"
+      GITEA__server__SSH_LISTEN_PORT: "2222"
+      GITEA__server__START_SSH_SERVER: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY:?set GITEA_SECRET_KEY with SSHDock config}
+      GITEA__security__INTERNAL_TOKEN: ${GITEA_INTERNAL_TOKEN:?set GITEA_INTERNAL_TOKEN with SSHDock config}
+    volumes:
+      - gitea-data:/var/lib/gitea
+      - gitea-config:/etc/gitea
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  gitea-data:
+  gitea-config:

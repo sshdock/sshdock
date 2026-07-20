@@ -258,6 +258,14 @@ The WordPress recipe runs exact official WordPress Apache and MariaDB images in 
 
 Follow the recipe README for first-run setup, representative-content verification, routine operation, a Git-selected exact-image update, ordinary removal, destructive volume cleanup, persistence, limitations, and security boundaries. The existing WordPress Lite fixture below remains a feature demonstration until the canonical-suite cleanup ticket removes old examples.
 
+### Gitea
+
+Path: [`examples/software/gitea`](../examples/software/gitea)
+
+The Gitea recipe runs the exact official rootless image with its supported SQLite topology. It stores repositories, the database, and configuration in named volumes, keeps the web service behind a loopback-bound Caddy route, and publishes the built-in Git SSH service on the documented non-conflicting host port `18222`.
+
+Follow the recipe README for required SSHDock config, first-run setup, repository creation, real SSH Git push and clone verification, a Git-selected exact-image update, routine operation, ordinary removal, destructive volume cleanup, port ownership, persistence, limitations, and security boundaries.
+
 ## Database examples
 
 Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.

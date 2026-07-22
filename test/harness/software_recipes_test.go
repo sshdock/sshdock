@@ -128,6 +128,30 @@ func TestSoftwareRecipes_contract_when_pinned_and_stateful(t *testing.T) {
 				"scheduling belongs to n8n",
 			},
 		},
+		{
+			name:      "Memos",
+			directory: "memos",
+			env: map[string]string{
+				"MEMOS_INSTANCE_URL": "https://memos.example.com/",
+			},
+			services: []string{"web"},
+			composeRequired: []string{
+				"neosmemo/memos:0.29.1@sha256:3e1253477066eb2aefa91145f7f9038bb931ed88c8a3ee05310a933594cdba7d",
+				"127.0.0.1:18203:5230",
+				"MEMOS_INSTANCE_URL: ${MEMOS_INSTANCE_URL:?",
+				"memos-data:/var/opt/memos",
+				"wget --spider -q http://127.0.0.1:5230/",
+				"restart: unless-stopped",
+			},
+			healthcheckCount:      1,
+			publishedPortSections: 1,
+			composeForbidden:      []string{"build:", "latest", "postgres:", "mysql:", "mariadb:"},
+			readmeRequired: []string{
+				"config set memos MEMOS_INSTANCE_URL",
+				"SSHDock persistence proof",
+				"docker volume rm sshdock_memos_memos-data",
+			},
+		},
 	}
 
 	for _, test := range tests {

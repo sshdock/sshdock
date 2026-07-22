@@ -274,6 +274,14 @@ The n8n recipe runs one exact official image with n8n's default SQLite topology.
 
 Follow the recipe README for first-run setup, a persistent published webhook workflow, exact-image upgrades, routine operation, ordinary removal, destructive volume cleanup, scheduling ownership, persistence, limitations, and security boundaries.
 
+### Memos
+
+Path: [`examples/software/memos`](../examples/software/memos)
+
+The Memos recipe runs one exact official image with its default SQLite storage. It keeps the web interface behind a loopback-bound Caddy route, records the public instance URL through SSHDock config, and preserves its upstream data directory in a named volume.
+
+Follow the recipe README for first-owner setup, a persistent daily-use memo, exact-image upgrades, routine operation, ordinary removal, destructive volume cleanup, persistence, limitations, and security boundaries.
+
 ## Database examples
 
 Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.

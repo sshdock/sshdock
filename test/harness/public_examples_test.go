@@ -35,6 +35,7 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("N8N_HOST", "n8n.example.com")
 	t.Setenv("N8N_WEBHOOK_URL", "https://n8n.example.com/")
 	t.Setenv("N8N_ENCRYPTION_KEY", "public-example-n8n-encryption-key")
+	t.Setenv("MEMOS_INSTANCE_URL", "https://memos.example.com/")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -117,6 +118,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Software recipes",
 			guidePath: "examples/software/n8n",
 			path:      filepath.Join(root, "examples", "software", "n8n"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "Memos",
+			category:  "Software recipes",
+			guidePath: "examples/software/memos",
+			path:      filepath.Join(root, "examples", "software", "memos"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

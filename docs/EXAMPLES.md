@@ -282,6 +282,14 @@ The Memos recipe runs one exact official image with its default SQLite storage. 
 
 Follow the recipe README for first-owner setup, a persistent daily-use memo, exact-image upgrades, routine operation, ordinary removal, destructive volume cleanup, persistence, limitations, and security boundaries.
 
+### Planka
+
+Path: [`examples/software/planka`](../examples/software/planka)
+
+The Planka recipe runs its official `2.1.1` image and an official PostgreSQL 16 Alpine image in the smallest upstream-supported two-service topology. It keeps PostgreSQL private, stores the public base URL, database password, application secret, and initial-admin values through SSHDock config, and preserves Planka and PostgreSQL data in named volumes.
+
+Follow the recipe README for first sign-in, creating a persistent board and card, exact-image upgrades, routine operation, ordinary removal, destructive volume cleanup, persistence, limitations, and security boundaries.
+
 ## Database examples
 
 Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.

@@ -1,0 +1,45 @@
+services:
+  web:
+    image: ghcr.io/plankanban/planka:2.1.1@sha256:19b507ae3ab5cb1855c3f6984249e4a4881ed0b912febdfd492139c29bf10f39
+    ports:
+      - "127.0.0.1:18204:1337"
+    environment:
+      BASE_URL: ${PLANKA_BASE_URL:?set PLANKA_BASE_URL with SSHDock config}
+      DATABASE_URL: postgresql://planka:${PLANKA_DB_PASSWORD:?set PLANKA_DB_PASSWORD with SSHDock config}@db:5432/planka
+      SECRET_KEY: ${PLANKA_SECRET_KEY:?set PLANKA_SECRET_KEY with SSHDock config}
+      DEFAULT_ADMIN_EMAIL: ${PLANKA_ADMIN_EMAIL:?set PLANKA_ADMIN_EMAIL with SSHDock config}
+      DEFAULT_ADMIN_PASSWORD: ${PLANKA_ADMIN_PASSWORD:?set PLANKA_ADMIN_PASSWORD with SSHDock config}
+      DEFAULT_ADMIN_NAME: ${PLANKA_ADMIN_NAME:?set PLANKA_ADMIN_NAME with SSHDock config}
+      DEFAULT_ADMIN_USERNAME: ${PLANKA_ADMIN_USERNAME:?set PLANKA_ADMIN_USERNAME with SSHDock config}
+      TRUST_PROXY: "true"
+      OUTGOING_BLOCKED_HOSTS: localhost,postgres,db
+    volumes:
+      - planka-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:1337/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  db:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    environment:
+      POSTGRES_DB: planka
+      POSTGRES_USER: planka
+      POSTGRES_PASSWORD: ${PLANKA_DB_PASSWORD:?set PLANKA_DB_PASSWORD with SSHDock config}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U planka -d planka"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  planka-data:
+  postgres-data:

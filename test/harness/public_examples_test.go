@@ -36,6 +36,13 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("N8N_WEBHOOK_URL", "https://n8n.example.com/")
 	t.Setenv("N8N_ENCRYPTION_KEY", "public-example-n8n-encryption-key")
 	t.Setenv("MEMOS_INSTANCE_URL", "https://memos.example.com/")
+	t.Setenv("PLANKA_BASE_URL", "https://planka.example.com/")
+	t.Setenv("PLANKA_DB_PASSWORD", "public-example-planka-database-password")
+	t.Setenv("PLANKA_SECRET_KEY", "public-example-planka-secret-key")
+	t.Setenv("PLANKA_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("PLANKA_ADMIN_PASSWORD", "public-example-planka-admin-password")
+	t.Setenv("PLANKA_ADMIN_NAME", "Public Example Admin")
+	t.Setenv("PLANKA_ADMIN_USERNAME", "public-example-admin")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -128,6 +135,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Software recipes",
 			guidePath: "examples/software/memos",
 			path:      filepath.Join(root, "examples", "software", "memos"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "Planka",
+			category:  "Software recipes",
+			guidePath: "examples/software/planka",
+			path:      filepath.Join(root, "examples", "software", "planka"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

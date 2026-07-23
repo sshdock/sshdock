@@ -314,7 +314,11 @@ Follow the README for the one-time network action, config, client-isolation and 
 
 Feature labs reuse registered framework, software, or database examples to teach SSHDock config, Git recovery, restricted operations, routing, inspection, and backup boundaries. They do not introduce another toy application for each command.
 
-No feature lab is registered in the maintained contract yet. The existing fixtures remain available while their workflows are moved onto verified public examples.
+### Config and redeploy
+
+Path: [`examples/labs/config-and-redeploy`](../examples/labs/config-and-redeploy/README.md)
+
+This lab applies one small Compose patch to the NestJS compatibility probe. It proves missing required config fails before application start, remote config mutation stays redacted and does not deploy implicitly, and an explicit redeploy retries the same remote `main` commit.
 
 ## Existing feature demonstrations
 

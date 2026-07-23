@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    ports:
+      - "127.0.0.1:18205:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB with SSHDock config}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER with SSHDock config}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD with SSHDock config}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

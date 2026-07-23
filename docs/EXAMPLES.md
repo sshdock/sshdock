@@ -294,7 +294,13 @@ Follow the recipe README for first sign-in, creating a persistent board and card
 
 Database examples teach explicit operator-owned connectivity patterns. A registered example must keep databases off the public internet by default, state who owns networks and credentials, and verify access through the intended protocol rather than container health alone.
 
-No database example is registered in the maintained contract yet. The API and PostgreSQL fixture below remains a local multi-service demonstration.
+### PostgreSQL through an administrator SSH tunnel
+
+Path: [`examples/databases/postgres`](../examples/databases/postgres/README.md)
+
+The PostgreSQL example runs one exact official Alpine image with a persistent volume and binds port `18205` only to IPv4 loopback. Required database values live in SSHDock config. A normal server-administrator SSH account forwards a local port to that loopback listener so a real `psql` client can write and read without a public database listener. The restricted `sshdock` account intentionally cannot forward ports.
+
+Follow the README for configuration, tunnel verification, routine operation, exact-image upgrades, persistence, cleanup, and the security boundary for any deliberate public exposure.
 
 ## Feature labs
 

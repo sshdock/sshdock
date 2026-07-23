@@ -166,7 +166,7 @@ go test ./internal/cli -run 'Test(AppsHealth|DomainsCheck|LogsTail|StoreBackendA
 Focused adoption and example docs checks cover the comparison, migration, troubleshooting, and runnable example contracts:
 
 ```bash
-go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|SoftwareRecipes|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
+go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|SoftwareRecipes|PostgreSQLRecipe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
 ```
 
 The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises the software recipes through first-run setup, representative state, persistence, and exact-image updates:

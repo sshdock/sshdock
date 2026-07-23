@@ -43,6 +43,9 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("PLANKA_ADMIN_PASSWORD", "public-example-planka-admin-password")
 	t.Setenv("PLANKA_ADMIN_NAME", "Public Example Admin")
 	t.Setenv("PLANKA_ADMIN_USERNAME", "public-example-admin")
+	t.Setenv("POSTGRES_DB", "sshdock")
+	t.Setenv("POSTGRES_USER", "sshdock")
+	t.Setenv("POSTGRES_PASSWORD", "public-example-postgres-password")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -145,6 +148,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Software recipes",
 			guidePath: "examples/software/planka",
 			path:      filepath.Join(root, "examples", "software", "planka"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "PostgreSQL",
+			category:  "Database examples",
+			guidePath: "examples/databases/postgres",
+			path:      filepath.Join(root, "examples", "databases", "postgres"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

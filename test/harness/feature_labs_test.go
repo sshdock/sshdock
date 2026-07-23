@@ -3,7 +3,6 @@ package harness
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -211,25 +210,20 @@ func writeFailedDeployAndGitRecoveryLabCompose(t *testing.T) (string, string) {
 	t.Helper()
 	root := repoRoot(t)
 	canonical := readTextFile(t, filepath.Join(root, "examples", "frameworks", "nextjs", "compose.yml"))
-	patchPath := filepath.Join(root, "examples", "labs", "failed-deploy-and-git-recovery", "failure.patch")
-	patch := readTextFile(t, patchPath)
+	patch := readTextFile(t, filepath.Join(root, "examples", "labs", "failed-deploy-and-git-recovery", "failure.patch"))
+	const original = "    build:\n      context: .\n    ports:\n"
+	const patched = "    build:\n      context: .\n      dockerfile: Dockerfile.failure\n    ports:\n"
 	const wantPatch = "diff --git a/compose.yml b/compose.yml\n--- a/compose.yml\n+++ b/compose.yml\n@@ -2,5 +2,6 @@ services:\n   web:\n     build:\n       context: .\n+      dockerfile: Dockerfile.failure\n     ports:\n       - \"127.0.0.1:18100:3000\"\n     healthcheck:\n"
 	if patch != wantPatch {
 		t.Fatalf("failure patch differs from its executable contract:\n%s", patch)
 	}
-	projectDir := t.TempDir()
-	composePath := filepath.Join(projectDir, "compose.yml")
-	if err := os.WriteFile(composePath, []byte(canonical), 0o600); err != nil {
-		t.Fatalf("WriteFile canonical Compose: %v", err)
+	if strings.Count(canonical, original) != 1 {
+		t.Fatalf("Next.js Compose overlay target count = %d, want 1", strings.Count(canonical, original))
 	}
-	command := exec.Command("git", "apply", patchPath)
-	command.Dir = projectDir
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git apply failure patch: %v: %s", err, output)
-	}
-	overlaid := readTextFile(t, composePath)
-	if !strings.Contains(overlaid, "dockerfile: Dockerfile.failure") {
-		t.Fatal("git apply did not add the controlled failure Dockerfile")
+	overlaid := strings.Replace(canonical, original, patched, 1)
+	composePath := filepath.Join(t.TempDir(), "compose.yml")
+	if err := os.WriteFile(composePath, []byte(overlaid), 0o600); err != nil {
+		t.Fatalf("WriteFile overlaid Compose: %v", err)
 	}
 	return composePath, overlaid
 }

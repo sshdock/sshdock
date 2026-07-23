@@ -3,6 +3,7 @@ package harness
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -203,6 +204,69 @@ func TestFailedDeployAndGitRecoveryFeatureLab_patch_builds_with_a_missing_docker
 	missingDockerfile := filepath.Join(root, "examples", "frameworks", "nextjs", "Dockerfile.failure")
 	if _, statErr := os.Stat(missingDockerfile); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("controlled failure Dockerfile stat error = %v, want not exist", statErr)
+	}
+}
+
+func TestRestrictedSSHOperationsFeatureLab_contract_when_reusing_laravel_probe(t *testing.T) {
+	// Given the registered Laravel compatibility probe and its restricted-operations lab.
+	root := repoRoot(t)
+	labDir := filepath.Join(root, "examples", "labs", "restricted-ssh-operations")
+
+	// When the lab's public interface is inspected.
+	entries, err := os.ReadDir(labDir)
+	if err != nil {
+		t.Fatalf("ReadDir feature lab: %v", err)
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("feature lab contains nested directory %q", entry.Name())
+		}
+		files = append(files, entry.Name())
+	}
+	slices.Sort(files)
+	if want := []string{"README.md", "acceptance.sh"}; !slices.Equal(files, want) {
+		t.Fatalf("feature lab files = %#v, want %#v", files, want)
+	}
+
+	readme := readTextFile(t, filepath.Join(labDir, "README.md"))
+	for _, want := range []string{
+		"examples/frameworks/laravel",
+		"git push sshdock main",
+		"bash acceptance.sh",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing workflow marker %q", want)
+		}
+	}
+	scriptPath := filepath.Join(labDir, "acceptance.sh")
+	if output, err := exec.Command("bash", "-n", scriptPath).CombinedOutput(); err != nil {
+		t.Fatalf("acceptance script syntax: %v\n%s", err, output)
+	}
+	script := readTextFile(t, scriptPath)
+	for _, want := range []string{
+		"apps stop $APP",
+		"apps start $APP",
+		"apps restart $APP",
+		"apps redeploy $APP",
+		"apps exec $APP web -- php artisan about --only 'Application Name'",
+		"apps run $APP web -- php artisan migrate --force",
+		"apps remove $APP --force",
+		"sudo sshdock domains attach $APP web $ROUTE_HOST --port 18102",
+		"active Caddy route matches",
+		"grep -F -- '$ROUTE_HOST' /etc/caddy/sshdock/sshdock.caddyfile",
+		"not available over SSH",
+		"docker volume inspect $VOLUME",
+		"ssh -T \"${SSH_ARGS[@]}\" \"$SSHDOCK_TARGET\" hostname",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("acceptance script missing %q", want)
+		}
+	}
+
+	guide := readTextFile(t, filepath.Join(root, "docs", "EXAMPLES.md"))
+	if !strings.Contains(guide, "examples/labs/restricted-ssh-operations") {
+		t.Fatal("public examples guide does not register the restricted-ssh-operations feature lab")
 	}
 }
 

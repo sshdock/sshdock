@@ -326,6 +326,12 @@ Path: [`examples/labs/failed-deploy-and-git-recovery`](../examples/labs/failed-d
 
 This lab applies one small Compose patch to the Next.js compatibility probe. It proves remote `main` accepts a pushed commit before a controlled build failure, records the failed deployment evidence, and recovers only when a known-good commit or tag is pushed back to `main`.
 
+### Restricted SSH operations
+
+Path: [`examples/labs/restricted-ssh-operations`](../examples/labs/restricted-ssh-operations/README.md)
+
+This lab reuses the Laravel compatibility probe without an application or Compose overlay. It proves restricted stop, start, restart, and redeploy behavior; argv-safe service commands; removable one-off Artisan work; PTY guidance; operator rejection of host-command attempts; and removal that preserves Docker volumes.
+
 ## Existing feature demonstrations
 
 The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.

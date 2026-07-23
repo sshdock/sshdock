@@ -163,7 +163,7 @@ func TestFailedDeployAndGitRecoveryFeatureLab_contract_when_overlaying_nextjs_pr
 		"examples/frameworks/nextjs",
 		"git apply failure.patch",
 		"git push sshdock main",
-		"git ls-remote sshdock refs/heads/main",
+		"ssh sshdock@sshdock.example.com apps health failed-deploy-and-git-recovery",
 		"sshdock apps health failed-deploy-and-git-recovery",
 		"sshdock releases list failed-deploy-and-git-recovery",
 		"sshdock deployments list failed-deploy-and-git-recovery",

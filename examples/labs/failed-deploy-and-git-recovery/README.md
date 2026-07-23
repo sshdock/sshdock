@@ -44,17 +44,16 @@ The push can report a deployment failure after the ref update because SSHDock ac
 
 ## Inspect accepted Git and failed deployment
 
-Compare the remote branch with `BAD_COMMIT`, then inspect the supported SSHDock surfaces:
+Compare `current main` with `BAD_COMMIT`, then inspect the supported SSHDock surfaces:
 
 ```bash
-git ls-remote sshdock refs/heads/main
-sudo sshdock apps health failed-deploy-and-git-recovery
+ssh sshdock@sshdock.example.com apps health failed-deploy-and-git-recovery
 sudo sshdock releases list failed-deploy-and-git-recovery
 sudo sshdock deployments list failed-deploy-and-git-recovery
 sudo sshdock events list failed-deploy-and-git-recovery
 ```
 
-`refs/heads/main` resolves to `BAD_COMMIT` even though the deployment failed. Health and deployment history show the failed build attempt with actionable detail; release history retains both commits; events include `git.ref_accepted`, `deploy.started`, and `deploy.failed`. A failed deploy is not an SSHDock rollback operation.
+`current main` reports `BAD_COMMIT` even though the deployment failed. Health and deployment history show the failed build attempt with actionable detail; release history retains both commits; events include `git.ref_accepted`, `deploy.started`, and `deploy.failed`. The Git receive account intentionally supports pushes only, so use the SSHDock operator command instead of `git ls-remote`. A failed deploy is not an SSHDock rollback operation.
 
 ## Recover through remote main
 

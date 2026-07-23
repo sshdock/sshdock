@@ -46,6 +46,9 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	t.Setenv("POSTGRES_DB", "sshdock")
 	t.Setenv("POSTGRES_USER", "sshdock")
 	t.Setenv("POSTGRES_PASSWORD", "public-example-postgres-password")
+	t.Setenv("POSTGRES_ADMIN_PASSWORD", "public-example-postgres-admin-password")
+	t.Setenv("CLIENT_A_DATABASE_URL", "postgresql://client_a:public-example-client-a-password@shared-postgres:5432/client_a?sslmode=disable")
+	t.Setenv("CLIENT_B_DATABASE_URL", "postgresql://client_b:public-example-client-b-password@shared-postgres:5432/client_b?sslmode=disable")
 	root := repoRoot(t)
 	examples := []publicExampleContract{
 		{
@@ -158,6 +161,16 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 			category:  "Database examples",
 			guidePath: "examples/databases/postgres",
 			path:      filepath.Join(root, "examples", "databases", "postgres"),
+			exactFiles: []string{
+				"README.md",
+				"compose.yml",
+			},
+		},
+		{
+			name:      "Shared PostgreSQL",
+			category:  "Database examples",
+			guidePath: "examples/databases/shared-postgres",
+			path:      filepath.Join(root, "examples", "databases", "shared-postgres"),
 			exactFiles: []string{
 				"README.md",
 				"compose.yml",

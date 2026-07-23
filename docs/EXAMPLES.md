@@ -302,6 +302,14 @@ The PostgreSQL example runs one exact official Alpine image with a persistent vo
 
 Follow the README for configuration, tunnel verification, routine operation, exact-image upgrades, persistence, cleanup, and the security boundary for any deliberate public exposure.
 
+### Shared PostgreSQL network
+
+Path: [`examples/databases/shared-postgres`](../examples/databases/shared-postgres/README.md)
+
+The shared PostgreSQL example places one private PostgreSQL service and two minimal official PostgreSQL clients on a named external Docker network created by a server administrator. The database publishes no host port; Client A and Client B use separate SSHDock-stored database URLs to write and read only their own databases. The external network remains an intentional, operator-owned Compose choice, not an SSHDock-managed shared-service feature.
+
+Follow the README for the one-time network action, config, client-isolation and non-attachment checks, routine operation, exact-image upgrades, persistence, and cleanup.
+
 ## Feature labs
 
 Feature labs reuse registered framework, software, or database examples to teach SSHDock config, Git recovery, restricted operations, routing, inspection, and backup boundaries. They do not introduce another toy application for each command.

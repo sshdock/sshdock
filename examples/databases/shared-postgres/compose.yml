@@ -1,0 +1,111 @@
+services:
+  db:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD with SSHDock config}
+    volumes:
+      - shared-postgres-data:/var/lib/postgresql/data
+    networks:
+      shared-postgres:
+        aliases: [shared-postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  provision:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    environment:
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD with SSHDock config}
+      CLIENT_A_DATABASE_URL: ${CLIENT_A_DATABASE_URL:?set CLIENT_A_DATABASE_URL with SSHDock config}
+      CLIENT_B_DATABASE_URL: ${CLIENT_B_DATABASE_URL:?set CLIENT_B_DATABASE_URL with SSHDock config}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - shared-postgres
+    command:
+      - sh
+      - -ec
+      - |
+        admin_url="postgresql://postgres:$${POSTGRES_ADMIN_PASSWORD}@shared-postgres:5432/postgres?sslmode=disable"
+        create_client() {
+          client_url="$${1#postgresql://}"
+          client_user="$${client_url%%:*}"
+          client_password_and_address="$${client_url#*:}"
+          client_password="$${client_password_and_address%%@*}"
+          client_address="$${client_password_and_address#*@}"
+          client_database="$${client_address#*/}"
+          client_database="$${client_database%%\?*}"
+          PGOPTIONS="-c sshdock.client_user=$$client_user -c sshdock.client_password=$$client_password" psql "$$admin_url" --set=ON_ERROR_STOP=1 --command 'DO $$$$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_setting('"'"'sshdock.client_user'"'"')) THEN
+              EXECUTE format('"'"'CREATE ROLE %I LOGIN PASSWORD %L'"'"', current_setting('"'"'sshdock.client_user'"'"'), current_setting('"'"'sshdock.client_password'"'"'));
+            ELSE
+              EXECUTE format('"'"'ALTER ROLE %I PASSWORD %L'"'"', current_setting('"'"'sshdock.client_user'"'"'), current_setting('"'"'sshdock.client_password'"'"'));
+            END IF;
+          END
+          $$$$;'
+          if ! PGOPTIONS="-c sshdock.client_database=$$client_database" psql "$$admin_url" --tuples-only --no-align --command "SELECT 1 FROM pg_database WHERE datname = current_setting('sshdock.client_database')" | grep -qx 1; then
+            PGPASSWORD="$$POSTGRES_ADMIN_PASSWORD" createdb --host shared-postgres --username postgres --owner "$$client_user" "$$client_database"
+          fi
+          PGOPTIONS="-c sshdock.client_database=$$client_database" psql "$$admin_url" --set=ON_ERROR_STOP=1 --command 'DO $$$$
+          BEGIN
+            EXECUTE format('"'"'REVOKE CONNECT ON DATABASE %I FROM PUBLIC'"'"', current_setting('"'"'sshdock.client_database'"'"'));
+          END
+          $$$$;'
+        }
+        create_client "$$CLIENT_A_DATABASE_URL"
+        create_client "$$CLIENT_B_DATABASE_URL"
+        exec tail -f /dev/null
+    restart: unless-stopped
+
+  client-a:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    environment:
+      DATABASE_URL: ${CLIENT_A_DATABASE_URL:?set CLIENT_A_DATABASE_URL with SSHDock config}
+    depends_on:
+      provision:
+        condition: service_started
+    networks:
+      - shared-postgres
+    command:
+      - sh
+      - -ec
+      - |
+        until psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command 'CREATE TABLE IF NOT EXISTS client_a_proof (message text PRIMARY KEY);'; do sleep 1; done
+        psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command "INSERT INTO client_a_proof (message) VALUES ('client A proof') ON CONFLICT DO NOTHING;"
+        psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command 'SELECT message FROM client_a_proof;'
+        exec tail -f /dev/null
+    restart: unless-stopped
+
+  client-b:
+    image: postgres:16.14-alpine3.22@sha256:786dab398303b8ce7cb76b407bb21ef2e4dfbbbd4c6abcf3d29b3130467ffdbc
+    environment:
+      DATABASE_URL: ${CLIENT_B_DATABASE_URL:?set CLIENT_B_DATABASE_URL with SSHDock config}
+    depends_on:
+      provision:
+        condition: service_started
+    networks:
+      - shared-postgres
+    command:
+      - sh
+      - -ec
+      - |
+        until psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command 'CREATE TABLE IF NOT EXISTS client_b_proof (message text PRIMARY KEY);'; do sleep 1; done
+        psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command "INSERT INTO client_b_proof (message) VALUES ('client B proof') ON CONFLICT DO NOTHING;"
+        psql "$$DATABASE_URL" --set=ON_ERROR_STOP=1 --command 'SELECT message FROM client_b_proof;'
+        exec tail -f /dev/null
+    restart: unless-stopped
+
+volumes:
+  shared-postgres-data:
+
+networks:
+  shared-postgres:
+    external: true
+    name: sshdock-shared-postgres

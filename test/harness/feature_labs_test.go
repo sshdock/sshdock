@@ -1,7 +1,9 @@
 package harness
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -120,6 +122,114 @@ func writeConfigAndRedeployLabCompose(t *testing.T) (string, string) {
 	composePath := filepath.Join(t.TempDir(), "compose.yml")
 	if err := os.WriteFile(composePath, []byte(overlaid), 0o600); err != nil {
 		t.Fatalf("WriteFile overlaid Compose: %v", err)
+	}
+	return composePath, overlaid
+}
+
+func TestFailedDeployAndGitRecoveryFeatureLab_contract_when_overlaying_nextjs_probe(t *testing.T) {
+	// Given the registered Next.js compatibility probe and its recovery lab.
+	root := repoRoot(t)
+	labDir := filepath.Join(root, "examples", "labs", "failed-deploy-and-git-recovery")
+
+	// When the lab's executable overlay and public registration are inspected.
+	entries, err := os.ReadDir(labDir)
+	if err != nil {
+		t.Fatalf("ReadDir feature lab: %v", err)
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("feature lab contains nested directory %q", entry.Name())
+		}
+		files = append(files, entry.Name())
+	}
+	slices.Sort(files)
+	if want := []string{"README.md", "failure.patch"}; !slices.Equal(files, want) {
+		t.Fatalf("feature lab files = %#v, want %#v", files, want)
+	}
+
+	patch := readTextFile(t, filepath.Join(labDir, "failure.patch"))
+	for _, want := range []string{
+		"diff --git a/compose.yml b/compose.yml",
+		"dockerfile: Dockerfile.failure",
+	} {
+		if !strings.Contains(patch, want) {
+			t.Fatalf("failure patch missing %q", want)
+		}
+	}
+
+	readme := readTextFile(t, filepath.Join(labDir, "README.md"))
+	for _, want := range []string{
+		"examples/frameworks/nextjs",
+		"git apply failure.patch",
+		"git push sshdock main",
+		"git ls-remote sshdock refs/heads/main",
+		"sshdock apps health failed-deploy-and-git-recovery",
+		"sshdock releases list failed-deploy-and-git-recovery",
+		"sshdock deployments list failed-deploy-and-git-recovery",
+		"sshdock events list failed-deploy-and-git-recovery",
+		"git push --force sshdock \"$GOOD_COMMIT:main\"",
+		"sshdock apps remove failed-deploy-and-git-recovery --force",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing workflow marker %q", want)
+		}
+	}
+
+	guide := readTextFile(t, filepath.Join(root, "docs", "EXAMPLES.md"))
+	if !strings.Contains(guide, "examples/labs/failed-deploy-and-git-recovery") {
+		t.Fatal("public examples guide does not register the failed-deploy-and-git-recovery feature lab")
+	}
+}
+
+func TestFailedDeployAndGitRecoveryFeatureLab_patch_builds_with_a_missing_dockerfile(t *testing.T) {
+	// Given the executable recovery-lab overlay.
+	composePath, overlaid := writeFailedDeployAndGitRecoveryLabCompose(t)
+
+	// When SSHDock validates the patched Compose model before invoking Docker.
+	validation, err := compose.ValidateFile(composePath)
+
+	// Then Compose is valid but its build points at the controlled absent Dockerfile.
+	if err != nil {
+		t.Fatalf("ValidateFile overlaid Compose: %v", err)
+	}
+	if !slices.Equal(validation.Services, []string{"web"}) {
+		t.Fatalf("overlaid services = %#v, want [web]", validation.Services)
+	}
+	if !strings.Contains(overlaid, "dockerfile: Dockerfile.failure") {
+		t.Fatal("overlaid Compose does not select the controlled failure Dockerfile")
+	}
+
+	root := repoRoot(t)
+	missingDockerfile := filepath.Join(root, "examples", "frameworks", "nextjs", "Dockerfile.failure")
+	if _, statErr := os.Stat(missingDockerfile); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("controlled failure Dockerfile stat error = %v, want not exist", statErr)
+	}
+}
+
+func writeFailedDeployAndGitRecoveryLabCompose(t *testing.T) (string, string) {
+	t.Helper()
+	root := repoRoot(t)
+	canonical := readTextFile(t, filepath.Join(root, "examples", "frameworks", "nextjs", "compose.yml"))
+	patchPath := filepath.Join(root, "examples", "labs", "failed-deploy-and-git-recovery", "failure.patch")
+	patch := readTextFile(t, patchPath)
+	const wantPatch = "diff --git a/compose.yml b/compose.yml\n--- a/compose.yml\n+++ b/compose.yml\n@@ -2,5 +2,6 @@ services:\n   web:\n     build:\n       context: .\n+      dockerfile: Dockerfile.failure\n     ports:\n       - \"127.0.0.1:18100:3000\"\n     healthcheck:\n"
+	if patch != wantPatch {
+		t.Fatalf("failure patch differs from its executable contract:\n%s", patch)
+	}
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	if err := os.WriteFile(composePath, []byte(canonical), 0o600); err != nil {
+		t.Fatalf("WriteFile canonical Compose: %v", err)
+	}
+	command := exec.Command("git", "apply", patchPath)
+	command.Dir = projectDir
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git apply failure patch: %v: %s", err, output)
+	}
+	overlaid := readTextFile(t, composePath)
+	if !strings.Contains(overlaid, "dockerfile: Dockerfile.failure") {
+		t.Fatal("git apply did not add the controlled failure Dockerfile")
 	}
 	return composePath, overlaid
 }

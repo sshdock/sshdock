@@ -1,0 +1,11 @@
+diff --git a/compose.yml b/compose.yml
+--- a/compose.yml
++++ b/compose.yml
+@@ -2,5 +2,6 @@ services:
+   web:
+     build:
+       context: .
++      dockerfile: Dockerfile.failure
+     ports:
+       - "127.0.0.1:18100:3000"
+     healthcheck:

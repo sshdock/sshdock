@@ -320,6 +320,12 @@ Path: [`examples/labs/config-and-redeploy`](../examples/labs/config-and-redeploy
 
 This lab applies one small Compose patch to the NestJS compatibility probe. It proves missing required config fails before application start, remote config mutation stays redacted and does not deploy implicitly, and an explicit redeploy retries the same remote `main` commit.
 
+### Failed deploy and Git recovery
+
+Path: [`examples/labs/failed-deploy-and-git-recovery`](../examples/labs/failed-deploy-and-git-recovery/README.md)
+
+This lab applies one small Compose patch to the Next.js compatibility probe. It proves remote `main` accepts a pushed commit before a controlled build failure, records the failed deployment evidence, and recovers only when a known-good commit or tag is pushed back to `main`.
+
 ## Existing feature demonstrations
 
 The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.

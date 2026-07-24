@@ -88,9 +88,10 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 			UpstreamHost: "127.0.0.1",
 		}),
 		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
-			AppsDir:  cfg.AppsDir,
-			GitHost:  cfg.GitHost,
-			Executor: gitrecv.LocalGitExecutor{},
+			AppsDir:   cfg.AppsDir,
+			GitHost:   cfg.GitHost,
+			Executor:  gitrecv.LocalGitExecutor{},
+			OwnerUser: cfg.OperatorUser,
 		}),
 		RecoveryRunner:      recoveryRunner,
 		RecoveryCheckout:    gitrecv.LocalWorktreeCheckout{},

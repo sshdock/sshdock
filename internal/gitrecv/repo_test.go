@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -107,6 +108,48 @@ func TestRepoManagerUsesDefaultRemoteHost(t *testing.T) {
 
 	if got := manager.RemoteURL("my-app"); got != "git@server:my-app.git" {
 		t.Fatalf("RemoteURL = %q", got)
+	}
+}
+
+func TestRepoManagerSetupBareRepo_transfersConfiguredOwner_when_runningAsRoot(t *testing.T) {
+	// Given a root-run explicit setup for the account that receives Git pushes.
+	manager := NewRepoManager(RepoManagerConfig{
+		AppsDir:   t.TempDir(),
+		Executor:  &recordingGitExecutor{},
+		OwnerUser: "sshdock",
+	})
+	manager.isRoot = func() bool { return true }
+	manager.lookupOwner = func(name string) (repoOwner, error) {
+		if name != "sshdock" {
+			t.Fatalf("owner lookup name = %q, want sshdock", name)
+		}
+		return repoOwner{uid: 123, gid: 456}, nil
+	}
+	owned := make([]string, 0)
+	manager.chown = func(path string, owner repoOwner) error {
+		if owner != (repoOwner{uid: 123, gid: 456}) {
+			t.Fatalf("owner = %#v", owner)
+		}
+		owned = append(owned, path)
+		return nil
+	}
+
+	// When the bare repository and its hooks are created.
+	repo, err := manager.SetupBareRepo(context.Background(), "my-app")
+
+	// Then the Git receiver owns the repository and both hooks.
+	if err != nil {
+		t.Fatalf("SetupBareRepo: %v", err)
+	}
+	for _, want := range []string{
+		filepath.Dir(repo.Path),
+		repo.Path,
+		filepath.Join(repo.Path, "hooks", "pre-receive"),
+		filepath.Join(repo.Path, "hooks", "post-receive"),
+	} {
+		if !slices.Contains(owned, want) {
+			t.Fatalf("owned paths = %#v, missing %q", owned, want)
+		}
 	}
 }
 

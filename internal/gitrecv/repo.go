@@ -3,8 +3,11 @@ package gitrecv
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 )
 
 type GitCommand struct {
@@ -18,20 +21,30 @@ type GitCommandExecutor interface {
 }
 
 type RepoManagerConfig struct {
-	AppsDir  string
-	GitHost  string
-	Executor GitCommandExecutor
+	AppsDir   string
+	GitHost   string
+	Executor  GitCommandExecutor
+	OwnerUser string
 }
 
 type RepoManager struct {
-	appsDir  string
-	gitHost  string
-	executor GitCommandExecutor
+	appsDir     string
+	gitHost     string
+	executor    GitCommandExecutor
+	ownerUser   string
+	isRoot      func() bool
+	lookupOwner func(string) (repoOwner, error)
+	chown       func(string, repoOwner) error
 }
 
 type BareRepo struct {
 	Path      string
 	RemoteURL string
+}
+
+type repoOwner struct {
+	uid int
+	gid int
 }
 
 func NewRepoManager(config RepoManagerConfig) *RepoManager {
@@ -41,9 +54,13 @@ func NewRepoManager(config RepoManagerConfig) *RepoManager {
 	}
 
 	return &RepoManager{
-		appsDir:  config.AppsDir,
-		gitHost:  gitHost,
-		executor: config.Executor,
+		appsDir:     config.AppsDir,
+		gitHost:     gitHost,
+		executor:    config.Executor,
+		ownerUser:   config.OwnerUser,
+		isRoot:      func() bool { return os.Geteuid() == 0 },
+		lookupOwner: lookupRepoOwner,
+		chown:       chownRepoPath,
 	}
 }
 
@@ -62,11 +79,60 @@ func (m *RepoManager) SetupBareRepo(ctx context.Context, appName string) (BareRe
 	if err := m.InstallHooks(appName, repoPath); err != nil {
 		return BareRepo{}, err
 	}
+	if err := m.ensureRepoOwnership(repoPath); err != nil {
+		return BareRepo{}, err
+	}
 
 	return BareRepo{
 		Path:      repoPath,
 		RemoteURL: m.RemoteURL(appName),
 	}, nil
+}
+
+func (m *RepoManager) ensureRepoOwnership(repoPath string) error {
+	if m.ownerUser == "" || !m.isRoot() {
+		return nil
+	}
+	owner, err := m.lookupOwner(m.ownerUser)
+	if err != nil {
+		return fmt.Errorf("resolve Git receiver owner %q: %w", m.ownerUser, err)
+	}
+	appDir := filepath.Dir(repoPath)
+	if err := filepath.WalkDir(appDir, func(path string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("walk repository path %q: %w", path, walkErr)
+		}
+		if err := m.chown(path, owner); err != nil {
+			return fmt.Errorf("assign Git receiver ownership to %q for %q: %w", m.ownerUser, path, err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func lookupRepoOwner(name string) (repoOwner, error) {
+	account, err := user.Lookup(name)
+	if err != nil {
+		return repoOwner{}, fmt.Errorf("look up user: %w", err)
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return repoOwner{}, fmt.Errorf("parse UID %q: %w", account.Uid, err)
+	}
+	gid, err := strconv.Atoi(account.Gid)
+	if err != nil {
+		return repoOwner{}, fmt.Errorf("parse GID %q: %w", account.Gid, err)
+	}
+	return repoOwner{uid: uid, gid: gid}, nil
+}
+
+func chownRepoPath(path string, owner repoOwner) error {
+	if err := os.Lchown(path, owner.uid, owner.gid); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *RepoManager) InstallHooks(appName string, repoPath string) error {

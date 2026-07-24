@@ -152,9 +152,10 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 		LocksDir: cfg.LocksDir,
 		NodeID:   cfg.NodeID,
 		RepoManager: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
-			AppsDir:  cfg.AppsDir,
-			GitHost:  configRecoveryHost(context.Background(), sqlite, cfg),
-			Executor: gitrecv.LocalGitExecutor{},
+			AppsDir:   cfg.AppsDir,
+			GitHost:   configRecoveryHost(context.Background(), sqlite, cfg),
+			Executor:  gitrecv.LocalGitExecutor{},
+			OwnerUser: cfg.OperatorUser,
 		}),
 		ReceivePackRunner: gitrecv.LocalReceivePackRunner{},
 	})

@@ -296,6 +296,7 @@ func TestDomainsAndRouteCheckFeatureLab_contract_when_reusing_wordpress_recipe(t
 	for _, want := range []string{
 		"examples/software/wordpress",
 		"sudo sshdock apps create domains-and-route-check",
+		"domains list domains-and-route-check | grep -Fx \"no domains\"",
 		"git push sshdock main",
 		"bash acceptance.sh",
 		"domains attach domains-and-route-check web",
@@ -305,6 +306,12 @@ func TestDomainsAndRouteCheckFeatureLab_contract_when_reusing_wordpress_recipe(t
 		if !strings.Contains(readme, want) {
 			t.Fatalf("README missing workflow marker %q", want)
 		}
+	}
+	createIndex := strings.Index(readme, "sudo sshdock apps create domains-and-route-check")
+	prePushDomainsIndex := strings.Index(readme, "ssh sshdock@sshdock.example.com domains list domains-and-route-check")
+	pushIndex := strings.Index(readme, "git push sshdock main")
+	if createIndex < 0 || prePushDomainsIndex <= createIndex || prePushDomainsIndex >= pushIndex {
+		t.Fatal("README does not verify the app has no route before its first successful Git deployment")
 	}
 
 	scriptPath := filepath.Join(labDir, "acceptance.sh")

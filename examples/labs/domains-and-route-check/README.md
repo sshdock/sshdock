@@ -31,6 +31,7 @@ Create the receive repository without deploying it, then store the database valu
 
 ```bash
 sudo sshdock apps create domains-and-route-check
+ssh sshdock@sshdock.example.com domains list domains-and-route-check | grep -Fx "no domains"
 printf '%s' 'wordpress' \
   | ssh sshdock@sshdock.example.com config set domains-and-route-check WORDPRESS_DB_NAME
 printf '%s' 'wordpress' \

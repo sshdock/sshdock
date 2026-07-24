@@ -332,6 +332,12 @@ Path: [`examples/labs/restricted-ssh-operations`](../examples/labs/restricted-ss
 
 This lab reuses the Laravel compatibility probe without an application or Compose overlay. It proves restricted stop, start, restart, and redeploy behavior; argv-safe service commands; removable one-off Artisan work; PTY guidance; operator rejection of host-command attempts; and removal that preserves Docker volumes.
 
+### Domains and route check
+
+Path: [`examples/labs/domains-and-route-check`](../examples/labs/domains-and-route-check/README.md)
+
+This lab reuses the WordPress recipe without copying its Compose file or application. It proves that a successful deployment creates the conventional automatic route, exercises manual attach and detach, compares stored routes with active Caddy state from fresh processes, demonstrates actionable unavailable-state output, verifies that the private database receives no route, and validates Caddy after the final route is removed.
+
 ## Existing feature demonstrations
 
 The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.

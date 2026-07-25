@@ -11,10 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/gitrecv"
-	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -23,7 +21,7 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	appName := flags.String("app", "", "app name")
 	repoPath := flags.String("repo", "", "bare repository path")
-	worktreePath := flags.String("worktree", "", "checkout worktree path")
+	_ = flags.String("worktree", "", "checkout worktree path")
 
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -54,14 +52,10 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			gitUpdateReported = true
 		}
 	}
-
 	cfg := config.LoadFromEnv()
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
 		return 1
-	}
-	if *worktreePath == "" {
-		*worktreePath = cfg.AppWorktreePath(*appName)
 	}
 	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
 	if err != nil {
@@ -70,28 +64,8 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", err)
-		return 1
-	}
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
-
-	handler := gitrecv.NewPostReceiveHandler(gitrecv.PostReceiveHandlerConfig{
-		Store:          sqlite,
-		Runner:         runner,
-		ConfigResolver: configService,
-		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
-			ConfigPath:   cfg.CaddyConfigPath,
-			Executor:     router.LocalCommandExecutor{},
-			AdminAddress: cfg.CaddyAdminAddress,
-			UpstreamHost: "127.0.0.1",
-		}),
-		Checkout:          gitrecv.LocalWorktreeCheckout{},
-		Output:            stderr,
-		GitUpdateReported: gitUpdateReported,
-	})
-	if err := handler.Handle(context.Background(), *appName, *repoPath, *worktreePath, bytes.NewReader(input)); err != nil {
+	handler := gitrecv.NewPostReceiveQueueHandler(gitrecv.PostReceiveQueueHandlerConfig{Store: sqlite, Output: stderr, GitUpdateReported: gitUpdateReported})
+	if err := handler.Handle(context.Background(), *appName, *repoPath, bytes.NewReader(input)); err != nil {
 		var outputErr *gitrecv.StatusOutputError
 		if errors.As(err, &outputErr) {
 			fmt.Fprintln(stderr, "deploy: succeeded, but status output failed:", err)
@@ -104,11 +78,50 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	return 0
 }
 
-func runGitPreReceive(stdin io.Reader, stderr io.Writer) int {
+func runGitPreReceive(args []string, stdin io.Reader, stderr io.Writer) int {
+	flags := flag.NewFlagSet("git-pre-receive", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	appName := flags.String("app", "", "app name")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if *appName == "" {
+		fmt.Fprintln(stderr, "usage: sshdockd git-pre-receive --app <name>")
+		return 2
+	}
 	if stdin == nil {
 		stdin = os.Stdin
 	}
-	if err := gitrecv.ValidatePreReceive(stdin); err != nil {
+	input, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "read pre-receive input:", err)
+		return 1
+	}
+	if err := gitrecv.ValidatePreReceive(bytes.NewReader(input)); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "create database dir: %v\n", err)
+		return 1
+	}
+	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer sqlite.Close()
+	queue := gitrecv.NewPushQueueHandler(gitrecv.PushQueueHandlerConfig{Store: sqlite})
+	if _, err := queue.Queue(context.Background(), *appName, bytes.NewReader(input)); err != nil {
+		if errors.Is(err, store.ErrActiveDeployment) {
+			fmt.Fprintf(stderr, "deploy: app %s already has a pending or active deployment; wait for it to finish before pushing again\n", *appName)
+			return 1
+		}
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

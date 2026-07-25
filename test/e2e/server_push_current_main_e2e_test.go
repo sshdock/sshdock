@@ -19,13 +19,9 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	// Given
 	paths := setupBootstrappedServerPush(t, "fake")
 	appName := "current-main-app"
-	initialCommit, initialOutput := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
+	initialCommit, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:initial\n",
 	})
-	assertPushOutputContains(t, initialOutput,
-		"git: remote main updated to "+initialCommit,
-		"deploy: current main "+initialCommit+" succeeded",
-	)
 	sourceDir := filepath.Join(paths.tmp, "source-"+appName)
 	pushEnv := currentMainPushEnv(t, paths)
 	repoPath := filepath.Join(paths.dataDir, "apps", appName, "repo.git")
@@ -52,6 +48,7 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 		t.Fatalf("branch-to-main push: %v\n%s", branchErr, branchOutput)
 	}
 	assertRemoteMain(t, repoPath, featureCommit)
+	waitForDeploymentTerminal(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, featureCommit)
 
 	// When: an explicit redeploy retries the exact current-main commit.
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
@@ -77,11 +74,8 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	if tagErr != nil {
 		t.Fatalf("annotated-tag-to-main push: %v\n%s", tagErr, tagOutput)
 	}
-	assertPushOutputContains(t, tagOutput,
-		"git: remote main updated to "+initialCommit,
-		"deploy: current main "+initialCommit+" succeeded",
-	)
 	assertRemoteMain(t, repoPath, initialCommit)
+	waitForDeploymentTerminal(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, initialCommit)
 	branchOutput, branchErr = runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "sshdock", "feature:main")
 	if branchErr != nil {
 		t.Fatalf("restore feature to main: %v\n%s", branchErr, branchOutput)
@@ -100,11 +94,8 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	if failedPushErr != nil {
 		t.Fatalf("post-receive deployment failure rejected Git update: %v\n%s", failedPushErr, failedOutput)
 	}
-	assertPushOutputContains(t, failedOutput,
-		"git: remote main updated to "+failedCommit,
-		"deploy: failed: current main "+failedCommit,
-	)
 	assertRemoteMain(t, repoPath, failedCommit)
+	waitForDeploymentTerminal(t, dbPath, appName, failedCommit)
 	failedHealth := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "health", appName)
 	for _, want := range []string{
 		"health: fail",
@@ -127,8 +118,8 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	if rollbackErr != nil {
 		t.Fatalf("Git rollback push: %v\n%s", rollbackErr, rollbackOutput)
 	}
-	assertPushOutputContains(t, rollbackOutput, "deploy: current main "+initialCommit+" succeeded")
 	assertRemoteMain(t, repoPath, initialCommit)
+	waitForDeploymentTerminal(t, dbPath, appName, initialCommit)
 	if got := currentMainAttemptCount(t, dbPath, appName, initialCommit); got != beforeRollback+1 {
 		t.Fatalf("rollback attempts = %d, want %d", got, beforeRollback+1)
 	}
@@ -159,15 +150,6 @@ func writeCurrentMainCompose(t *testing.T, sourceDir string, image string) {
 	content := "services:\n  web:\n    image: " + image + "\n"
 	if err := os.WriteFile(filepath.Join(sourceDir, "compose.yml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write compose: %v", err)
-	}
-}
-
-func assertPushOutputContains(t *testing.T, output string, values ...string) {
-	t.Helper()
-	for _, value := range values {
-		if !strings.Contains(output, value) {
-			t.Fatalf("push output missing %q:\n%s", value, output)
-		}
 	}
 }
 

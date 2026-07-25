@@ -136,22 +136,22 @@ func chownRepoPath(path string, owner repoOwner) error {
 }
 
 func (m *RepoManager) InstallHooks(appName string, repoPath string) error {
-	if err := m.renderPreReceiveHook(repoPath); err != nil {
+	if err := m.renderPreReceiveHook(appName, repoPath); err != nil {
 		return err
 	}
 	return m.renderPostReceiveHook(appName, repoPath)
 }
 
-func (m *RepoManager) renderPreReceiveHook(repoPath string) error {
+func (m *RepoManager) renderPreReceiveHook(appName string, repoPath string) error {
 	hookDir := filepath.Join(repoPath, "hooks")
 	if err := os.MkdirAll(hookDir, 0o755); err != nil {
 		return err
 	}
 
-	const hook = `#!/bin/sh
+	hook := fmt.Sprintf(`#!/bin/sh
 set -eu
-sshdockd git-pre-receive
-`
+sshdockd git-pre-receive --app %q
+`, appName)
 
 	return writeExecutableHook(filepath.Join(hookDir, "pre-receive"), []byte(hook))
 }

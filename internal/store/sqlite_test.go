@@ -336,6 +336,133 @@ func TestSQLiteStoreDeploymentAttemptMetadata(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreQueueDeploymentRejectsSecondActiveAttempt(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	if err := store.CreateApp(ctx, app.App{ID: "app_1", Name: "app_1", NodeID: "local", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	first := app.Deployment{ID: "dep_first", AppID: "app_1", ReleaseID: "rel_first", CommitSHA: "first", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
+	second := app.Deployment{ID: "dep_second", AppID: "app_1", ReleaseID: "rel_second", CommitSHA: "second", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+
+	// When
+	if err := store.QueueDeployment(ctx, first, "initial"); err != nil {
+		t.Fatalf("QueueDeployment first: %v", err)
+	}
+	err := store.QueueDeployment(ctx, second, first.CommitSHA)
+
+	// Then
+	if !errors.Is(err, ErrActiveDeployment) {
+		t.Fatalf("QueueDeployment second error = %v, want ErrActiveDeployment", err)
+	}
+	deployments, err := store.ListDeploymentsByApp(ctx, "app_1")
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 1 || deployments[0] != first {
+		t.Fatalf("deployments = %#v, want [%#v]", deployments, first)
+	}
+}
+
+func TestSQLiteStoreQueueDeploymentReplacesUnacceptedReservation(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	if err := store.CreateApp(ctx, app.App{ID: "app_1", Name: "app_1", NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	stale := app.Deployment{ID: "dep_stale", AppID: "app_1", ReleaseID: "rel_stale", CommitSHA: "rejected", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
+	if err := store.QueueDeployment(ctx, stale, "initial"); err != nil {
+		t.Fatalf("QueueDeployment stale: %v", err)
+	}
+	fresh := app.Deployment{ID: "dep_fresh", AppID: "app_1", ReleaseID: "rel_fresh", CommitSHA: "accepted", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+
+	// When: the next pre-receive observes that remote main never moved to the stale SHA.
+	err := store.QueueDeployment(ctx, fresh, "initial")
+
+	// Then
+	if err != nil {
+		t.Fatalf("QueueDeployment fresh: %v", err)
+	}
+	deployments, err := store.ListDeploymentsByApp(ctx, fresh.AppID)
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 1 || deployments[0] != fresh {
+		t.Fatalf("deployments = %#v, want [%#v]", deployments, fresh)
+	}
+}
+
+func TestSQLiteStoreClaimNextPendingDeploymentMarksOnlyOneAttemptDeploying(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	for _, appID := range []string{"app_1", "app_2"} {
+		if err := store.CreateApp(ctx, app.App{ID: appID, Name: appID, NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatalf("CreateApp(%s): %v", appID, err)
+		}
+	}
+	first := app.Deployment{ID: "dep_first", AppID: "app_1", ReleaseID: "rel_first", CommitSHA: "first", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
+	second := app.Deployment{ID: "dep_second", AppID: "app_2", ReleaseID: "rel_second", CommitSHA: "second", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+	for _, deployment := range []app.Deployment{first, second} {
+		if err := store.QueueDeployment(ctx, deployment, ""); err != nil {
+			t.Fatalf("QueueDeployment(%s): %v", deployment.ID, err)
+		}
+	}
+
+	// When: pre-receive has reserved the attempt, but Git has not accepted it yet.
+	_, found, err := store.ClaimNextPendingDeployment(ctx)
+	if err != nil {
+		t.Fatalf("ClaimNextPendingDeployment before acceptance: %v", err)
+	}
+	if found {
+		t.Fatal("ClaimNextPendingDeployment found a pre-receive reservation before Git acceptance")
+	}
+	if err := store.CreateEvent(ctx, app.Event{ID: "evt_dep_first_git_ref_accepted", AppID: first.AppID, Type: "git.ref_accepted", Message: "Remote main accepted", CreatedAt: now}); err != nil {
+		t.Fatalf("CreateEvent accepted: %v", err)
+	}
+	_, found, err = store.ClaimNextPendingDeployment(ctx)
+	if err != nil {
+		t.Fatalf("ClaimNextPendingDeployment after acceptance: %v", err)
+	}
+	if found {
+		t.Fatal("ClaimNextPendingDeployment found an accepted deployment before its queue transition")
+	}
+	if err := store.CreateEvent(ctx, app.Event{ID: "evt_dep_first_queued", AppID: first.AppID, Type: "deploy.queued", Message: "Deploy queued", CreatedAt: now}); err != nil {
+		t.Fatalf("CreateEvent queued: %v", err)
+	}
+	claimed, found, err := store.ClaimNextPendingDeployment(ctx)
+
+	// Then: post-receive acceptance makes exactly one attempt runnable.
+	if err != nil {
+		t.Fatalf("ClaimNextPendingDeployment: %v", err)
+	}
+	if !found {
+		t.Fatal("ClaimNextPendingDeployment found = false, want true")
+	}
+	if claimed.ID != first.ID || claimed.Status != app.DeploymentStatusDeploying {
+		t.Fatalf("claimed deployment = %#v, want first deployment marked deploying", claimed)
+	}
+	firstDeployments, err := store.ListDeploymentsByApp(ctx, first.AppID)
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp(%s): %v", first.AppID, err)
+	}
+	if len(firstDeployments) != 1 || firstDeployments[0].Status != app.DeploymentStatusDeploying || !firstDeployments[0].FinishedAt.IsZero() {
+		t.Fatalf("first app deployments = %#v, want one deploying attempt without a finish time", firstDeployments)
+	}
+	deployments, err := store.ListDeploymentsByApp(ctx, second.AppID)
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 1 || deployments[0] != second {
+		t.Fatalf("second app deployments = %#v, want [%#v]", deployments, second)
+	}
+}
+
 func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
 	// Given
 	ctx := context.Background()

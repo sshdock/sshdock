@@ -271,13 +271,9 @@ git push --force sshdock v1.2.3:main                    # lightweight tag
 git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
 ```
 
-Post-receive deployment happens after Git updates remote `main`. If deployment fails, remote `main` remains at the accepted commit. Remote output prints the Git ref update and deployment result as separate lines.
+Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. If deployment fails, remote `main` remains at the accepted commit. A second push to an app with a pending or active deployment is rejected before its ref changes; pushes for other apps can queue. Use `sshdock deployments list <app>`, `sshdock apps health <app>`, and `sshdock events list <app>` to observe completion.
 
-When a base domain is configured, output also includes the expected default URL after the first successful deploy:
-
-```text
-default URL after first deploy: https://my-app.example.com
-```
+When a base domain is configured, inspect the route after deployment completes with `sshdock domains list <app>` or `sshdock apps health <app>`.
 
 Manual app creation remains useful for scripts and debugging. The default v0 user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
 
@@ -571,7 +567,7 @@ Run the daemon process used by `sshdockd.service`.
 sshdockd daemon
 ```
 
-On startup it validates config, opens SQLite, runs migrations, and starts without checking out app commits or invoking Compose mutations. Docker Compose restart policies own container recovery after Docker or host reboot. It stays running until interrupted.
+On startup it validates config, opens SQLite, runs migrations, marks interrupted active deployments failed with retry guidance, and then claims durable pending Git-push deployments one at a time. Pending attempts survive restart; interrupted active attempts are not automatically rerun. Docker Compose restart policies own container recovery after Docker or host reboot. It stays running until interrupted.
 
 ### `sshdockd operator`
 

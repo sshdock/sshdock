@@ -2,7 +2,6 @@ package gitrecv
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -79,9 +78,10 @@ func TestReceivePackServiceRejectsSecondPushWhenSameAppIsReceiving(t *testing.T)
 	}
 }
 
-func TestReceivePackServiceWaitsForDeploymentBeforeStartingReceivePack(t *testing.T) {
+func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T) {
 	// Given
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 	rootDir := t.TempDir()
 	appsDir := filepath.Join(rootDir, "apps")
 	locksDir := filepath.Join(rootDir, "locks")
@@ -97,45 +97,18 @@ func TestReceivePackServiceWaitsForDeploymentBeforeStartingReceivePack(t *testin
 		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir}),
 		ReceivePackRunner: &recordingReceivePackRunner{},
 	})
-	waitOutput := newReceiveWaitSignalWriter("deploy: waiting for another app deployment to finish")
-	waitCtx, cancel := context.WithCancel(ctx)
-	done := make(chan error, 1)
-	go func() {
-		done <- service.Receive(waitCtx, ReceivePackRequest{
-			OriginalCommand: "git-receive-pack 'waiting-app.git'",
-			Stderr:          waitOutput,
-		})
-	}()
-	select {
-	case <-waitOutput.notified:
-	case <-time.After(2 * time.Second):
-		t.Fatal("receive did not report deployment wait")
-	}
-
 	// When
-	if _, err := os.Stat(filepath.Join(appsDir, "waiting-app", "repo.git")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("repo stat error = %v, want receive-pack setup not started", err)
-	}
-	cancel()
+	err = service.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'waiting-app.git'"})
 
 	// Then
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("Receive error = %v, want context canceled", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Receive did not stop after cancellation")
+	if err != nil {
+		t.Fatalf("Receive while another deployment is active: %v", err)
 	}
 	if err := active.Release(); err != nil {
 		t.Fatalf("release active deployment: %v", err)
 	}
-	appGuard, err := manager.AcquireApp(ctx, "waiting-app")
-	if err != nil {
-		t.Fatalf("AcquireApp after canceled receive: %v", err)
-	}
-	if err := appGuard.Release(); err != nil {
-		t.Fatalf("release app guard: %v", err)
+	if _, err := os.Stat(filepath.Join(appsDir, "waiting-app", "repo.git")); err != nil {
+		t.Fatalf("repo stat: %v", err)
 	}
 }
 

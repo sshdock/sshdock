@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/cli"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -88,6 +92,19 @@ func TestHookRunnerFromEnvConfiguresFakeDeployRouteReason(t *testing.T) {
 	fake := runner.(*compose.FakeRunner)
 	if fake.DeployResult.RouteReason != "effective Compose model route is ambiguous" {
 		t.Fatalf("DeployResult = %#v", fake.DeployResult)
+	}
+}
+
+func TestHookRunnerFromEnvConfiguresFakeDeployDelay(t *testing.T) {
+	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "250ms")
+
+	runner, err := hookRunnerFromEnv()
+	if err != nil {
+		t.Fatalf("hookRunnerFromEnv: %v", err)
+	}
+	if runner.(*compose.FakeRunner).DeployDelay != 250*time.Millisecond {
+		t.Fatalf("DeployDelay = %s, want 250ms", runner.(*compose.FakeRunner).DeployDelay)
 	}
 }
 
@@ -449,18 +466,60 @@ func TestRunGitHookReportsAcceptedMainBeforeSetupFailure(t *testing.T) {
 	}
 }
 
-func TestRunGitPreReceiveAcceptsMainUpdate(t *testing.T) {
+func TestRunGitPreReceiveRequiresAppName(t *testing.T) {
 	// Given
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	input := strings.NewReader("oldsha newsha refs/heads/main\n")
 
 	// When
-	code := runWithInput([]string{"git-pre-receive"}, input, &stdout, &stderr)
+	code := runWithInput([]string{"git-pre-receive"}, nil, &stdout, &stderr)
+
+	// Then
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "git-pre-receive --app") {
+		t.Fatalf("stderr = %q, want app usage", stderr.String())
+	}
+}
+
+func TestRunGitPreReceiveQueuesMainUpdate(t *testing.T) {
+	// Given
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, "sshdock.db")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
+	db, err := store.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	if err := db.CreateApp(context.Background(), app.App{ID: "my-app", Name: "my-app", NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	var stderr bytes.Buffer
+
+	// When
+	code := runGitPreReceive([]string{"--app", "my-app"}, strings.NewReader("oldsha newsha refs/heads/main\n"), &stderr)
 
 	// Then
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	db, err = store.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("reopen SQLite: %v", err)
+	}
+	defer db.Close()
+	deployments, err := db.ListDeploymentsByApp(context.Background(), "my-app")
+	if err != nil {
+		t.Fatalf("ListDeploymentsByApp: %v", err)
+	}
+	if len(deployments) != 1 || deployments[0].CommitSHA != "newsha" || deployments[0].Status != app.DeploymentStatusPending {
+		t.Fatalf("deployments = %#v, want one pending main deployment", deployments)
 	}
 }
 
@@ -471,7 +530,7 @@ func TestRunGitPreReceiveRejectsNonMainUpdate(t *testing.T) {
 	input := strings.NewReader("oldsha newsha refs/heads/feature\n")
 
 	// When
-	code := runWithInput([]string{"git-pre-receive"}, input, &stdout, &stderr)
+	code := runWithInput([]string{"git-pre-receive", "--app", "my-app"}, input, &stdout, &stderr)
 
 	// Then
 	if code != 1 {

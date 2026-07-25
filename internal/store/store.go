@@ -9,7 +9,10 @@ import (
 	"github.com/sshdock/sshdock/internal/app"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound         = errors.New("not found")
+	ErrActiveDeployment = errors.New("app already has a pending or active deployment")
+)
 
 type ServerConfig struct {
 	BaseDomain string
@@ -68,6 +71,10 @@ type Store interface {
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
+	QueueDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) error
+	FindDeploymentByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Deployment, error)
+	ClaimNextPendingDeployment(ctx context.Context) (app.Deployment, bool, error)
+	RecordDeploymentQueued(ctx context.Context, accepted app.Event, queued app.Event) error
 	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	UpdateDeploymentFailure(ctx context.Context, model app.Deployment) error

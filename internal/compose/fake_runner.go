@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 )
 
 type FakeRunner struct {
 	Validation   ValidationResult
 	DeployResult DeployResult
+	DeployDelay  time.Duration
 	Services     []ServiceStatus
 	LogOutput    string
 	ExecOutput   string
@@ -48,8 +50,15 @@ func (f *FakeRunner) Validate(_ context.Context, appName string, composePath str
 	return f.Validation, nil
 }
 
-func (f *FakeRunner) Deploy(_ context.Context, request DeployRequest) (DeployResult, error) {
+func (f *FakeRunner) Deploy(ctx context.Context, request DeployRequest) (DeployResult, error) {
 	f.DeployRequests = append(f.DeployRequests, request)
+	if f.DeployDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return DeployResult{}, ctx.Err()
+		case <-time.After(f.DeployDelay):
+		}
+	}
 	return f.DeployResult, f.DeployErr
 }
 

@@ -70,7 +70,7 @@ Deploy:
 git push sshdock main
 ```
 
-After a successful deploy, SSHDock can route the app at:
+After the daemon completes a successful deployment, SSHDock can route the app at:
 
 ```text
 https://my-app.example.com
@@ -78,9 +78,9 @@ https://my-app.example.com
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 
-Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. A failed post-receive deployment does not rewrite `main`, and push output reports the Git ref update separately from deployment success or failure.
+Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment before the client disconnects. Git acceptance and deployment completion are separate: a later deployment failure does not rewrite `main`; inspect `deployments list`, `apps health`, and `events list` for its terminal result.
 
-SSHDock accepts only one active push per app. An overlapping push to the same app is rejected immediately with retry guidance. Pushes to different apps wait before receive-pack for one server-wide deployment slot; a later push stays connected, reports that it is waiting, and resumes synchronously. SSHDock does not create a durable or detached deployment queue.
+SSHDock accepts only one pending or active deployment per app. A second push to that app is rejected before its ref changes. Pushes for other apps are accepted and queued; the persistent daemon runs queued push deployments one at a time. Pending attempts survive a daemon restart. An attempt interrupted while actively deploying is marked failed with retry guidance and is not silently rerun.
 
 SSHDock warns when trusted Compose input publishes on all interfaces or couples directly to the host through privileged mode, host networking, bind mounts, the Docker socket, explicit global volume names, or external volumes. These warnings do not provide a sandbox; only trusted owners should have deploy access.
 
@@ -127,7 +127,7 @@ git push --force sshdock <commit-or-lightweight-tag>:main
 git push --force sshdock '<annotated-tag>^{}:refs/heads/main'
 ```
 
-SSHDock does not redeploy apps when `sshdockd` starts. Docker Compose restart policies own recovery after Docker or host reboot. `apps health` and `diagnostics` warn when a routed or running service still uses Compose's default non-restarting policy; use `restart: unless-stopped` or `restart: always` when that service should return after reboot.
+On startup, `sshdockd` resumes pending push deployments but never silently reruns an attempt interrupted while actively deploying. Docker Compose restart policies own container recovery after Docker or host reboot. `apps health` and `diagnostics` warn when a routed or running service still uses Compose's default non-restarting policy; use `restart: unless-stopped` or `restart: always` when that service should return after reboot.
 
 Manual domain attach is available when auto-routing is not enough:
 

@@ -30,6 +30,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err != nil {
 		return err
 	}
+	return h.deployAttempt(ctx, event, worktreePath, attempt)
+}
+
+func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent, worktreePath string, attempt pushAttempt) error {
 
 	retryGuidance := "sudo sshdock apps redeploy " + event.AppName
 	if err := h.checkout.Checkout(ctx, event.RepoPath, worktreePath, event.CommitSHA); err != nil {
@@ -148,6 +152,34 @@ func (h *PostReceiveHandler) beginPushAttempt(ctx context.Context, event PushEve
 		return pushAttempt{}, err
 	}
 	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "started"), AppID: event.AppName, Type: "deploy.started", Message: "Deploy started for release " + release.ID, CreatedAt: now}); err != nil {
+		return pushAttempt{}, err
+	}
+	return pushAttempt{release: release, deployment: deployment, releaseStored: releaseStored}, nil
+}
+
+func (h *PostReceiveHandler) beginQueuedAttempt(ctx context.Context, event PushEvent, deployment app.Deployment) (pushAttempt, error) {
+	if deployment.AppID != event.AppName || deployment.CommitSHA != event.CommitSHA {
+		return pushAttempt{}, fmt.Errorf("queued deployment %q does not match push event", deployment.ID)
+	}
+	if deployment.Status != app.DeploymentStatusDeploying {
+		return pushAttempt{}, fmt.Errorf("queued deployment %q is %q, want %q", deployment.ID, deployment.Status, app.DeploymentStatusDeploying)
+	}
+
+	now := h.now()
+	release, err := h.store.GetReleaseByAppCommit(ctx, event.AppName, event.CommitSHA)
+	releaseStored := err == nil
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			return pushAttempt{}, err
+		}
+		release = app.Release{ID: deployment.ReleaseID, AppID: event.AppName, CommitSHA: event.CommitSHA, Status: app.ReleaseStatusPending, CreatedAt: now, UpdatedAt: now}
+	}
+	if releaseStored {
+		if err := h.store.MarkReleaseDeployingUnlessSucceeded(ctx, release.ID, now); err != nil {
+			return pushAttempt{}, err
+		}
+	}
+	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deployment.ID, "started"), AppID: event.AppName, Type: "deploy.started", Message: "Deploy started for release " + release.ID, CreatedAt: now}); err != nil {
 		return pushAttempt{}, err
 	}
 	return pushAttempt{release: release, deployment: deployment, releaseStored: releaseStored}, nil

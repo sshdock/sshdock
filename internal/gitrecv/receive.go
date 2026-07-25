@@ -140,20 +140,6 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	defer func() {
 		returnErr = errors.Join(returnErr, guard.Release())
 	}()
-	deploymentGuard, err := s.coordination.AcquireDeployment(ctx, func() error {
-		if request.Stderr == nil {
-			return nil
-		}
-		_, writeErr := fmt.Fprintln(request.Stderr, "deploy: waiting for another app deployment to finish")
-		return writeErr
-	})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		returnErr = errors.Join(returnErr, deploymentGuard.Release())
-	}()
-
 	model, err := s.store.GetApp(ctx, appName)
 	if errors.Is(err, store.ErrNotFound) {
 		if nameErr := domaincfg.ValidateAppName(appName); nameErr != nil {

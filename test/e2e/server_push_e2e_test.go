@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
@@ -22,12 +23,9 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "server-image-app"
-	commitSHA, pushOutput := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
+	commitSHA, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
-	if !strings.Contains(pushOutput, "sudo sshdock domains attach "+appName+" <service> <domain> --port <port>") {
-		t.Fatalf("git push output missing no-route guidance:\n%s", pushOutput)
-	}
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
@@ -39,7 +37,42 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	assertEventTypes(t, dbPath, appName, []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"})
+	assertEventTypesContain(t, dbPath, appName, []string{"git.ref_accepted", "deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_skipped"})
+}
+
+func TestServerPushClientReturnDoesNotInterruptQueuedDeployment(t *testing.T) {
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "750ms")
+	paths := setupBootstrappedServerPush(t, "fake")
+
+	appName := "server-detached-client-app"
+	commitSHA, _ := pushComposeAppThroughSSHWithoutWaiting(t, paths, appName, map[string]string{
+		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
+	})
+
+	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
+	status := waitForVisibleDeploymentStatus(t, dbPath, appName, commitSHA)
+	if status == string(app.DeploymentStatusSucceeded) || status == string(app.DeploymentStatusFailed) {
+		t.Fatalf("deployment status after client return = %q, want queued or active", status)
+	}
+
+	waitForDeploymentTerminal(t, dbPath, appName, commitSHA)
+	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
+}
+
+func waitForVisibleDeploymentStatus(t *testing.T, dbPath string, appName string, commitSHA string) string {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
+		if err == nil {
+			return status
+		}
+		lastErr = err
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("deployment status after client return was never readable: %v", lastErr)
+	return ""
 }
 
 func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
@@ -185,6 +218,31 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	)
 	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "sshdock"), "ssh-keys", "add", "admin")
 
+	daemonLogPath := filepath.Join(tmp, "sshdockd.log")
+	daemonLog, err := os.Create(daemonLogPath)
+	if err != nil {
+		t.Fatalf("Create daemon log: %v", err)
+	}
+	daemonCtx, cancelDaemon := context.WithCancel(context.Background())
+	daemon := exec.CommandContext(daemonCtx, filepath.Join(installBinDir, "sshdockd"), "daemon")
+	daemon.Env = append(os.Environ(),
+		"PATH="+fakeBinDir+string(os.PathListSeparator)+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"SSHDOCK_DATA_DIR="+dataDir,
+		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
+	)
+	daemon.Stdout = daemonLog
+	daemon.Stderr = daemonLog
+	if err := daemon.Start(); err != nil {
+		cancelDaemon()
+		_ = daemonLog.Close()
+		t.Fatalf("start sshdockd daemon: %v", err)
+	}
+	t.Cleanup(func() {
+		cancelDaemon()
+		_ = daemon.Wait()
+		_ = daemonLog.Close()
+	})
+
 	hostKeyPath := filepath.Join(tmp, "host_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", hostKeyPath)
 	port := freeLocalPort(t)
@@ -253,6 +311,13 @@ func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName strin
 
 func pushComposeAppThroughSSHWithOutput(t *testing.T, paths serverPushPaths, appName string, files map[string]string) (string, string) {
 	t.Helper()
+	commitSHA, output := pushComposeAppThroughSSHWithoutWaiting(t, paths, appName, files)
+	waitForDeploymentTerminal(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, commitSHA)
+	return commitSHA, output
+}
+
+func pushComposeAppThroughSSHWithoutWaiting(t *testing.T, paths serverPushPaths, appName string, files map[string]string) (string, string) {
+	t.Helper()
 	sourceDir := filepath.Join(paths.tmp, "source-"+appName)
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll source: %v", err)
@@ -284,6 +349,29 @@ func pushComposeAppThroughSSHWithOutput(t *testing.T, paths serverPushPaths, app
 	)
 	output := runGitOutput(t, sourceDir, pushEnv, "push", "sshdock", "main")
 	return commitSHA, output
+}
+
+func waitForDeploymentTerminal(t *testing.T, dbPath string, appName string, commitSHA string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
+		if err == nil && (status == string(app.DeploymentStatusSucceeded) || status == string(app.DeploymentStatusFailed)) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("deployment for app %q commit %q did not reach a terminal state", appName, commitSHA)
+}
+
+func assertEventTypesContain(t *testing.T, dbPath string, appName string, want []string) {
+	t.Helper()
+	got := eventTypesForApp(t, dbPath, appName)
+	for _, eventType := range want {
+		if !strings.Contains(","+strings.Join(got, ",")+",", ","+eventType+",") {
+			t.Fatalf("event types = %#v, want %q", got, eventType)
+		}
+	}
 }
 
 func writeBootstrapFakeCommands(t *testing.T, fakeBinDir string) {
@@ -344,6 +432,14 @@ func assertReleaseStatus(t *testing.T, dbPath string, releaseID string, want app
 
 func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) {
 	t.Helper()
+	got := eventTypesForApp(t, dbPath, appID)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("event types = %#v, want %#v", got, want)
+	}
+}
+
+func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
+	t.Helper()
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
@@ -367,9 +463,7 @@ func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) 
 	if err := rows.Err(); err != nil {
 		t.Fatalf("events rows: %v", err)
 	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("event types = %#v, want %#v", got, want)
-	}
+	return got
 }
 
 func assertEventMessageContains(t *testing.T, dbPath string, appID string, want string) {

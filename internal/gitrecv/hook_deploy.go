@@ -111,14 +111,8 @@ func NewPostReceiveHandler(config PostReceiveHandlerConfig) *PostReceiveHandler 
 }
 
 func (h *PostReceiveHandler) Handle(ctx context.Context, appName string, repoPath string, worktreePath string, input io.Reader) error {
-	if h.store == nil {
-		return fmt.Errorf("post-receive store is not configured")
-	}
-	if h.runner == nil {
-		return fmt.Errorf("post-receive compose runner is not configured")
-	}
-	if h.checkout == nil {
-		return fmt.Errorf("post-receive worktree checkout is not configured")
+	if err := h.validate(); err != nil {
+		return err
 	}
 	scanner := bufio.NewScanner(input)
 	var outputErr error
@@ -150,6 +144,30 @@ func (h *PostReceiveHandler) Handle(ctx context.Context, appName string, repoPat
 	}
 	if outputErr != nil {
 		return &StatusOutputError{Err: outputErr}
+	}
+	return nil
+}
+
+func (h *PostReceiveHandler) DeployQueued(ctx context.Context, event PushEvent, worktreePath string, deployment app.Deployment) error {
+	if err := h.validate(); err != nil {
+		return err
+	}
+	attempt, err := h.beginQueuedAttempt(ctx, event, deployment)
+	if err != nil {
+		return err
+	}
+	return h.deployAttempt(ctx, event, worktreePath, attempt)
+}
+
+func (h *PostReceiveHandler) validate() error {
+	if h.store == nil {
+		return fmt.Errorf("post-receive store is not configured")
+	}
+	if h.runner == nil {
+		return fmt.Errorf("post-receive compose runner is not configured")
+	}
+	if h.checkout == nil {
+		return fmt.Errorf("post-receive worktree checkout is not configured")
 	}
 	return nil
 }

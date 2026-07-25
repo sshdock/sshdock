@@ -251,6 +251,102 @@ func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment
 	return err
 }
 
+func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) (returnErr error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin deployment queue transaction: %w", err)
+	}
+	defer func() {
+		if returnErr != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var activeID string
+	var activeCommit string
+	var activeStatus string
+	err = tx.QueryRowContext(ctx, `
+		select id, commit_sha, status
+		from deployments
+		where app_id = ? and status in (?, ?)
+		order by started_at, id
+		limit 1`,
+		model.AppID,
+		string(app.DeploymentStatusPending),
+		string(app.DeploymentStatusDeploying),
+	).Scan(&activeID, &activeCommit, &activeStatus)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("find active deployment: %w", err)
+	}
+	if err == nil {
+		if activeStatus != string(app.DeploymentStatusPending) || activeCommit == expectedCurrentCommit {
+			return ErrActiveDeployment
+		}
+		result, deleteErr := tx.ExecContext(ctx, `
+			delete from deployments
+			where id = ?
+			  and not exists (
+				select 1 from events
+				where id = 'evt_' || deployments.id || '_git_ref_accepted'
+			  )`, activeID)
+		if deleteErr != nil {
+			return fmt.Errorf("discard stale pre-receive reservation: %w", deleteErr)
+		}
+		affected, affectedErr := result.RowsAffected()
+		if affectedErr != nil {
+			return fmt.Errorf("count discarded stale pre-receive reservation: %w", affectedErr)
+		}
+		if affected == 0 {
+			return ErrActiveDeployment
+		}
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		insert into deployments (
+			id, app_id, release_id, commit_sha, trigger, status, started_at, finished_at,
+			failure_stage, failure_detail, retry_guidance, error_message
+		)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		model.ID,
+		model.AppID,
+		model.ReleaseID,
+		model.CommitSHA,
+		string(model.Trigger),
+		string(model.Status),
+		formatTime(model.StartedAt),
+		formatTime(model.FinishedAt),
+		model.FailureStage,
+		model.FailureDetail,
+		model.RetryGuidance,
+		model.ErrorMessage,
+	)
+	if err != nil {
+		return fmt.Errorf("queue deployment: %w", err)
+	}
+	result, err = tx.ExecContext(ctx, `
+		update apps
+		set status = ?, updated_at = ?
+		where id = ?`,
+		string(app.AppStatusDeploying),
+		formatTime(model.StartedAt),
+		model.AppID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark app deployment pending: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count app status update: %w", err)
+	}
+	if affected == 0 {
+		return notFound("app", model.AppID)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit deployment queue transaction: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		select id, app_id, release_id, commit_sha, trigger, status, started_at, finished_at,

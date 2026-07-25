@@ -33,13 +33,13 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) >= 1 && args[0] == "git-hook" {
 		return runGitHook(args[1:], stdin, stderr)
 	}
-	if len(args) == 1 && args[0] == "git-pre-receive" {
-		return runGitPreReceive(stdin, stderr)
+	if len(args) >= 1 && args[0] == "git-pre-receive" {
+		return runGitPreReceive(args[1:], stdin, stderr)
 	}
 	if len(args) == 1 && args[0] == "git-receive" {
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | operator | version | git-pre-receive | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | operator | version | git-pre-receive --app <name> | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }

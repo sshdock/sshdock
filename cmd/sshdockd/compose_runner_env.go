@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sshdock/sshdock/internal/compose"
 )
@@ -46,6 +47,7 @@ func fakeRunnerFromEnv() *compose.FakeRunner {
 	)
 	return &compose.FakeRunner{
 		DeployResult: deployResult,
+		DeployDelay:  parseFakeDeployDelay(os.Getenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY")),
 		DeployErr:    errors.Join(envError("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR"), routeErr),
 		StartErr:     envError("SSHDOCK_FAKE_COMPOSE_START_ERROR"),
 		StopErr:      envError("SSHDOCK_FAKE_COMPOSE_STOP_ERROR"),
@@ -54,6 +56,14 @@ func fakeRunnerFromEnv() *compose.FakeRunner {
 		RunErr:       envError("SSHDOCK_FAKE_COMPOSE_RUN_ERROR"),
 		RemoveErr:    envError("SSHDOCK_FAKE_COMPOSE_REMOVE_ERROR"),
 	}
+}
+
+func parseFakeDeployDelay(value string) time.Duration {
+	delay, err := time.ParseDuration(value)
+	if err != nil || delay < 0 {
+		return 0
+	}
+	return delay
 }
 
 func parseFakeDeployResult(route string, reason string) (compose.DeployResult, error) {

@@ -378,7 +378,7 @@ The Git SSH entry point should run a forced command equivalent to:
 sudo -n -u sshdock /usr/local/bin/sshdock-git-receive
 ```
 
-`sshdockd git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, acquires a nonblocking app-specific lock, and then waits for the server-wide deployment lock before creating the app or starting receive-pack. Both locks remain held through post-receive, so a second push to the same app is rejected immediately while a different app stays connected, prints a wait message, and resumes synchronously without a durable queue.
+`sshdockd git-receive` reads `SSH_ORIGINAL_COMMAND`, accepts only `git-receive-pack '<app>.git'`, and acquires a nonblocking app-specific receive lock. Its pre-receive hook atomically records one pending deployment for the app before Git changes remote `main`; a second push while that app has a pending or active deployment is rejected before the ref update. The persistent daemon serially executes queued deployments, so pushes for different apps can be accepted while another deployment runs.
 
 ## systemd Service
 
@@ -399,7 +399,7 @@ Expected service behavior:
 - use `/var/lib/sshdock/git/.ssh/authorized_keys` as the Git receive key file unless overridden
 - use `/etc/caddy/sshdock/sshdock.caddyfile` as the generated Caddy config path unless overridden
 - run SQLite migrations on startup
-- perform no app checkout or Compose mutation during daemon startup
+- mark interrupted active deployments failed and claim pending push deployments during normal operation
 - leave Docker or host reboot recovery to each service's committed Compose restart policy
 - write logs to journald
 

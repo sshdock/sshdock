@@ -108,10 +108,6 @@ if ((follow_status != 0 && follow_status != 143)); then
 	echo "log follow failed with status $follow_status" >&2
 	exit 1
 fi
-if [[ -z $follow_output ]]; then
-	echo "log follow produced no output" >&2
-	exit 1
-fi
 
 releases_before=$(operator releases list "$APP")
 deployments_before=$(operator deployments list "$APP")

@@ -11,7 +11,7 @@ import (
 
 func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptCompletesInspectionAndRedeploy(t *testing.T) {
 	// Given a recovered app with one failed and one successful Git-push attempt.
-	output, err := runHealthLogsAndHistoryLab(t, false)
+	output, err := runHealthLogsAndHistoryLab(t, false, false)
 
 	// When the lab inspects it and explicitly redeploys the current main commit.
 
@@ -26,7 +26,7 @@ func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptCompletesInspectionAndRe
 
 func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptRejectsReleaseCreatedByRedeploy(t *testing.T) {
 	// Given a recovered app whose redeploy adds a new release row.
-	output, err := runHealthLogsAndHistoryLab(t, true)
+	output, err := runHealthLogsAndHistoryLab(t, true, false)
 
 	// When the lab checks the release history after redeploy.
 
@@ -36,7 +36,19 @@ func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptRejectsReleaseCreatedByR
 	}
 }
 
-func runHealthLogsAndHistoryLab(t *testing.T, extraRelease bool) (string, error) {
+func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptAllowsQuietLogFollow(t *testing.T) {
+	// Given an app whose live follow stream does not flush a line before it stops.
+	output, err := runHealthLogsAndHistoryLab(t, false, true)
+
+	// When the lab observes the bounded follow lifecycle.
+
+	// Then it continues to the redeploy and cleanup checks.
+	if err != nil {
+		t.Fatalf("acceptance script: %v\n%s", err, output)
+	}
+}
+
+func runHealthLogsAndHistoryLab(t *testing.T, extraRelease bool, quietFollow bool) (string, error) {
 	t.Helper()
 	root := repoRoot(t)
 	fakeBin := t.TempDir()
@@ -86,6 +98,9 @@ case "$command" in
     printf '2026-07-25T00:01:00Z\tdeploy.succeeded\tdeployment succeeded\n'
     ;;
   *'logs '* )
+    if [[ "$command" == *' -f' && ${FAKE_QUIET_FOLLOW:-} == true ]]; then
+      exit 0
+    fi
     printf 'nextjs log line\n'
     ;;
   *'apps redeploy'*)
@@ -110,6 +125,7 @@ esac
 	t.Setenv("FAKE_STATE_DIR", stateDir)
 	t.Setenv("FAKE_ROUTE_HOST", "failed-deploy-and-git-recovery.example.com")
 	t.Setenv("FAKE_EXTRA_RELEASE", strconv.FormatBool(extraRelease))
+	t.Setenv("FAKE_QUIET_FOLLOW", strconv.FormatBool(quietFollow))
 	t.Setenv("SSHDOCK_TARGET", "sshdock@example.com")
 	t.Setenv("SSHDOCK_APP", "failed-deploy-and-git-recovery")
 	t.Setenv("SSHDOCK_ROUTE_HOST", os.Getenv("FAKE_ROUTE_HOST"))

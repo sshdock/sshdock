@@ -76,7 +76,7 @@ ssh sshdock@sshdock.example.com config get backup-restore-and-volume-boundary BA
 sudo docker volume inspect sshdock_backup-restore-and-volume-boundary_wordpress-data
 ```
 
-The archive contains SSHDock metadata, app repositories and worktrees, generated Caddy route files, key state including `config.key`, and encrypted config material. After restart, the script verifies the restored secret, app health, stored route intent, active Caddy route, and the two WordPress named volumes. Raw output, host names, archive paths, and the value returned by `config get` are private acceptance evidence; keep them under `.local/` rather than in public issue comments.
+The archive contains SSHDock metadata, app repositories and worktrees, generated Caddy route files, Git and operator authorized-key state, `config.key`, and encrypted config material. The system `sshd` host key remains host-managed; a configured SSHDock operator host key is included when it resides under SSHDock data, but this lab uses the portable authorized-key files as its key-state assertion. After restart, the script verifies the restored secret, app health, stored route intent, active Caddy route, and the two WordPress named volumes. Raw output, host names, archive paths, and the value returned by `config get` are private acceptance evidence; keep them under `.local/` rather than in public issue comments.
 
 ## Docker-volume boundary
 

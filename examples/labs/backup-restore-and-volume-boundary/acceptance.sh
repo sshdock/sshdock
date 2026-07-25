@@ -105,7 +105,6 @@ for entry in \
 	"data/apps/$APP/worktree/compose.yml" \
 	data/git/.ssh/authorized_keys \
 	data/.ssh/authorized_keys \
-	data/ssh_host_rsa_key \
 	caddy/generated.caddyfile \
 	caddy/main.Caddyfile \
 	docker/volumes.json; do

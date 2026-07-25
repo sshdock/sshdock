@@ -45,6 +45,7 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 		"config get backup-restore-and-volume-boundary BACKUP_LAB_SECRET",
 		"docker volume inspect sshdock_backup-restore-and-volume-boundary_wordpress-data",
 		"Docker volume contents are not copied",
+		"system `sshd` host key",
 		"bash acceptance.sh",
 	} {
 		if !strings.Contains(readme, want) {
@@ -63,11 +64,16 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 		t.Fatalf("acceptance script syntax: %v\n%s", err, output)
 	}
 	script := readTextFile(t, scriptPath)
+	if strings.Contains(script, "data/ssh_host_rsa_key") {
+		t.Fatal("acceptance script treats the host SSH key as an SSHDock backup artifact")
+	}
 	for _, want := range []string{
 		"APP=${SSHDOCK_APP:-backup-restore-and-volume-boundary}",
 		"BACKUP_LAB_SECRET",
 		"backup create --output",
 		"backup inspect",
+		"data/git/.ssh/authorized_keys",
+		"data/.ssh/authorized_keys",
 		"systemctl stop sshdockd",
 		"backup restore",
 		"sshdock diagnostics",

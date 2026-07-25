@@ -338,6 +338,12 @@ Path: [`examples/labs/domains-and-route-check`](../examples/labs/domains-and-rou
 
 This lab reuses the WordPress recipe without copying its Compose file or application. It proves that a successful deployment creates the conventional automatic route, exercises manual attach and detach, compares stored routes with active Caddy state from fresh processes, demonstrates actionable unavailable-state output, verifies that the private database receives no route, and validates Caddy after the final route is removed.
 
+### Health, logs, and history
+
+Path: [`examples/labs/health-logs-and-history`](../examples/labs/health-logs-and-history/README.md)
+
+This lab reuses the recovered Next.js application from the Git recovery lab without an overlay. It compares desired remote `main` with the latest deployment attempt, checks live Compose service and restart-policy state, verifies desired and active routes, tails and briefly follows logs, and keeps failed deployment evidence visible across an explicit same-commit redeploy.
+
 ## Existing feature demonstrations
 
 The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.

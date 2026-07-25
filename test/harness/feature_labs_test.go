@@ -343,6 +343,82 @@ func TestDomainsAndRouteCheckFeatureLab_contract_when_reusing_wordpress_recipe(t
 	}
 }
 
+func TestHealthLogsAndHistoryFeatureLab_contract_when_reusing_recovery_lab(t *testing.T) {
+	// Given the recovered Next.js probe and its inspection lab.
+	root := repoRoot(t)
+	labDir := filepath.Join(root, "examples", "labs", "health-logs-and-history")
+
+	// When the lab's public interface is inspected.
+	entries, err := os.ReadDir(labDir)
+	if err != nil {
+		t.Fatalf("ReadDir feature lab: %v", err)
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("feature lab contains nested directory %q", entry.Name())
+		}
+		files = append(files, entry.Name())
+	}
+	slices.Sort(files)
+	if want := []string{"README.md", "acceptance.sh"}; !slices.Equal(files, want) {
+		t.Fatalf("feature lab files = %#v, want %#v", files, want)
+	}
+
+	readme := readTextFile(t, filepath.Join(labDir, "README.md"))
+	for _, want := range []string{
+		"examples/labs/failed-deploy-and-git-recovery",
+		"SSHDOCK_EXPECTED_MAIN=$GOOD_COMMIT",
+		"bash examples/labs/health-logs-and-history/acceptance.sh",
+		"apps health \"$APP\"",
+		"domains list \"$APP\"",
+		"domains check \"$APP\"",
+		"logs \"$APP\" web --tail 20",
+		"logs \"$APP\" web --tail 20 -f",
+		"releases list \"$APP\"",
+		"deployments list \"$APP\"",
+		"events list \"$APP\"",
+		"apps redeploy \"$APP\"",
+		"apps remove \"$APP\" --force",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing workflow marker %q", want)
+		}
+	}
+
+	scriptPath := filepath.Join(labDir, "acceptance.sh")
+	if output, err := exec.Command("bash", "-n", scriptPath).CombinedOutput(); err != nil {
+		t.Fatalf("acceptance script syntax: %v\n%s", err, output)
+	}
+	script := readTextFile(t, scriptPath)
+	for _, want := range []string{
+		"current main: $SSHDOCK_EXPECTED_MAIN",
+		"latest deploy:",
+		"restart policy",
+		"last failure:",
+		"domains list \"$APP\"",
+		"domains check \"$APP\"",
+		"logs \"$APP\" web --tail 20",
+		"logs \"$APP\" web --tail 20 -f",
+		"releases list \"$APP\"",
+		"deployments list \"$APP\"",
+		"events list \"$APP\"",
+		"apps redeploy \"$APP\"",
+		"apps remove \"$APP\" --force",
+		"release rows = $release_count, want 2 immutable Git commits",
+		"deployments_after_count != deployments_before_count + 1",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("acceptance script missing %q", want)
+		}
+	}
+
+	guide := readTextFile(t, filepath.Join(root, "docs", "EXAMPLES.md"))
+	if !strings.Contains(guide, "examples/labs/health-logs-and-history") {
+		t.Fatal("public examples guide does not register the health-logs-and-history feature lab")
+	}
+}
+
 func writeFailedDeployAndGitRecoveryLabCompose(t *testing.T) (string, string) {
 	t.Helper()
 	root := repoRoot(t)

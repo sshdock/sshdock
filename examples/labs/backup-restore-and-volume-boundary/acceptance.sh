@@ -120,13 +120,12 @@ admin sudo sshdock diagnostics
 admin sudo systemctl start sshdockd
 daemon_stopped=0
 
+wait_for_healthy_app
 restored_secret=$(operator config get "$APP" BACKUP_LAB_SECRET)
 if [[ $restored_secret != "$SSHDOCK_BACKUP_LAB_SECRET" ]]; then
 	echo "restored config does not decrypt BACKUP_LAB_SECRET" >&2
 	exit 1
 fi
-
-wait_for_healthy_app
 after_domains=$(operator domains list "$APP")
 printf '%s\n' "$after_domains"
 grep -F "${SSHDOCK_ROUTE_HOST}"$'\tweb\t18200\ttrue' <<<"$after_domains"

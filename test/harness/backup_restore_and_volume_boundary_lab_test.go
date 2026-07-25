@@ -67,6 +67,11 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 	if strings.Contains(script, "data/ssh_host_rsa_key") {
 		t.Fatal("acceptance script treats the host SSH key as an SSHDock backup artifact")
 	}
+	restartIndex := strings.LastIndex(script, "admin sudo systemctl start sshdockd")
+	waitIndex := strings.Index(script, "wait_for_healthy_app\nrestored_secret")
+	if restartIndex < 0 || waitIndex <= restartIndex {
+		t.Fatal("acceptance script does not wait for a healthy restored app before reading encrypted config")
+	}
 	for _, want := range []string{
 		"APP=${SSHDOCK_APP:-backup-restore-and-volume-boundary}",
 		"BACKUP_LAB_SECRET",

@@ -496,6 +496,10 @@ func readArchiveMetadata(archivePath string) (Manifest, []Volume, int, error) {
 }
 
 func extractArchive(archivePath string, destination string) error {
+	return extractArchiveWithOwnership(archivePath, destination, os.Chown)
+}
+
+func extractArchiveWithOwnership(archivePath string, destination string, setOwnership func(string, int, int) error) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("open backup archive: %w", err)
@@ -525,6 +529,9 @@ func extractArchive(archivePath string, destination string) error {
 			if err := os.MkdirAll(targetPath, mode.Perm()); err != nil {
 				return fmt.Errorf("restore directory %s: %w", header.Name, err)
 			}
+			if err := restoreDataOwnership(targetPath, header, setOwnership); err != nil {
+				return err
+			}
 		case tar.TypeSymlink:
 			if err := validateSymlinkTarget(destination, targetPath, header.Linkname); err != nil {
 				return fmt.Errorf("restore symlink %s: %w", header.Name, err)
@@ -550,10 +557,23 @@ func extractArchive(archivePath string, destination string) error {
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close restored file %s: %w", header.Name, err)
 			}
+			if err := restoreDataOwnership(targetPath, header, setOwnership); err != nil {
+				return err
+			}
 			_ = os.Chtimes(targetPath, header.ModTime, header.ModTime)
 		default:
 			return fmt.Errorf("unsupported archive entry %s", header.Name)
 		}
+	}
+	return nil
+}
+
+func restoreDataOwnership(path string, header *tar.Header, setOwnership func(string, int, int) error) error {
+	if header.Name != "data" && !strings.HasPrefix(header.Name, "data/") {
+		return nil
+	}
+	if err := setOwnership(path, header.Uid, header.Gid); err != nil {
+		return fmt.Errorf("restore ownership for %s: %w", header.Name, err)
 	}
 	return nil
 }

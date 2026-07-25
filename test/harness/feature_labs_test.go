@@ -405,7 +405,7 @@ func TestHealthLogsAndHistoryFeatureLab_contract_when_reusing_recovery_lab(t *te
 		"events list \"$APP\"",
 		"apps redeploy \"$APP\"",
 		"apps remove \"$APP\" --force",
-		"release rows = $release_count, want 2 immutable Git commits",
+		"releases_after_count != releases_before_count",
 		"deployments_after_count != deployments_before_count + 1",
 	} {
 		if !strings.Contains(script, want) {

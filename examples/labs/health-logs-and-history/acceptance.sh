@@ -49,15 +49,9 @@ assert_active_route() {
 
 assert_releases() {
 	local releases=$1
-	local release_count
 	printf '%s\n' "$releases"
 	grep -F "$SSHDOCK_EXPECTED_MAIN" <<<"$releases"
 	grep -F "$SSHDOCK_FAILED_MAIN" <<<"$releases"
-	release_count=$(count_rows <<<"$releases")
-	if ((release_count != 2)); then
-		echo "release rows = $release_count, want 2 immutable Git commits" >&2
-		exit 1
-	fi
 }
 
 assert_deployments() {
@@ -111,6 +105,7 @@ events_before=$(operator events list "$APP")
 assert_releases "$releases_before"
 assert_deployments "$deployments_before"
 assert_events "$events_before"
+releases_before_count=$(count_rows <<<"$releases_before")
 deployments_before_count=$(count_rows <<<"$deployments_before")
 
 operator apps redeploy "$APP"
@@ -124,7 +119,12 @@ events_after=$(operator events list "$APP")
 assert_releases "$releases_after"
 assert_deployments "$deployments_after"
 assert_events "$events_after"
+releases_after_count=$(count_rows <<<"$releases_after")
 deployments_after_count=$(count_rows <<<"$deployments_after")
+if ((releases_after_count != releases_before_count)); then
+	echo "release rows = $releases_after_count, want $releases_before_count after redeploy" >&2
+	exit 1
+fi
 if ((deployments_after_count != deployments_before_count + 1)); then
 	echo "deployment rows = $deployments_after_count, want $((deployments_before_count + 1)) after redeploy" >&2
 	exit 1

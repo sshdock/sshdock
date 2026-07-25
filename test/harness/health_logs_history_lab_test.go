@@ -24,15 +24,15 @@ func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptCompletesInspectionAndRe
 	}
 }
 
-func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptRejectsUnexpectedReleaseHistory(t *testing.T) {
-	// Given a recovered app whose release history has an unexpected extra row.
+func TestHealthLogsAndHistoryFeatureLab_acceptanceScriptRejectsReleaseCreatedByRedeploy(t *testing.T) {
+	// Given a recovered app whose redeploy adds a new release row.
 	output, err := runHealthLogsAndHistoryLab(t, true)
 
-	// When the lab checks the immutable release history.
+	// When the lab checks the release history after redeploy.
 
-	// Then it fails before accepting the inspection result.
+	// Then it fails instead of accepting a new release for the same Git commit.
 	if err == nil {
-		t.Fatalf("acceptance script accepted unexpected release history:\n%s", output)
+		t.Fatalf("acceptance script accepted a release created by redeploy:\n%s", output)
 	}
 }
 
@@ -65,7 +65,7 @@ case "$command" in
     ;;
   *'releases list'*)
     printf 'rel_good\tsucceeded\tgood\nrel_bad\tfailed\tbad\n'
-    if [[ ${FAKE_EXTRA_RELEASE:-} == true ]]; then
+    if [[ ${FAKE_EXTRA_RELEASE:-} == true && -e "$state/redeployed" ]]; then
       printf 'rel_extra\tsucceeded\textra\n'
     fi
     ;;

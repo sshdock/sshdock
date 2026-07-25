@@ -8,7 +8,7 @@ Replace `example.com` below with the SSHDock base domain. This is a host-state r
 
 ## Deploy the WordPress recipe
 
-Copy the untouched recipe and create the lab app. The first push creates the app and records an expected config-gated deployment failure; the later explicit redeploy uses the same remote `main` commit.
+Copy the untouched recipe, create the SSHDock app, and store its required config before the first push. That first successful Git deployment creates the route whose restored intent this lab checks.
 
 ```bash
 mkdir backup-restore-and-volume-boundary
@@ -19,7 +19,6 @@ git init -b main
 git add .
 git commit -m "Deploy WordPress backup and restore lab"
 git remote add sshdock git@sshdock.example.com:backup-restore-and-volume-boundary.git
-git push sshdock main
 ```
 
 Set the required WordPress values and one distinct encrypted value that is not used by the Compose model. Keep `BACKUP_LAB_SECRET` in the current shell; the acceptance script uses it to prove the restored `config.key` decrypts the restored database value.
@@ -32,6 +31,7 @@ WORDPRESS_DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
 BACKUP_LAB_SECRET="$(openssl rand -hex 24)"
 export BACKUP_LAB_SECRET
 
+sudo sshdock apps create backup-restore-and-volume-boundary
 printf '%s\n' "$WORDPRESS_DB_NAME" \
   | ssh sshdock@sshdock.example.com config set backup-restore-and-volume-boundary WORDPRESS_DB_NAME
 printf '%s\n' "$WORDPRESS_DB_USER" \
@@ -42,7 +42,7 @@ printf '%s\n' "$WORDPRESS_DB_ROOT_PASSWORD" \
   | ssh sshdock@sshdock.example.com config set backup-restore-and-volume-boundary WORDPRESS_DB_ROOT_PASSWORD
 printf '%s\n' "$BACKUP_LAB_SECRET" \
   | ssh sshdock@sshdock.example.com config set backup-restore-and-volume-boundary BACKUP_LAB_SECRET
-ssh sshdock@sshdock.example.com apps redeploy backup-restore-and-volume-boundary
+git push sshdock main
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://backup-restore-and-volume-boundary.example.com
 ```
 

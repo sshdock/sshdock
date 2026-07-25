@@ -34,6 +34,7 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 	readme := readTextFile(t, filepath.Join(labDir, "README.md"))
 	for _, want := range []string{
 		"examples/software/wordpress",
+		"sudo sshdock apps create backup-restore-and-volume-boundary",
 		"ssh sshdock@sshdock.example.com config set backup-restore-and-volume-boundary BACKUP_LAB_SECRET",
 		"sudo sshdock backup create --output",
 		"sudo sshdock backup inspect",
@@ -49,6 +50,12 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 		if !strings.Contains(readme, want) {
 			t.Fatalf("README missing workflow marker %q", want)
 		}
+	}
+	createIndex := strings.Index(readme, "sudo sshdock apps create backup-restore-and-volume-boundary")
+	configIndex := strings.Index(readme, "config set backup-restore-and-volume-boundary WORDPRESS_DB_NAME")
+	pushIndex := strings.Index(readme, "git push sshdock main")
+	if createIndex < 0 || configIndex <= createIndex || pushIndex <= configIndex {
+		t.Fatal("README does not create the app and set required config before the first Git push")
 	}
 
 	scriptPath := filepath.Join(labDir, "acceptance.sh")

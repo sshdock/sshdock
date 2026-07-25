@@ -9,7 +9,7 @@ set -euo pipefail
 
 APP=${SSHDOCK_APP:-backup-restore-and-volume-boundary}
 ARCHIVE=${SSHDOCK_BACKUP_PATH:-/root/sshdock-backup-lab.tar.gz}
-VOLUME_PREFIX=${SSHDOCK_VOLUME_PREFIX:-sshdock_${APP//-/_}}
+VOLUME_PREFIX=${SSHDOCK_VOLUME_PREFIX:-sshdock_${APP}}
 SSH_ARGS=()
 if [[ -n ${SSHDOCK_IDENTITY_FILE:-} ]]; then
 	SSH_ARGS=(-i "$SSHDOCK_IDENTITY_FILE")

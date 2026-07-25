@@ -43,7 +43,7 @@ func TestBackupRestoreAndVolumeBoundaryFeatureLab_contract_when_reusing_wordpres
 		"sudo sshdock diagnostics",
 		"sudo systemctl start sshdockd",
 		"config get backup-restore-and-volume-boundary BACKUP_LAB_SECRET",
-		"docker volume inspect",
+		"docker volume inspect sshdock_backup-restore-and-volume-boundary_wordpress-data",
 		"Docker volume contents are not copied",
 		"bash acceptance.sh",
 	} {

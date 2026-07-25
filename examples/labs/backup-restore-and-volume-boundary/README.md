@@ -73,7 +73,7 @@ sudo sshdock backup restore /root/sshdock-backup-lab.tar.gz
 sudo sshdock diagnostics
 sudo systemctl start sshdockd
 ssh sshdock@sshdock.example.com config get backup-restore-and-volume-boundary BACKUP_LAB_SECRET
-sudo docker volume inspect sshdock_backup_restore_and_volume_boundary_wordpress-data
+sudo docker volume inspect sshdock_backup-restore-and-volume-boundary_wordpress-data
 ```
 
 The archive contains SSHDock metadata, app repositories and worktrees, generated Caddy route files, key state including `config.key`, and encrypted config material. After restart, the script verifies the restored secret, app health, stored route intent, active Caddy route, and the two WordPress named volumes. Raw output, host names, archive paths, and the value returned by `config get` are private acceptance evidence; keep them under `.local/` rather than in public issue comments.

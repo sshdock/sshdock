@@ -405,6 +405,7 @@ func TestHealthLogsAndHistoryFeatureLab_contract_when_reusing_recovery_lab(t *te
 		"events list \"$APP\"",
 		"apps redeploy \"$APP\"",
 		"apps remove \"$APP\" --force",
+		"wait_for_redeploy",
 		"releases_after_count != releases_before_count",
 		"deployments_after_count != deployments_before_count + 1",
 	} {

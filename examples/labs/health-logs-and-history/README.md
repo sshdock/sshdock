@@ -41,7 +41,7 @@ ssh sshdock@sshdock.example.com events list "$APP"
 ssh sshdock@sshdock.example.com apps redeploy "$APP"
 ```
 
-Release history must remain unchanged across the explicit redeploy, regardless of how many previous immutable commits the app already records. Deployment history must gain exactly one successful `redeploy` attempt for `GOOD_COMMIT`; it does not create a rollback target. The deployment and event output retain the failed `BAD_COMMIT` evidence after recovery. The bounded follow check uses only portable shell process control and stops after a short observation window, so it does not leave a persistent SSH process.
+Release history must remain unchanged across the explicit redeploy, regardless of how many previous immutable commits the app already records. The script waits up to one minute for deployment completion, then requires deployment history to gain exactly one successful `redeploy` attempt for `GOOD_COMMIT`; it does not create a rollback target. The deployment and event output retain the failed `BAD_COMMIT` evidence after recovery. The bounded follow check uses only portable shell process control and stops after a short observation window, so it does not leave a persistent SSH process.
 
 ## Cleanup
 

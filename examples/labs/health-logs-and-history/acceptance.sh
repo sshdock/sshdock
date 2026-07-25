@@ -70,6 +70,20 @@ assert_events() {
 	grep -F "deploy.succeeded" <<<"$events"
 }
 
+wait_for_redeploy() {
+	local attempt health
+	for attempt in {1..30}; do
+		health=$(operator apps health "$APP")
+		if grep -F "succeeded commit=$SSHDOCK_EXPECTED_MAIN trigger=redeploy" <<<"$health" >/dev/null; then
+			printf '%s' "$health"
+			return
+		fi
+		sleep 2
+	done
+	echo "redeploy did not succeed within 60 seconds" >&2
+	exit 1
+}
+
 assert_health "$(operator apps health "$APP")"
 assert_active_route
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 "https://${SSHDOCK_ROUTE_HOST}" >/dev/null
@@ -109,7 +123,7 @@ releases_before_count=$(count_rows <<<"$releases_before")
 deployments_before_count=$(count_rows <<<"$deployments_before")
 
 operator apps redeploy "$APP"
-assert_health "$(operator apps health "$APP")"
+assert_health "$(wait_for_redeploy)"
 assert_active_route
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 "https://${SSHDOCK_ROUTE_HOST}" >/dev/null
 

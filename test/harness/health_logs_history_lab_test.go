@@ -52,7 +52,12 @@ route="${FAKE_ROUTE_HOST:?}"
 case "$command" in
   *'apps health'*)
     if [[ -e "$state/redeployed" ]]; then
-      printf 'app: failed-deploy-and-git-recovery\nhealth: ok\ncurrent main: good\nlatest deploy: dep_redeploy succeeded commit=good trigger=redeploy\nroutes: 1 active, 0 attention\nlast failure: dep_bad stage=build\nok\trestart policy\tconfigured for routed and running services\n'
+      if [[ -e "$state/redeploy-health-checked" ]]; then
+        printf 'app: failed-deploy-and-git-recovery\nhealth: ok\ncurrent main: good\nlatest deploy: dep_redeploy succeeded commit=good trigger=redeploy\nroutes: 1 active, 0 attention\nlast failure: dep_bad stage=build\nok\trestart policy\tconfigured for routed and running services\n'
+      else
+        touch "$state/redeploy-health-checked"
+        printf 'app: failed-deploy-and-git-recovery\nhealth: warn\ncurrent main: good\nlatest deploy: dep_redeploy deploying commit=good trigger=redeploy\nroutes: 1 active, 0 attention\nlast failure: dep_bad stage=build\nok\trestart policy\tconfigured for routed and running services\n'
+      fi
     else
       printf 'app: failed-deploy-and-git-recovery\nhealth: ok\ncurrent main: good\nlatest deploy: dep_good succeeded commit=good trigger=push\nroutes: 1 active, 0 attention\nlast failure: dep_bad stage=build\nok\trestart policy\tconfigured for routed and running services\n'
     fi

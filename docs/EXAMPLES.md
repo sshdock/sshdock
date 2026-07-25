@@ -344,6 +344,12 @@ Path: [`examples/labs/health-logs-and-history`](../examples/labs/health-logs-and
 
 This lab reuses the recovered Next.js application from the Git recovery lab without an overlay. It compares desired remote `main` with the latest deployment attempt, checks live Compose service and restart-policy state, verifies desired and active routes, tails and briefly follows logs, and keeps failed deployment evidence visible across an explicit same-commit redeploy.
 
+### Backup, restore, and volume boundary
+
+Path: [`examples/labs/backup-restore-and-volume-boundary`](../examples/labs/backup-restore-and-volume-boundary/README.md)
+
+This lab reuses the stateful WordPress recipe without an application or Compose overlay. It creates and inspects a host-state archive, restores through the supported safety flow, proves encrypted app config remains readable with the restored key, checks restored app metadata and Caddy route intent, and makes the Docker-volume-inventory-only boundary explicit.
+
 ## Existing feature demonstrations
 
 The examples below predate the maintained four-category contract. They continue to support the current stable release and local regression harness until their replacement slices pass the same contract and real-host acceptance.

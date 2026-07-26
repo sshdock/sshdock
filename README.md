@@ -78,7 +78,9 @@ https://my-app.example.com
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 
-Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment before the client disconnects. Git acceptance and deployment completion are separate: a later deployment failure does not rewrite `main`; inspect `deployments list`, `deployments logs -f`, `apps health`, and `events list` for its terminal result.
+Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment, prints its deployment ID, and follows its redacted deployment log while the daemon owns the work. Pressing Ctrl-C or losing the SSH connection detaches only that client; it does not cancel the accepted deployment. Reconnect with `deployments logs <app> <deployment-id> -f`, or use `deployments list <app>` to find the ID.
+
+Git acceptance and deployment completion are separate. A terminal `deploy: failed` does not mean the ref was rejected and does not rewrite remote `main`; inspect `deployments list`, `deployments logs`, `apps health`, and `events list` for the authoritative result and recovery guidance.
 
 SSHDock accepts only one pending or active deployment per app. A second push to that app is rejected before its ref changes. Pushes for other apps are accepted and queued; the persistent daemon runs queued push deployments one at a time. Pending attempts survive a daemon restart. An attempt interrupted while actively deploying is marked failed with retry guidance and is not silently rerun.
 
@@ -102,6 +104,7 @@ ssh sshdock@sshdock.example.com logs my-app --tail 200
 ssh sshdock@sshdock.example.com releases list my-app
 ssh sshdock@sshdock.example.com deployments list my-app
 ssh sshdock@sshdock.example.com deployments logs my-app -f
+ssh sshdock@sshdock.example.com deployments logs my-app dep_... -f
 ssh sshdock@sshdock.example.com events list my-app
 ```
 

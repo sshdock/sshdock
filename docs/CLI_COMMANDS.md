@@ -271,7 +271,11 @@ git push --force sshdock v1.2.3:main                    # lightweight tag
 git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
 ```
 
-Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. If deployment fails, remote `main` remains at the accepted commit. A second push to an app with a pending or active deployment is rejected before its ref changes; pushes for other apps can queue. Use `sshdock deployments list <app>`, `sshdock deployments logs <app> -f`, `sshdock apps health <app>`, and `sshdock events list <app>` to observe completion.
+Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. After acceptance, push output prints `deploy: queued <deployment-id>` and attaches to that attempt's redacted log until it reaches a terminal state or the client disconnects.
+
+Pressing Ctrl-C or losing the SSH connection stops only the client attachment. The daemon continues the accepted deployment. Reconnect to the same attempt with `sshdock deployments logs <app> <deployment-id> -f`; if the ID was not saved, find it with `sshdock deployments list <app>` or follow the latest attempt with `sshdock deployments logs <app> -f`.
+
+Git ref acceptance and deployment completion are separate. If deployment fails, remote `main` remains at the accepted commit and the log records the terminal failure instead of turning the accepted ref into a rejection. Use `sshdock deployments list <app>`, `sshdock apps health <app>`, and `sshdock events list <app>` for actionable redacted detail and recovery guidance. A second push to an app with a pending or active deployment is rejected before its ref changes; pushes for other apps can queue.
 
 When a base domain is configured, inspect the route after deployment completes with `sshdock domains list <app>` or `sshdock apps health <app>`.
 
@@ -462,7 +466,10 @@ Show the persisted lifecycle and Compose output for a deployment. With no deploy
 ```bash
 ssh sshdock@<host> deployments logs my-app -f
 ssh sshdock@<host> deployments logs my-app dep_01H...
+ssh sshdock@<host> deployments logs my-app dep_01H... -f
 ```
+
+Use the deployment ID printed by an attached push to reconnect to that exact attempt. If the ID is omitted, SSHDock selects the latest deployment log for the app. Ctrl-C stops the follower without canceling the deployment.
 
 Deployment output is stored separately from `sshdock logs`, which remains container-log inspection. Stored config values are redacted even when a secret spans output writes. Each log is capped at 10 MiB with a truncation marker, SSHDock retains the newest 20 logs per app, and app removal deletes its deployment logs.
 

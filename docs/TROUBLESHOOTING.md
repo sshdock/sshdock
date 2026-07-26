@@ -20,7 +20,7 @@ sudo sshdock domains check <app>
 sudo sshdock logs <app> --tail 200
 ```
 
-## Git Push Fails Before Deploy
+## Git Push Rejection Or Interrupted Attachment
 
 Check:
 
@@ -31,11 +31,20 @@ Check:
 
 If the push reaches SSHDock but deploy fails, use the deploy-failure section below.
 
-SSHDock deploys in `post-receive`, so a deployment failure does not undo an accepted Git update. The output labels `git: remote main updated ...` separately from `deploy: ... succeeded` or `deploy: failed ...`.
+Pre-receive reserves the deployment, post-receive accepts and queues it after remote `main` updates, and the persistent daemon owns the actual deployment. The push then follows that attempt's durable log. A deployment failure therefore does not undo an accepted Git update. The output labels `git: remote main updated ...` separately from `deploy: ... succeeded` or `deploy: failed ...`.
+
+If Ctrl-C or a connection loss stops the push after it printed `git: remote main updated` or `deploy: queued`, do not assume the deployment was canceled and do not immediately push again. Find the attempt and reconnect:
+
+```bash
+ssh sshdock@sshdock.<domain> deployments list <app>
+ssh sshdock@sshdock.<domain> deployments logs <app> <deployment-id> -f
+```
+
+Omit `<deployment-id>` to follow the latest attempt. A same-app push is rejected while that accepted deployment is pending or active.
 
 ## Deploy Fails
 
-Failed deploys print and persist:
+The attached push and `deployments logs` record the terminal failure and direct you to durable inspection. `deployments list`, `apps health`, and related state expose the actionable redacted recovery fields:
 
 ```text
 stage=...
@@ -45,11 +54,13 @@ fix=...
 retry=...
 ```
 
-Inspect the same failure from multiple surfaces:
+Inspect the attempt and its persisted context from multiple surfaces:
 
 ```bash
 sudo sshdock apps health <app>
 sudo sshdock releases list <app>
+sudo sshdock deployments list <app>
+sudo sshdock deployments logs <app> <deployment-id>
 sudo sshdock events list <app>
 ssh -T sshdock@sshdock.<domain>
 ```

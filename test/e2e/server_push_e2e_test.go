@@ -3,29 +3,35 @@
 package e2e
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
-	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
-	_ "modernc.org/sqlite"
 )
 
 func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "server-image-app"
-	commitSHA, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
+	commitSHA, output := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	})
+	queued := regexp.MustCompile(`deploy: queued (dep_[^ ]+)`).FindStringSubmatch(output)
+	if len(queued) != 2 {
+		t.Fatalf("push output missing queued deployment ID:\n%s", output)
+	}
+	for _, want := range []string{"deploy: following " + queued[1], "deploy: daemon started", "deploy: succeeded"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("push output missing %q:\n%s", want, output)
+		}
+	}
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
@@ -40,39 +46,59 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	assertEventTypesContain(t, dbPath, appName, []string{"git.ref_accepted", "deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_skipped"})
 }
 
-func TestServerPushClientReturnDoesNotInterruptQueuedDeployment(t *testing.T) {
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "750ms")
+func TestServerPushClientDisconnectDoesNotInterruptDeployment(t *testing.T) {
+	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "2s")
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "server-detached-client-app"
-	commitSHA, _ := pushComposeAppThroughSSHWithoutWaiting(t, paths, appName, map[string]string{
+	push := prepareComposeAppPush(t, paths, composePushRequest{AppName: appName, Files: map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
+	}})
+	output := newPushCommandSignalWriter("deploy: daemon started")
+	command := exec.Command("git", "push", "sshdock", "main")
+	command.Dir = push.sourceDir
+	command.Env = push.env
+	command.Stdout = output
+	command.Stderr = output
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := command.Start(); err != nil {
+		t.Fatalf("start git push: %v", err)
+	}
+	t.Cleanup(func() {
+		if command.ProcessState == nil {
+			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			_ = command.Wait()
+		}
 	})
+	select {
+	case <-output.matched:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("git push never attached to live deployment output:\n%s", output.String())
+	}
 
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
-	status := waitForVisibleDeploymentStatus(t, dbPath, appName, commitSHA)
+	status := waitForVisibleDeploymentStatus(t, dbPath, appName, push.commitSHA)
 	if status == string(app.DeploymentStatusSucceeded) || status == string(app.DeploymentStatusFailed) {
-		t.Fatalf("deployment status after client return = %q, want queued or active", status)
+		t.Fatalf("deployment status before client disconnect = %q, want queued or active", status)
 	}
 
-	waitForDeploymentTerminal(t, dbPath, appName, commitSHA)
+	// When
+	if err := syscall.Kill(-command.Process.Pid, syscall.SIGINT); err != nil {
+		t.Fatalf("disconnect git push client: %v", err)
+	}
+	disconnected := make(chan error, 1)
+	go func() { disconnected <- command.Wait() }()
+	select {
+	case <-disconnected:
+	case <-time.After(2 * time.Second):
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		<-disconnected
+		t.Fatal("git push process group did not stop after Ctrl-C-style disconnect")
+	}
+
+	// Then
+	waitForDeploymentTerminal(t, dbPath, appName, push.commitSHA)
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
-}
-
-func waitForVisibleDeploymentStatus(t *testing.T, dbPath string, appName string, commitSHA string) string {
-	t.Helper()
-	deadline := time.Now().Add(500 * time.Millisecond)
-	var lastErr error
-	for time.Now().Before(deadline) {
-		status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
-		if err == nil {
-			return status
-		}
-		lastErr = err
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("deployment status after client return was never readable: %v", lastErr)
-	return ""
 }
 
 func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
@@ -131,391 +157,4 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	assertEventMessageContains(t, dbPath, appName, "publishes 0.0.0.0:")
 	assertEventMessageContains(t, dbPath, appName, "uses host bind mount")
 	assertEventMessageContains(t, dbPath, appName, "does not sandbox this configuration")
-}
-
-type serverPushPaths struct {
-	tmp                        string
-	installBinDir              string
-	dataDir                    string
-	clientKeyPath              string
-	operatorAuthorizedKeysPath string
-	sshPort                    int
-	sshUser                    string
-}
-
-func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushPaths {
-	t.Helper()
-	requireGit(t)
-	sshdPath := requireCommandOrSkip(t, "sshd")
-	sshKeygenPath := requireCommandOrSkip(t, "ssh-keygen")
-
-	currentUser, err := user.Current()
-	if err != nil {
-		t.Fatalf("current user: %v", err)
-	}
-	if currentUser.Username == "" {
-		t.Skip("current user name is required for server push e2e")
-	}
-
-	root := filepath.Join("..", "..")
-	tmp := t.TempDir()
-	sourceBinDir := filepath.Join(tmp, "source-bin")
-	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll source bin: %v", err)
-	}
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
-
-	fakeBinDir := filepath.Join(tmp, "fake-bin")
-	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
-	writeBootstrapFakeCommands(t, fakeBinDir)
-
-	installRoot := filepath.Join(tmp, "root")
-	bootstrapEnv := append(os.Environ(),
-		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"SSHDOCK_TAG=test-local",
-		"SSHDOCK_BOOTSTRAP_ROOT="+installRoot,
-		"SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="+sourceBinDir,
-		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
-		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
-	)
-	runCommand(t, root, bootstrapEnv, "bash", "scripts/bootstrap.sh")
-
-	installBinDir := filepath.Join(installRoot, "usr", "local", "bin")
-	dataDir := filepath.Join(installRoot, "var", "lib", "sshdock")
-	authorizedKeysPath := filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
-	operatorAuthorizedKeysPath := filepath.Join(dataDir, ".ssh", "authorized_keys")
-	clientKeyPath := filepath.Join(tmp, "client_ed25519")
-	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
-	publicKey := readFile(t, clientKeyPath+".pub")
-
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s %s git-receive",
-		installBinDir,
-		os.PathListSeparator,
-		os.Getenv("PATH"),
-		dataDir,
-		composeRunner,
-		filepath.Join(installBinDir, "sshdockd"),
-	)
-	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=fake SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s %s operator",
-		fakeBinDir,
-		os.PathListSeparator,
-		installBinDir,
-		os.PathListSeparator,
-		os.Getenv("PATH"),
-		dataDir,
-		filepath.Join(tmp, "operator.caddyfile"),
-		filepath.Join(installBinDir, "sshdockd"),
-	)
-	cliEnv := append(os.Environ(),
-		"PATH="+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
-		"SSHDOCK_GIT_RECEIVE_COMMAND="+receiveCommand,
-		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+operatorAuthorizedKeysPath,
-		"SSHDOCK_OPERATOR_COMMAND="+operatorCommand,
-		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
-	)
-	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "sshdock"), "ssh-keys", "add", "admin")
-
-	daemonLogPath := filepath.Join(tmp, "sshdockd.log")
-	daemonLog, err := os.Create(daemonLogPath)
-	if err != nil {
-		t.Fatalf("Create daemon log: %v", err)
-	}
-	daemonCtx, cancelDaemon := context.WithCancel(context.Background())
-	daemon := exec.CommandContext(daemonCtx, filepath.Join(installBinDir, "sshdockd"), "daemon")
-	daemon.Env = append(os.Environ(),
-		"PATH="+fakeBinDir+string(os.PathListSeparator)+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
-	)
-	daemon.Stdout = daemonLog
-	daemon.Stderr = daemonLog
-	if err := daemon.Start(); err != nil {
-		cancelDaemon()
-		_ = daemonLog.Close()
-		t.Fatalf("start sshdockd daemon: %v", err)
-	}
-	t.Cleanup(func() {
-		cancelDaemon()
-		_ = daemon.Wait()
-		_ = daemonLog.Close()
-	})
-
-	hostKeyPath := filepath.Join(tmp, "host_ed25519")
-	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", hostKeyPath)
-	port := freeLocalPort(t)
-	sshdConfigPath := filepath.Join(tmp, "sshd_config")
-	sshdLogPath := filepath.Join(tmp, "sshd.log")
-	sshdConfig := fmt.Sprintf(`
-Port %d
-ListenAddress 127.0.0.1
-HostKey %s
-PidFile %s
-AuthorizedKeysFile %s
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-ChallengeResponseAuthentication no
-PubkeyAuthentication yes
-StrictModes no
-AllowUsers %s
-LogLevel ERROR
-`, port, hostKeyPath, filepath.Join(tmp, "sshd.pid"), authorizedKeysPath, currentUser.Username)
-	if err := os.WriteFile(sshdConfigPath, []byte(sshdConfig), 0o600); err != nil {
-		t.Fatalf("WriteFile sshd_config: %v", err)
-	}
-	if output, err := exec.Command(sshdPath, "-t", "-f", sshdConfigPath).CombinedOutput(); err != nil {
-		t.Skipf("OpenSSH server config is not usable in this environment: %v\n%s", err, output)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	sshd := exec.CommandContext(ctx, sshdPath, "-D", "-e", "-f", sshdConfigPath)
-	logFile, err := os.Create(sshdLogPath)
-	if err != nil {
-		cancel()
-		t.Fatalf("Create sshd log: %v", err)
-	}
-	sshd.Stdout = logFile
-	sshd.Stderr = logFile
-	if err := sshd.Start(); err != nil {
-		cancel()
-		_ = logFile.Close()
-		t.Skipf("start sshd: %v", err)
-	}
-	waitForTCP(t, "127.0.0.1", port, sshdLogPath)
-
-	cancelSSHD := func() {
-		cancel()
-		_ = sshd.Wait()
-		_ = logFile.Close()
-	}
-	t.Cleanup(cancelSSHD)
-
-	return serverPushPaths{
-		tmp:                        tmp,
-		installBinDir:              installBinDir,
-		dataDir:                    dataDir,
-		clientKeyPath:              clientKeyPath,
-		operatorAuthorizedKeysPath: operatorAuthorizedKeysPath,
-		sshPort:                    port,
-		sshUser:                    currentUser.Username,
-	}
-}
-
-func pushComposeAppThroughSSH(t *testing.T, paths serverPushPaths, appName string, files map[string]string) string {
-	t.Helper()
-	commitSHA, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, files)
-	return commitSHA
-}
-
-func pushComposeAppThroughSSHWithOutput(t *testing.T, paths serverPushPaths, appName string, files map[string]string) (string, string) {
-	t.Helper()
-	commitSHA, output := pushComposeAppThroughSSHWithoutWaiting(t, paths, appName, files)
-	waitForDeploymentTerminal(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, commitSHA)
-	return commitSHA, output
-}
-
-func pushComposeAppThroughSSHWithoutWaiting(t *testing.T, paths serverPushPaths, appName string, files map[string]string) (string, string) {
-	t.Helper()
-	sourceDir := filepath.Join(paths.tmp, "source-"+appName)
-	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll source: %v", err)
-	}
-	runGit(t, sourceDir, nil, "init")
-	runGit(t, sourceDir, nil, "config", "user.email", "dev@example.com")
-	runGit(t, sourceDir, nil, "config", "user.name", "SSHDock Test")
-	runGit(t, sourceDir, nil, "checkout", "-b", "main")
-	for name, content := range files {
-		path := filepath.Join(sourceDir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll %s: %v", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile %s: %v", name, err)
-		}
-	}
-	runGit(t, sourceDir, nil, "add", ".")
-	runGit(t, sourceDir, nil, "commit", "-m", "initial compose app")
-	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
-	runGit(t, sourceDir, nil, "remote", "add", "sshdock", paths.sshUser+"@127.0.0.1:"+appName+".git")
-
-	sshPath := requireCommandOrSkip(t, "ssh")
-	sshCommand := fmt.Sprintf("%s -p %d -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", sshPath, paths.sshPort, paths.clientKeyPath)
-	pushEnv := append(os.Environ(),
-		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"GIT_SSH_COMMAND="+sshCommand,
-		"SSHDOCK_DATA_DIR="+paths.dataDir,
-	)
-	output := runGitOutput(t, sourceDir, pushEnv, "push", "sshdock", "main")
-	return commitSHA, output
-}
-
-func waitForDeploymentTerminal(t *testing.T, dbPath string, appName string, commitSHA string) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		status, err := deploymentStatusForCommit(dbPath, appName, commitSHA, app.DeploymentTriggerPush)
-		if err == nil && (status == string(app.DeploymentStatusSucceeded) || status == string(app.DeploymentStatusFailed)) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("deployment for app %q commit %q did not reach a terminal state", appName, commitSHA)
-}
-
-func assertEventTypesContain(t *testing.T, dbPath string, appName string, want []string) {
-	t.Helper()
-	got := eventTypesForApp(t, dbPath, appName)
-	for _, eventType := range want {
-		if !strings.Contains(","+strings.Join(got, ",")+",", ","+eventType+",") {
-			t.Fatalf("event types = %#v, want %q", got, eventType)
-		}
-	}
-}
-
-func writeBootstrapFakeCommands(t *testing.T, fakeBinDir string) {
-	t.Helper()
-	writeFakeCommand(t, fakeBinDir, "docker", `#!/bin/sh
-printf 'docker %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "caddy", `#!/bin/sh
-printf 'caddy %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "sudo", `#!/bin/sh
-printf 'sudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "systemctl", `#!/bin/sh
-printf 'systemctl %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "id", `#!/bin/sh
-if [ "$#" -eq 1 ] && [ "$1" = "-u" ]; then
-	echo 0
-	exit 0
-fi
-printf 'id %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 1
-`)
-	writeFakeCommand(t, fakeBinDir, "useradd", `#!/bin/sh
-printf 'useradd %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "usermod", `#!/bin/sh
-printf 'usermod %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-	writeFakeCommand(t, fakeBinDir, "visudo", `#!/bin/sh
-printf 'visudo %s\n' "$*" >> "$SSHDOCK_BOOTSTRAP_FAKE_LOG"
-exit 0
-`)
-}
-
-func assertAppStatus(t *testing.T, dbPath string, appID string, want app.AppStatus) {
-	t.Helper()
-	got := queryString(t, dbPath, `select status from apps where id = ?`, appID)
-	if got != string(want) {
-		t.Fatalf("app %s status = %q, want %q", appID, got, want)
-	}
-}
-
-func assertReleaseStatus(t *testing.T, dbPath string, releaseID string, want app.ReleaseStatus) {
-	t.Helper()
-	got := queryString(t, dbPath, `select status from releases where id = ?`, releaseID)
-	if got != string(want) {
-		t.Fatalf("release %s status = %q, want %q", releaseID, got, want)
-	}
-}
-
-func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) {
-	t.Helper()
-	got := eventTypesForApp(t, dbPath, appID)
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("event types = %#v, want %#v", got, want)
-	}
-}
-
-func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
-	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	defer db.Close()
-
-	rows, err := db.Query(`select type from events where app_id = ? order by created_at, id`, appID)
-	if err != nil {
-		t.Fatalf("query events: %v", err)
-	}
-	defer rows.Close()
-
-	var got []string
-	for rows.Next() {
-		var eventType string
-		if err := rows.Scan(&eventType); err != nil {
-			t.Fatalf("scan event type: %v", err)
-		}
-		got = append(got, eventType)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("events rows: %v", err)
-	}
-	return got
-}
-
-func assertEventMessageContains(t *testing.T, dbPath string, appID string, want string) {
-	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	defer db.Close()
-
-	rows, err := db.Query(`select message from events where app_id = ? order by created_at, id`, appID)
-	if err != nil {
-		t.Fatalf("query event messages: %v", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var message string
-		if err := rows.Scan(&message); err != nil {
-			t.Fatalf("scan event message: %v", err)
-		}
-		if strings.Contains(message, want) {
-			return
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("event message rows: %v", err)
-	}
-	t.Fatalf("event messages for %s do not contain %q", appID, want)
-}
-
-func countImageRepositoriesWithPrefix(images string, prefix string) int {
-	count := 0
-	for _, image := range strings.Split(images, "\n") {
-		if strings.HasPrefix(image, prefix) {
-			count++
-		}
-	}
-	return count
-}
-
-func queryString(t *testing.T, dbPath string, query string, args ...any) string {
-	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	defer db.Close()
-
-	var value string
-	if err := db.QueryRow(query, args...).Scan(&value); err != nil {
-		t.Fatalf("query string: %v", err)
-	}
-	return value
 }

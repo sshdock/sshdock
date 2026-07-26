@@ -622,7 +622,9 @@ Receive pushes from OpenSSH forced-command wiring.
 sshdockd git-receive
 ```
 
-This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. App names use the same normalized DNS-label rule as explicit creation; invalid names are rejected with a suggestion and exact Git remote update command. The receive wrapper first acquires a nonblocking app-specific lock, then waits synchronously for the server-wide deployment lock before receive-pack starts. It holds both locks through receive-pack and its hooks, so an overlapping push to the same app is rejected before Git receives it.
+This command requires `SSH_ORIGINAL_COMMAND` to contain a `git-receive-pack '<app>.git'` command. App names use the same normalized DNS-label rule as explicit creation; invalid names are rejected with a suggestion and exact Git remote update command. The receive wrapper holds a nonblocking app-specific lock through receive-pack and its hooks. Pre-receive reserves a pending deployment before Git changes `main`; post-receive marks that deployment accepted and queued after the ref update. The persistent daemon remains the deployment owner.
+
+After receive-pack accepts remote `main`, the Git client follows that deployment's persisted redacted output by default until it succeeds, fails, or the client disconnects. Disconnecting stops only that attachment; it does not cancel the daemon-owned deployment.
 
 Operators normally do not run this manually.
 
@@ -640,7 +642,7 @@ Handle a bare repository `post-receive` hook.
 sshdockd git-hook --app my-app --repo /var/lib/sshdock/apps/my-app/repo.git
 ```
 
-The hook reads the accepted remote-main update from stdin, reports that Git already updated `main`, checks out the selected commit, selects exactly one conventional root Compose file, enforces the external-file boundary, lets Docker Compose validate the application model, creates release and deployment records, runs the configured Compose runner, and reports and records deployment success or failure. The receive wrapper acquires the server-wide deployment slot before starting receive-pack and streams wait status over the existing Git connection; no durable queue or detached deployment job is created.
+The hook reads the accepted remote-main update from stdin, reports that Git already updated `main`, and atomically records the accepted-ref and queued-deployment events. The persistent daemon claims the queued deployment, checks out the selected commit, validates and runs the Compose application, and persists redacted deployment output plus the terminal status. The receive wrapper follows that persisted output without owning or canceling the deployment.
 
 Operators normally do not run this manually.
 

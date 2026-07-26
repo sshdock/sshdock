@@ -20,6 +20,9 @@ type receivePackStore interface {
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
 	ListApps(ctx context.Context) ([]app.App, error)
+	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
+	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
+	DeploymentLog(ctx context.Context, appID string, deploymentID string) (app.DeploymentLog, error)
 }
 
 type ReceivePackRunner interface {
@@ -49,6 +52,7 @@ type ReceivePackService struct {
 	nodeID            string
 	repoManager       *RepoManager
 	receivePackRunner ReceivePackRunner
+	deploymentLogs    *DeploymentLogStreamer
 	coordination      *deploycoord.Manager
 	now               func() time.Time
 }
@@ -83,6 +87,7 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 		nodeID:            nodeID,
 		repoManager:       repoManager,
 		receivePackRunner: receivePackRunner,
+		deploymentLogs:    NewDeploymentLogStreamer(DeploymentLogStreamerConfig{Store: config.Store}),
 		coordination:      deploycoord.NewManager(locksDir),
 		now:               now,
 	}
@@ -137,8 +142,11 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	if err != nil {
 		return err
 	}
+	guardHeld := true
 	defer func() {
-		returnErr = errors.Join(returnErr, guard.Release())
+		if guardHeld {
+			returnErr = errors.Join(returnErr, guard.Release())
+		}
 	}()
 	model, err := s.store.GetApp(ctx, appName)
 	if errors.Is(err, store.ErrNotFound) {
@@ -164,8 +172,35 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	if err := s.repoManager.InstallHooks(model.Name, model.RepoPath); err != nil {
 		return fmt.Errorf("install receive hooks for %q: %w", model.Name, err)
 	}
-
-	return s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr)
+	before, err := s.store.ListDeploymentsByApp(ctx, model.ID)
+	if err != nil {
+		return fmt.Errorf("list deployments before receive for %q: %w", model.Name, err)
+	}
+	if err := s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr); err != nil {
+		return err
+	}
+	deployment, found, err := s.acceptedDeploymentAfterReceive(ctx, model.ID, before)
+	if err != nil {
+		return &DeploymentAttachmentError{AppID: model.ID, Err: err}
+	}
+	if err := guard.Release(); err != nil {
+		return fmt.Errorf("release receive lock for %q before deployment attachment: %w", model.Name, err)
+	}
+	guardHeld = false
+	if !found {
+		return nil
+	}
+	output := request.Stderr
+	if output == nil {
+		output = io.Discard
+	}
+	if _, err := fmt.Fprintf(output, "deploy: following %s\n", deployment.ID); err != nil {
+		return &DeploymentAttachmentError{AppID: model.ID, DeploymentID: deployment.ID, Err: fmt.Errorf("write attachment status: %w", err)}
+	}
+	if err := s.deploymentLogs.Stream(ctx, DeploymentLogStreamRequest{AppID: model.ID, DeploymentID: deployment.ID, Follow: true}, output); err != nil {
+		return &DeploymentAttachmentError{AppID: model.ID, DeploymentID: deployment.ID, Err: err}
+	}
+	return nil
 }
 
 func (s *ReceivePackService) withAppNameGuidance(err error) error {

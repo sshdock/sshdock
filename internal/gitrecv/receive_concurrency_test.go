@@ -112,6 +112,69 @@ func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T
 	}
 }
 
+func TestReceivePackServiceReleasesAppLockBeforeLogAttachment(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	rootDir := t.TempDir()
+	appsDir := filepath.Join(rootDir, "apps")
+	locksDir := filepath.Join(rootDir, "locks")
+	repoPath := filepath.Join(appsDir, "test-app", "repo.git")
+	now := time.Date(2026, 7, 26, 14, 0, 0, 0, time.UTC)
+	sqlite := newReceiveTestStore(t, ctx)
+	if err := sqlite.CreateApp(ctx, app.App{
+		ID:           "test-app",
+		Name:         "test-app",
+		NodeID:       "local",
+		RepoPath:     repoPath,
+		WorktreePath: filepath.Join(appsDir, "test-app", "worktree"),
+		Status:       app.AppStatusCreated,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	firstRunner := &recordingReceivePackRunner{run: func() error {
+		deployment := app.Deployment{ID: "dep_attached", AppID: "test-app", ReleaseID: app.ReleaseID("test-app", "abc123"), CommitSHA: "abc123", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
+		if err := sqlite.QueueDeployment(ctx, deployment, ""); err != nil {
+			return err
+		}
+		if err := sqlite.RecordDeploymentQueued(ctx,
+			app.Event{ID: EventID(deployment.ID, "git_ref_accepted"), AppID: deployment.AppID, Type: "git.ref_accepted", Message: "Remote main accepted", CreatedAt: now},
+			app.Event{ID: EventID(deployment.ID, "queued"), AppID: deployment.AppID, Type: "deploy.queued", Message: "Deploy queued", CreatedAt: now},
+		); err != nil {
+			return err
+		}
+		if err := sqlite.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: succeeded\n", now); err != nil {
+			return err
+		}
+		return sqlite.UpdateDeploymentStatus(ctx, deployment.ID, app.DeploymentStatusSucceeded, now, "")
+	}}
+	firstService := NewReceivePackService(ReceivePackServiceConfig{Store: sqlite, AppsDir: appsDir, LocksDir: locksDir, RepoManager: NewRepoManager(RepoManagerConfig{AppsDir: appsDir}), ReceivePackRunner: firstRunner})
+	attachment := &blockingStreamWriter{started: make(chan struct{}), release: make(chan struct{})}
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- firstService.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'test-app.git'", Stderr: attachment})
+	}()
+	<-attachment.started
+	secondRunner := &recordingReceivePackRunner{}
+	secondService := NewReceivePackService(ReceivePackServiceConfig{Store: sqlite, AppsDir: appsDir, LocksDir: locksDir, RepoManager: NewRepoManager(RepoManagerConfig{AppsDir: appsDir}), ReceivePackRunner: secondRunner})
+
+	// When
+	secondErr := secondService.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'test-app.git'"})
+
+	// Then
+	if secondErr != nil {
+		t.Fatalf("second Receive while first client is attached: %v", secondErr)
+	}
+	if secondRunner.repoPath != repoPath {
+		t.Fatalf("second receive-pack repo path = %q, want %q", secondRunner.repoPath, repoPath)
+	}
+	close(attachment.release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first Receive: %v", err)
+	}
+}
+
 type blockingReceivePackRunner struct {
 	started chan struct{}
 	release chan struct{}

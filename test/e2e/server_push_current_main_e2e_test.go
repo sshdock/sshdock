@@ -94,6 +94,11 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	if failedPushErr != nil {
 		t.Fatalf("post-receive deployment failure rejected Git update: %v\n%s", failedPushErr, failedOutput)
 	}
+	for _, want := range []string{"deploy: following dep_", "deploy: failed stage=validate compose", "inspect deployment failure detail and retry guidance"} {
+		if !strings.Contains(failedOutput, want) {
+			t.Fatalf("failed push output missing %q:\n%s", want, failedOutput)
+		}
+	}
 	assertRemoteMain(t, repoPath, failedCommit)
 	waitForDeploymentTerminal(t, dbPath, appName, failedCommit)
 	failedHealth := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "health", appName)

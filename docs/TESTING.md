@@ -81,7 +81,7 @@ git push sshdock main
 
 12. Verify `sshdockd git-receive` creates the app and records the deployment.
 
-`make server-push-e2e` also proves current-main and concurrency semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, distinct same-commit redeploy attempts, failed deployment with remote `main` preserved, force-pushing an older commit as Git-based rollback, immediate same-app contention rejection, and synchronous cross-app deployment waiting before receive-pack over the live Git connection.
+`make server-push-e2e` also proves current-main, attachment, and concurrency semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, attached persisted output through terminal success, Ctrl-C-style process-group disconnect with daemon completion, failed deployment diagnostics with remote `main` preserved, force-pushing an older commit as Git-based rollback, and immediate same-app contention rejection.
 
 ## Caddy Route Tier
 
@@ -380,10 +380,12 @@ The server push e2e target:
 3. Uses the installed binaries from that fake root.
 4. Renders Git receive `authorized_keys` through `sshdock ssh-keys add`.
 5. Starts a local unprivileged OpenSSH daemon.
-6. Pushes an image-service Compose app through real `ssh` with the fake Compose runner.
-7. Pushes a built Compose app through real `ssh` with the Docker Compose runner.
-8. Verifies app, release, deployment, and event state in SQLite.
-9. Verifies the built-app deploy creates no SSHDock release override or release image tag, starts a running Docker Compose service, and records all-interface and host-bind warnings.
+6. Pushes an image-service Compose app through real `ssh`, then verifies the client identifies the queued deployment and follows persisted output through terminal success.
+7. Disconnects a Git client process group after live daemon output begins, then verifies the daemon completes the deployment independently.
+8. Verifies a failed attached deployment reports actionable terminal output while preserving accepted remote `main`.
+9. Pushes a built Compose app through real `ssh` with the Docker Compose runner.
+10. Verifies app, release, deployment, and event state in SQLite.
+11. Verifies the built-app deploy creates no SSHDock release override or release image tag, starts a running Docker Compose service, and records all-interface and host-bind warnings.
 
 The built-app test uses the local Docker daemon and may pull `nginx:alpine`.
 

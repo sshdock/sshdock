@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 )
@@ -11,6 +12,7 @@ type FakeRunner struct {
 	Validation   ValidationResult
 	DeployResult DeployResult
 	DeployDelay  time.Duration
+	DeployOutput string
 	Services     []ServiceStatus
 	LogOutput    string
 	ExecOutput   string
@@ -60,6 +62,15 @@ func (f *FakeRunner) Deploy(ctx context.Context, request DeployRequest) (DeployR
 		}
 	}
 	return f.DeployResult, f.DeployErr
+}
+
+func (f *FakeRunner) DeployWithOutput(ctx context.Context, request DeployRequest, stdout io.Writer, _ io.Writer) (DeployResult, error) {
+	if stdout != nil && f.DeployOutput != "" {
+		if _, err := fmt.Fprint(stdout, f.DeployOutput); err != nil {
+			return DeployResult{}, err
+		}
+	}
+	return f.Deploy(ctx, request)
 }
 
 func (f *FakeRunner) Start(_ context.Context, request LifecycleRequest) error {

@@ -148,6 +148,30 @@ func TestDockerRunnerDeployNeverRunsSSHDockImageCleanup(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerDeployWithOutputStreamsLifecycleStages(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, "services:\n  web:\n    image: example/web:latest\n")
+	runner := NewDockerRunner(&streamingRecordingExecutor{Output: `{"services":{"web":{"image":"example/web:latest"}}}` + "\n"})
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	// When
+	_, err := runner.DeployWithOutput(ctx, DeployRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath}, &stdout, &stderr)
+
+	// Then
+	if err != nil {
+		t.Fatalf("DeployWithOutput: %v", err)
+	}
+	for _, want := range []string{"stage: validate compose", "stage: evaluate effective model", "stage: pull images", "stage: build services", "stage: start services", `{"services":{"web"`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
 func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()

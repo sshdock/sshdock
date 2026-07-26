@@ -27,17 +27,24 @@ func TestStoreBackendHistoryAndLogErrorsRedactStoredConfigValues(t *testing.T) {
 	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte(secret)}); err != nil {
 		t.Fatalf("Set config: %v", err)
 	}
-	if err := sqlite.CreateDeployment(ctx, app.Deployment{ID: "dep_secret", AppID: "my-app", ReleaseID: "rel_new", Status: app.DeploymentStatusFailed, StartedAt: now.Add(time.Minute), FinishedAt: now.Add(2 * time.Minute), ErrorMessage: "release failed for " + secret}); err != nil {
-		t.Fatalf("CreateDeployment: %v", err)
+	deployment := app.Deployment{ID: "dep_secret", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+	if err := sqlite.QueueDeployment(ctx, deployment, "old"); err != nil {
+		t.Fatalf("QueueDeployment: %v", err)
+	}
+	if err := sqlite.UpdateDeploymentStatus(ctx, deployment.ID, app.DeploymentStatusFailed, now.Add(2*time.Minute), "release failed for "+secret); err != nil {
+		t.Fatalf("UpdateDeploymentStatus: %v", err)
 	}
 	if err := sqlite.CreateEvent(ctx, app.Event{ID: "evt_secret", AppID: "my-app", Type: "deploy.failed", Message: "event failed for " + secret, CreatedAt: now.Add(time.Minute)}); err != nil {
 		t.Fatalf("CreateEvent: %v", err)
+	}
+	if err := sqlite.AppendDeploymentLog(ctx, "my-app", "dep_secret", "deployment output for "+secret+"\n", now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("AppendDeploymentLog: %v", err)
 	}
 	runner := &compose.FakeRunner{LogsErr: errors.New("logs failed for " + secret)}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, RecoveryRunner: runner, ConfigManager: configService})
 	cliRunner := NewRunner(backend, "dev")
 
-	for _, args := range [][]string{{"releases", "list", "my-app"}, {"events", "list", "my-app"}, {"logs", "my-app", "web"}} {
+	for _, args := range [][]string{{"releases", "list", "my-app"}, {"events", "list", "my-app"}, {"logs", "my-app", "web"}, {"deployments", "logs", "my-app", "dep_secret"}} {
 		// When
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer

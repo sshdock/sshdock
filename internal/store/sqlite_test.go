@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -998,6 +999,13 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if err := store.CreateDeployment(ctx, app.Deployment{ID: "dep_1", AppID: model.ID, ReleaseID: "rel_1", Status: app.DeploymentStatusSucceeded, StartedAt: now, FinishedAt: now}); err != nil {
 		t.Fatalf("CreateDeployment: %v", err)
 	}
+	queued := app.Deployment{ID: "dep_log", AppID: model.ID, ReleaseID: "rel_1", CommitSHA: "abc124", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+	if err := store.QueueDeployment(ctx, queued, "abc123"); err != nil {
+		t.Fatalf("QueueDeployment: %v", err)
+	}
+	if err := store.UpdateDeploymentStatus(ctx, queued.ID, app.DeploymentStatusSucceeded, queued.StartedAt, ""); err != nil {
+		t.Fatalf("UpdateDeploymentStatus: %v", err)
+	}
 	if err := store.AttachDomain(ctx, app.Domain{ID: "dom_1", AppID: model.ID, ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("AttachDomain: %v", err)
 	}
@@ -1021,6 +1029,9 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if deployments, err := store.ListDeploymentsByApp(ctx, model.ID); err != nil || len(deployments) != 0 {
 		t.Fatalf("deployments after DeleteApp = %#v, err = %v", deployments, err)
 	}
+	if _, err := store.DeploymentLog(ctx, model.ID, "dep_log"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deployment log after DeleteApp error = %v, want ErrNotFound", err)
+	}
 	if domains, err := store.ListDomainsByApp(ctx, model.ID); err != nil || len(domains) != 0 {
 		t.Fatalf("domains after DeleteApp = %#v, err = %v", domains, err)
 	}
@@ -1032,6 +1043,77 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	}
 	if err := store.DeleteApp(ctx, model.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("DeleteApp missing error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSQLiteStoreQueueDeploymentRetainsOnlyNewestDeploymentLogs(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	store := newTestStore(t, ctx)
+	now := time.Date(2026, 7, 26, 9, 0, 0, 0, time.UTC)
+	model := app.App{ID: "my-app", Name: "my-app", NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}
+	if err := store.CreateApp(ctx, model); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+
+	// When
+	for index := range 21 {
+		deployment := app.Deployment{
+			ID:        fmt.Sprintf("dep_%02d", index),
+			AppID:     model.ID,
+			ReleaseID: fmt.Sprintf("rel_%02d", index),
+			CommitSHA: fmt.Sprintf("commit_%02d", index),
+			Trigger:   app.DeploymentTriggerPush,
+			Status:    app.DeploymentStatusPending,
+			StartedAt: now.Add(time.Duration(index) * time.Second),
+		}
+		if err := store.QueueDeployment(ctx, deployment, fmt.Sprintf("previous_%02d", index)); err != nil {
+			t.Fatalf("QueueDeployment %d: %v", index, err)
+		}
+		if err := store.UpdateDeploymentStatus(ctx, deployment.ID, app.DeploymentStatusSucceeded, deployment.StartedAt.Add(time.Second), ""); err != nil {
+			t.Fatalf("UpdateDeploymentStatus %d: %v", index, err)
+		}
+	}
+
+	// Then
+	if _, err := store.DeploymentLog(ctx, model.ID, "dep_00"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeploymentLog oldest error = %v, want ErrNotFound", err)
+	}
+	latest, err := store.LatestDeploymentLog(ctx, model.ID)
+	if err != nil {
+		t.Fatalf("LatestDeploymentLog: %v", err)
+	}
+	if latest.DeploymentID != "dep_20" {
+		t.Fatalf("latest deployment log = %#v, want dep_20", latest)
+	}
+	if err := store.AppendDeploymentLog(ctx, model.ID, latest.DeploymentID, "deploy output\n", now.Add(time.Minute)); err != nil {
+		t.Fatalf("AppendDeploymentLog: %v", err)
+	}
+	latest, err = store.DeploymentLog(ctx, model.ID, latest.DeploymentID)
+	if err != nil {
+		t.Fatalf("DeploymentLog latest: %v", err)
+	}
+	if latest.Content != "deploy output\n" || latest.Truncated {
+		t.Fatalf("latest deployment log = %#v", latest)
+	}
+}
+
+func TestAppendDeploymentLogContentCapsOutputWithMarker(t *testing.T) {
+	// Given
+	existing := strings.Repeat("x", deploymentLogLimitBytes)
+
+	// When
+	content, truncated := appendDeploymentLogContent(existing, false, "more output")
+
+	// Then
+	if !truncated {
+		t.Fatal("truncated = false, want true")
+	}
+	if len(content) != deploymentLogLimitBytes {
+		t.Fatalf("log length = %d, want %d", len(content), deploymentLogLimitBytes)
+	}
+	if !strings.HasSuffix(content, deploymentLogTruncationMarker) {
+		t.Fatalf("log missing truncation marker: %q", content[len(content)-len(deploymentLogTruncationMarker):])
 	}
 }
 

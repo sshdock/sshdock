@@ -605,6 +605,28 @@ func TestDeploymentsListSanitizesControlCharacters(t *testing.T) {
 	}
 }
 
+func TestDeploymentsLogsReadsExplicitDeployment(t *testing.T) {
+	// Given
+	backend := NewMemoryBackend("server")
+	backend.apps["my-app"] = App{Name: "my-app"}
+	backend.deployments = []Deployment{{ID: "dep_1", AppName: "my-app", Status: "succeeded"}}
+	backend.deploymentLogs["dep_1"] = "stage: build services\nbuilt image\n"
+	runner := NewRunner(backend, "dev")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// When
+	code := runner.Run([]string{"deployments", "logs", "my-app", "dep_1"}, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "stage: build services\nbuilt image\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestLifecycleMutationCommands(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["my-app"] = App{Name: "my-app", Status: "healthy", NodeID: "local"}

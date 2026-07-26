@@ -16,6 +16,7 @@ type Backend interface {
 	RemoveApp(name string) error
 	AppHealth(name string) (AppHealth, error)
 	Logs(request LogRequest, stdout io.Writer, stderr io.Writer) error
+	DeploymentLogs(request DeploymentLogRequest, stdout io.Writer) error
 	ListReleases(appName string) ([]Release, error)
 	ListDeployments(appName string) ([]Deployment, error)
 	ListEvents(appName string) ([]Event, error)
@@ -42,4 +43,10 @@ type ServiceCommandRequest struct {
 	Stdin       io.Reader
 	Stdout      io.Writer
 	Stderr      io.Writer
+}
+
+type DeploymentLogRequest struct {
+	AppName      string
+	DeploymentID string
+	Follow       bool
 }

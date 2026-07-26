@@ -42,6 +42,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			retry_guidance text not null,
 			error_message text not null
 		)`,
+		`create table if not exists deployment_logs (
+			deployment_id text primary key,
+			app_id text not null,
+			content text not null,
+			truncated integer not null,
+			created_at text not null,
+			updated_at text not null
+		)`,
 		`create table if not exists domains (
 			id text primary key,
 			app_id text not null,
@@ -94,6 +102,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		`create index if not exists idx_releases_app_id on releases(app_id)`,
 		`create unique index if not exists idx_releases_app_commit on releases(app_id, commit_sha)`,
 		`create index if not exists idx_deployments_app_started on deployments(app_id, started_at, id)`,
+		`create index if not exists idx_deployment_logs_app_created on deployment_logs(app_id, created_at, deployment_id)`,
 		`create index if not exists idx_domains_app_id on domains(app_id)`,
 		`create index if not exists idx_events_app_id on events(app_id)`,
 		`create index if not exists idx_route_apply_failures_app_id on route_apply_failures(app_id)`,

@@ -59,6 +59,15 @@ type Deployment struct {
 	ErrorMessage  string
 }
 
+type DeploymentLog struct {
+	DeploymentID string
+	AppID        string
+	Content      string
+	Truncated    bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type Domain struct {
 	ID          string
 	AppID       string

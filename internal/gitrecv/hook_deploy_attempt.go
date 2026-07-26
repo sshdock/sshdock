@@ -30,10 +30,10 @@ func (h *PostReceiveHandler) handleEvent(ctx context.Context, event PushEvent, w
 	if err != nil {
 		return err
 	}
-	return h.deployAttempt(ctx, event, worktreePath, attempt)
+	return h.deployAttempt(ctx, event, worktreePath, attempt, false)
 }
 
-func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent, worktreePath string, attempt pushAttempt) error {
+func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent, worktreePath string, attempt pushAttempt, captureOutput bool) error {
 
 	retryGuidance := "sudo sshdock apps redeploy " + event.AppName
 	if err := h.checkout.Checkout(ctx, event.RepoPath, worktreePath, event.CommitSHA); err != nil {
@@ -68,13 +68,35 @@ func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent,
 	}
 	if _, err := compose.ValidateFileWithEnv(composePath, env); err != nil {
 		err = compose.RedactError(err, redactionValues)
+		if captureOutput {
+			deploymentOutput := h.newDeploymentLogWriter(ctx, event.AppName, deploymentID, redactionValues)
+			if _, writeErr := fmt.Fprintln(deploymentOutput, "stage: validate compose"); writeErr != nil {
+				err = errors.Join(err, fmt.Errorf("write deployment validation stage: %w", writeErr))
+			}
+			if _, writeErr := fmt.Fprintln(deploymentOutput, err); writeErr != nil {
+				err = errors.Join(err, fmt.Errorf("write deployment validation failure: %w", writeErr))
+			}
+			if flushErr := deploymentOutput.Flush(); flushErr != nil {
+				err = errors.Join(err, fmt.Errorf("flush deployment output: %w", flushErr))
+			}
+		}
 		stage := string(compose.DeployStageValidateCompose)
 		retryGuidance := "commit a Compose fix and push it to remote main"
 		failure := deployfailure.New(stage, err, gitPushChangedState(releaseID, deploymentID, stage), deployfailure.FixForStage(stage), retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: stage, cause: failure, retryGuidance: retryGuidance})
 	}
 
-	result, err := h.runner.Deploy(ctx, compose.DeployRequest{AppName: event.AppName, ProjectDir: worktreePath, ComposePath: composePath, ReleaseID: releaseID, CommitSHA: event.CommitSHA, Env: env})
+	request := compose.DeployRequest{AppName: event.AppName, ProjectDir: worktreePath, ComposePath: composePath, ReleaseID: releaseID, CommitSHA: event.CommitSHA, Env: env}
+	var result compose.DeployResult
+	if captureOutput {
+		deploymentOutput := h.newDeploymentLogWriter(ctx, event.AppName, deploymentID, redactionValues)
+		result, err = h.deployWithOutput(ctx, request, deploymentOutput)
+		if flushErr := deploymentOutput.Flush(); flushErr != nil {
+			err = errors.Join(err, fmt.Errorf("flush deployment output: %w", flushErr))
+		}
+	} else {
+		result, err = h.runner.Deploy(ctx, request)
+	}
 	warningErr := h.recordDeployWarnings(ctx, event.AppName, deploymentID, result.Warnings, redactionValues)
 	if err != nil {
 		err = compose.RedactError(err, redactionValues)
@@ -85,6 +107,11 @@ func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent,
 	}
 
 	finishedAt := h.now()
+	if captureOutput {
+		if err := h.store.AppendDeploymentLog(ctx, event.AppName, deploymentID, "deploy: succeeded\n", finishedAt); err != nil {
+			return fmt.Errorf("record deployment success output: %w", err)
+		}
+	}
 	if err := h.store.UpdateDeploymentStatus(ctx, deploymentID, app.DeploymentStatusSucceeded, finishedAt, ""); err != nil {
 		return err
 	}
@@ -211,6 +238,10 @@ func (h *PostReceiveHandler) recordFailedAttempt(ctx context.Context, failure pu
 	deployment.FailureStage = failure.stage
 	deployment.FailureDetail = failure.cause.Error()
 	deployment.RetryGuidance = failure.retryGuidance
+	logErr := h.store.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: failed stage="+failure.stage+"; inspect deployment failure detail and retry guidance\n", finishedAt)
+	if errors.Is(logErr, store.ErrNotFound) {
+		logErr = nil
+	}
 	if err := h.store.UpdateDeploymentFailure(ctx, deployment); err != nil {
 		return errors.Join(failure.cause, err)
 	}
@@ -222,6 +253,9 @@ func (h *PostReceiveHandler) recordFailedAttempt(ctx context.Context, failure pu
 	}
 	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deployment.ID, "failed"), AppID: deployment.AppID, Type: "deploy.failed", Message: "Deploy failed for release " + deployment.ReleaseID + ": " + failure.cause.Error(), CreatedAt: finishedAt}); err != nil {
 		return errors.Join(failure.cause, err)
+	}
+	if logErr != nil {
+		return errors.Join(failure.cause, fmt.Errorf("record deployment failure output: %w", logErr))
 	}
 	return failure.cause
 }

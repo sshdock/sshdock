@@ -145,8 +145,16 @@ Usage:
   domains check <app>
 `,
 	},
-	"deployments": listOperatorCommandSpec("deployment attempts", "deployments list <app>"),
-	"events":      listOperatorCommandSpec("app events", "events list <app>"),
+	"deployments": {
+		allowed: deploymentOperatorCommandAllowed,
+		help: `Inspect deployment attempts and durable deployment output over restricted SSH.
+
+Usage:
+  deployments list <app>
+  deployments logs <app> [deployment-id] [-f]
+`,
+	},
+	"events": listOperatorCommandSpec("app events", "events list <app>"),
 	"logs": {
 		allowed: func(args []string) bool { return len(args) >= 1 },
 		help: `Inspect Compose logs over restricted SSH.
@@ -188,6 +196,19 @@ func listOperatorCommandSpec(description string, usage string) operatorCommandSp
 		allowed: func(args []string) bool { return len(args) == 2 && args[0] == "list" },
 		help:    fmt.Sprintf("Inspect %s over restricted SSH.\n\nUsage:\n  %s\n", description, usage),
 	}
+}
+
+func deploymentOperatorCommandAllowed(args []string) bool {
+	if len(args) == 2 && args[0] == "list" {
+		return true
+	}
+	if len(args) == 2 && args[0] == "logs" {
+		return true
+	}
+	if len(args) == 3 && args[0] == "logs" {
+		return args[2] == "-f" || args[2] == "--follow" || !strings.HasPrefix(args[2], "-")
+	}
+	return len(args) == 4 && args[0] == "logs" && !strings.HasPrefix(args[2], "-") && (args[3] == "-f" || args[3] == "--follow")
 }
 
 func operatorCommandAllowed(args []string) bool {

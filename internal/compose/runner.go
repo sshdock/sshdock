@@ -29,6 +29,10 @@ type Runner interface {
 	Logs(ctx context.Context, request LogsRequest) (string, error)
 }
 
+type DeploymentOutputRunner interface {
+	DeployWithOutput(ctx context.Context, request DeployRequest, stdout io.Writer, stderr io.Writer) (DeployResult, error)
+}
+
 type DeployRequest struct {
 	AppName     string
 	ProjectDir  string

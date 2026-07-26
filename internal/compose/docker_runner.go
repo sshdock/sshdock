@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,24 +32,52 @@ func NewDockerRunner(executor CommandExecutor) *DockerRunner {
 }
 
 func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) (DeployResult, error) {
+	return r.deploy(ctx, request, io.Discard, io.Discard)
+}
+
+func (r *DockerRunner) DeployWithOutput(ctx context.Context, request DeployRequest, stdout io.Writer, stderr io.Writer) (DeployResult, error) {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	return r.deploy(ctx, request, stdout, stderr)
+}
+
+func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout io.Writer, stderr io.Writer) (DeployResult, error) {
 	projectName := request.projectName()
 	baseArgs := composeArgs([]string{request.ComposePath}, projectName)
 
-	if _, err := ValidateFileWithEnv(request.ComposePath, request.Env); err != nil {
+	if _, err := fmt.Fprintln(stdout, "stage: validate compose"); err != nil {
 		return DeployResult{}, NewDeployError(DeployStageValidateCompose, err)
 	}
-	effectiveOutput, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--format", "json")))
+	if _, err := ValidateFileWithEnv(request.ComposePath, request.Env); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return DeployResult{}, NewDeployError(DeployStageValidateCompose, err)
+	}
+	if _, err := fmt.Fprintln(stdout, "stage: evaluate effective model"); err != nil {
+		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
+	}
+	effectiveOutput, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--format", "json")), stdout, stderr)
 	if err != nil {
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
 	}
 	result, err := analyzeEffectiveModel(effectiveOutput, projectName)
 	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
 	}
-	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable"))); err != nil {
+	if _, err := fmt.Fprintln(stdout, "stage: pull images"); err != nil {
 		return result, NewDeployError(DeployStagePullImages, err)
 	}
-	if _, err := r.executor.Run(ctx, deployCommand(request, commandArgs(baseArgs, "build"))); err != nil {
+	if _, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable")), stdout, stderr); err != nil {
+		return result, NewDeployError(DeployStagePullImages, err)
+	}
+	if _, err := fmt.Fprintln(stdout, "stage: build services"); err != nil {
+		return result, NewDeployError(DeployStageBuildServices, err)
+	}
+	if _, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "build")), stdout, stderr); err != nil {
 		return result, NewDeployError(DeployStageBuildServices, err)
 	}
 
@@ -56,7 +85,10 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) (Deplo
 	defer cancel()
 	waitSeconds := strconv.FormatInt(int64(defaultDeployWait/time.Second), 10)
 	upArgs := commandArgs(baseArgs, "up", "-d", "--wait", "--wait-timeout", waitSeconds)
-	if _, err := r.executor.Run(waitCtx, deployCommand(request, upArgs)); err != nil {
+	if _, err := fmt.Fprintln(stdout, "stage: start services"); err != nil {
+		return result, NewDeployError(DeployStageWaitServices, err)
+	}
+	if _, err := r.runDeploymentCommand(waitCtx, deployCommand(request, upArgs), stdout, stderr); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			err = fmt.Errorf("Compose service wait interrupted by deployment context: %w", ctxErr)
 		} else if waitCtx.Err() != nil {
@@ -66,6 +98,29 @@ func (r *DockerRunner) Deploy(ctx context.Context, request DeployRequest) (Deplo
 	}
 
 	return result, nil
+}
+
+func (r *DockerRunner) runDeploymentCommand(ctx context.Context, command Command, stdout io.Writer, stderr io.Writer) (string, error) {
+	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
+		var captured bytes.Buffer
+		if err := streamer.Stream(ctx, command, io.MultiWriter(stdout, &captured), stderr); err != nil {
+			return "", err
+		}
+		return captured.String(), nil
+	}
+	output, err := r.executor.Run(ctx, command)
+	if output != "" {
+		if _, writeErr := io.WriteString(stdout, output); writeErr != nil {
+			return "", writeErr
+		}
+	}
+	if err != nil {
+		if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
+			return "", errors.Join(err, writeErr)
+		}
+		return "", err
+	}
+	return output, nil
 }
 
 func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) error {

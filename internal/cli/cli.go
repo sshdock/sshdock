@@ -100,17 +100,18 @@ type LogRequest struct {
 }
 
 type MemoryBackend struct {
-	gitHost     string
-	baseDomain  string
-	apps        map[string]App
-	releases    []Release
-	deployments []Deployment
-	events      []Event
-	domains     []Domain
-	keys        map[string]SSHKey
-	config      map[string]map[string]string
-	logOutput   string
-	logRequests []LogRequest
+	gitHost        string
+	baseDomain     string
+	apps           map[string]App
+	releases       []Release
+	deployments    []Deployment
+	events         []Event
+	domains        []Domain
+	keys           map[string]SSHKey
+	config         map[string]map[string]string
+	logOutput      string
+	logRequests    []LogRequest
+	deploymentLogs map[string]string
 }
 
 func NewMemoryBackend(gitHost string) *MemoryBackend {
@@ -119,10 +120,11 @@ func NewMemoryBackend(gitHost string) *MemoryBackend {
 	}
 
 	return &MemoryBackend{
-		gitHost: gitHost,
-		apps:    map[string]App{},
-		keys:    map[string]SSHKey{},
-		config:  map[string]map[string]string{},
+		gitHost:        gitHost,
+		apps:           map[string]App{},
+		keys:           map[string]SSHKey{},
+		config:         map[string]map[string]string{},
+		deploymentLogs: map[string]string{},
 	}
 }
 
@@ -241,6 +243,29 @@ func (b *MemoryBackend) Logs(request LogRequest, stdout io.Writer, _ io.Writer) 
 	}
 	b.logRequests = append(b.logRequests, request)
 	_, err := fmt.Fprint(stdout, b.logOutput)
+	return err
+}
+
+func (b *MemoryBackend) DeploymentLogs(request DeploymentLogRequest, stdout io.Writer) error {
+	if _, ok := b.apps[request.AppName]; !ok {
+		return fmt.Errorf("app %q not found", request.AppName)
+	}
+	deploymentID := request.DeploymentID
+	if deploymentID == "" {
+		deployments, err := b.ListDeployments(request.AppName)
+		if err != nil {
+			return err
+		}
+		if len(deployments) == 0 {
+			return fmt.Errorf("no deployments for app %q", request.AppName)
+		}
+		deploymentID = deployments[len(deployments)-1].ID
+	}
+	content, ok := b.deploymentLogs[deploymentID]
+	if !ok {
+		return fmt.Errorf("deployment %q has no stored deployment log", deploymentID)
+	}
+	_, err := fmt.Fprint(stdout, content)
 	return err
 }
 
@@ -773,6 +798,18 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 }
 
 func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) >= 2 && args[0] == "logs" {
+		request, ok := parseDeploymentLogArgs(args[1:])
+		if !ok {
+			printInvalidUsage(stderr, "deployments")
+			return 2
+		}
+		if err := r.backend.DeploymentLogs(request, stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
 	if len(args) == 2 && args[0] == "list" {
 		deployments, err := r.backend.ListDeployments(args[1])
 		if err != nil {
@@ -802,6 +839,26 @@ func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Write
 
 	printInvalidUsage(stderr, "deployments")
 	return 2
+}
+
+func parseDeploymentLogArgs(args []string) (DeploymentLogRequest, bool) {
+	request := DeploymentLogRequest{}
+	for _, arg := range args {
+		if arg == "-f" || arg == "--follow" {
+			request.Follow = true
+			continue
+		}
+		if request.AppName == "" {
+			request.AppName = arg
+			continue
+		}
+		if request.DeploymentID == "" {
+			request.DeploymentID = arg
+			continue
+		}
+		return DeploymentLogRequest{}, false
+	}
+	return request, request.AppName != ""
 }
 
 func (r *Runner) runLogs(args []string, stdout io.Writer, stderr io.Writer) int {

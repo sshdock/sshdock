@@ -76,6 +76,9 @@ type Store interface {
 	ClaimNextPendingDeployment(ctx context.Context) (app.Deployment, bool, error)
 	RecordDeploymentQueued(ctx context.Context, accepted app.Event, queued app.Event) error
 	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
+	DeploymentLog(ctx context.Context, appID string, deploymentID string) (app.DeploymentLog, error)
+	LatestDeploymentLog(ctx context.Context, appID string) (app.DeploymentLog, error)
+	AppendDeploymentLog(ctx context.Context, appID string, deploymentID string, output string, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	UpdateDeploymentFailure(ctx context.Context, model app.Deployment) error
 	AttachDomain(ctx context.Context, model app.Domain) error

@@ -183,8 +183,8 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	logsRequest := compose.LogsRequest{AppName: request.AppName, ProjectDir: projectDir, ComposePath: composePath, ServiceName: request.ServiceName, Lines: request.Lines, Follow: request.Follow, Env: env}
 	if request.Follow {
 		if streamer, ok := b.recoveryRunner.(logStreamer); ok {
-			stdoutRedactor := newRedactingWriter(stdout, redactionValues)
-			stderrRedactor := newRedactingWriter(stderr, redactionValues)
+			stdoutRedactor := compose.NewRedactingWriter(stdout, redactionValues)
+			stderrRedactor := compose.NewRedactingWriter(stderr, redactionValues)
 			streamErr := streamer.StreamLogs(ctx, logsRequest, stdoutRedactor, stderrRedactor)
 			flushErr := errors.Join(stdoutRedactor.Flush(), stderrRedactor.Flush())
 			if err := errors.Join(streamErr, flushErr); err != nil {
@@ -199,53 +199,4 @@ func (b *StoreBackend) Logs(request LogRequest, stdout io.Writer, stderr io.Writ
 	}
 	_, err = fmt.Fprint(stdout, compose.RedactValues(output, redactionValues))
 	return err
-}
-
-type redactingWriter struct {
-	target  io.Writer
-	values  map[string]string
-	pending string
-}
-
-func newRedactingWriter(target io.Writer, values map[string]string) *redactingWriter {
-	return &redactingWriter{target: target, values: values}
-}
-
-func (w *redactingWriter) Write(p []byte) (int, error) {
-	combined := w.pending + string(p)
-	pendingLength := pendingSecretPrefixLength(combined, w.values)
-	emitLength := len(combined) - pendingLength
-	w.pending = combined[emitLength:]
-	if w.target == nil {
-		return len(p), nil
-	}
-	_, err := io.WriteString(w.target, compose.RedactValues(combined[:emitLength], w.values))
-	return len(p), err
-}
-
-func (w *redactingWriter) Flush() error {
-	if w.target == nil || w.pending == "" {
-		w.pending = ""
-		return nil
-	}
-	_, err := io.WriteString(w.target, compose.RedactValues(w.pending, w.values))
-	w.pending = ""
-	return err
-}
-
-func pendingSecretPrefixLength(text string, values map[string]string) int {
-	longest := 0
-	for _, value := range values {
-		limit := len(value) - 1
-		if limit > len(text) {
-			limit = len(text)
-		}
-		for length := limit; length > longest; length-- {
-			if strings.HasSuffix(text, value[:length]) {
-				longest = length
-				break
-			}
-		}
-	}
-	return longest
 }

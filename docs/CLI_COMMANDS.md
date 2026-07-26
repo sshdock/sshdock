@@ -271,7 +271,7 @@ git push --force sshdock v1.2.3:main                    # lightweight tag
 git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
 ```
 
-Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. If deployment fails, remote `main` remains at the accepted commit. A second push to an app with a pending or active deployment is rejected before its ref changes; pushes for other apps can queue. Use `sshdock deployments list <app>`, `sshdock apps health <app>`, and `sshdock events list <app>` to observe completion.
+Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. If deployment fails, remote `main` remains at the accepted commit. A second push to an app with a pending or active deployment is rejected before its ref changes; pushes for other apps can queue. Use `sshdock deployments list <app>`, `sshdock deployments logs <app> -f`, `sshdock apps health <app>`, and `sshdock events list <app>` to observe completion.
 
 When a base domain is configured, inspect the route after deployment completes with `sshdock domains list <app>` or `sshdock apps health <app>`.
 
@@ -454,6 +454,17 @@ Output format:
 ```
 
 Empty values are printed as `-`. Config values are redacted from failure detail, and terminal control characters are replaced with spaces.
+
+### `sshdock deployments logs <app> [deployment-id] [-f]`
+
+Show the persisted lifecycle and Compose output for a deployment. With no deployment ID, SSHDock selects the latest deployment log for the app. `-f` follows an active deployment until it reaches a terminal state.
+
+```bash
+ssh sshdock@<host> deployments logs my-app -f
+ssh sshdock@<host> deployments logs my-app dep_01H...
+```
+
+Deployment output is stored separately from `sshdock logs`, which remains container-log inspection. Stored config values are redacted even when a secret spans output writes. Each log is capped at 10 MiB with a truncation marker, SSHDock retains the newest 20 logs per app, and app removal deletes its deployment logs.
 
 ### `sshdock events list <app>`
 

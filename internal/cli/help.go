@@ -50,6 +50,7 @@ Operations:
   logs <app> [service] [-f] [--tail <lines>]
   releases list <app>
   deployments list <app>
+	deployments logs <app> [deployment-id] [-f]
   events list <app>
 
 Access:
@@ -131,7 +132,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 	case "releases":
 		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{"sshdock releases list <app>"}, []string{"sudo sshdock releases list my-app"})
 	case "deployments":
-		printTopicHelp(stdout, "Deployment commands inspect every execution attempt.", []string{"sshdock deployments list <app>"}, []string{"sudo sshdock deployments list my-app"})
+		printTopicHelp(stdout, "Deployment commands inspect every execution attempt and its durable output.", []string{"sshdock deployments list <app>", "sshdock deployments logs <app> [deployment-id] [-f]"}, []string{"sudo sshdock deployments list my-app", "ssh sshdock@<host> deployments logs my-app -f"})
 	case "events":
 		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events, including retained removal audit history.", []string{"sshdock events list <app>"}, []string{"sudo sshdock events list my-app"})
 	case "server":

@@ -78,7 +78,7 @@ https://my-app.example.com
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 
-Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment before the client disconnects. Git acceptance and deployment completion are separate: a later deployment failure does not rewrite `main`; inspect `deployments list`, `apps health`, and `events list` for its terminal result.
+Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment before the client disconnects. Git acceptance and deployment completion are separate: a later deployment failure does not rewrite `main`; inspect `deployments list`, `deployments logs -f`, `apps health`, and `events list` for its terminal result.
 
 SSHDock accepts only one pending or active deployment per app. A second push to that app is rejected before its ref changes. Pushes for other apps are accepted and queued; the persistent daemon runs queued push deployments one at a time. Pending attempts survive a daemon restart. An attempt interrupted while actively deploying is marked failed with retry guidance and is not silently rerun.
 
@@ -101,10 +101,11 @@ ssh sshdock@sshdock.example.com apps health my-app
 ssh sshdock@sshdock.example.com logs my-app --tail 200
 ssh sshdock@sshdock.example.com releases list my-app
 ssh sshdock@sshdock.example.com deployments list my-app
+ssh sshdock@sshdock.example.com deployments logs my-app -f
 ssh sshdock@sshdock.example.com events list my-app
 ```
 
-Each app commit has one stable release while every push or redeploy records a separate deployment attempt. `deployments list` prints the complete attempt history, including timing and redacted failure recovery detail; recent attempts also appear in the SSH dashboard.
+Each app commit has one stable release while every push or redeploy records a separate deployment attempt. `deployments list` prints the complete attempt history, including timing and redacted failure recovery detail. `deployments logs` retrieves durable deployment-stage output; it is separate from container logs, retains the newest 20 logs per app, and caps each log at 10 MiB.
 
 Operate an app:
 

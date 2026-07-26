@@ -17,6 +17,11 @@ type SQLiteStore struct {
 
 const sqliteBusyTimeoutMilliseconds = 5000
 
+const (
+	deploymentLogLimitBytes       = 10 * 1024 * 1024
+	deploymentLogTruncationMarker = "\n[sshdock: deployment log truncated at 10 MiB]\n"
+)
+
 func OpenSQLite(ctx context.Context, path string) (*SQLiteStore, error) {
 	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(%d)", path, sqliteBusyTimeoutMilliseconds)
 	db, err := sql.Open("sqlite", dsn)
@@ -283,6 +288,12 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 			return ErrActiveDeployment
 		}
 		result, deleteErr := tx.ExecContext(ctx, `
+			delete from deployment_logs
+			where deployment_id = ?`, activeID)
+		if deleteErr != nil {
+			return fmt.Errorf("discard stale deployment log: %w", deleteErr)
+		}
+		result, deleteErr = tx.ExecContext(ctx, `
 			delete from deployments
 			where id = ?
 			  and not exists (
@@ -323,6 +334,9 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 	if err != nil {
 		return fmt.Errorf("queue deployment: %w", err)
 	}
+	if err := createDeploymentLog(ctx, tx, model); err != nil {
+		return err
+	}
 	result, err = tx.ExecContext(ctx, `
 		update apps
 		set status = ?, updated_at = ?
@@ -340,6 +354,9 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 	}
 	if affected == 0 {
 		return notFound("app", model.AppID)
+	}
+	if err := retainRecentDeploymentLogs(ctx, tx, model.AppID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit deployment queue transaction: %w", err)
@@ -794,6 +811,7 @@ func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {
 	}
 
 	for _, statement := range []string{
+		`delete from deployment_logs where app_id = ?`,
 		`delete from deployments where app_id = ?`,
 		`delete from releases where app_id = ?`,
 		`delete from domains where app_id = ?`,

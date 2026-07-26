@@ -29,6 +29,7 @@ type postReceiveStore interface {
 	MarkReleaseFailedUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
 	UpdateDeploymentStatus(ctx context.Context, id string, status app.DeploymentStatus, finishedAt time.Time, errorMessage string) error
 	UpdateDeploymentFailure(ctx context.Context, model app.Deployment) error
+	AppendDeploymentLog(ctx context.Context, appID string, deploymentID string, output string, updatedAt time.Time) error
 	CreateEvent(ctx context.Context, model app.Event) error
 }
 
@@ -152,11 +153,14 @@ func (h *PostReceiveHandler) DeployQueued(ctx context.Context, event PushEvent, 
 	if err := h.validate(); err != nil {
 		return err
 	}
+	if err := h.store.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: daemon started\n", h.now()); err != nil {
+		return fmt.Errorf("start deployment log for %q: %w", deployment.ID, err)
+	}
 	attempt, err := h.beginQueuedAttempt(ctx, event, deployment)
 	if err != nil {
 		return err
 	}
-	return h.deployAttempt(ctx, event, worktreePath, attempt)
+	return h.deployAttempt(ctx, event, worktreePath, attempt, true)
 }
 
 func (h *PostReceiveHandler) validate() error {

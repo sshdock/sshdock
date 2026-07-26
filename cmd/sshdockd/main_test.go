@@ -248,6 +248,16 @@ func TestOperatorOriginalCommandArgs(t *testing.T) {
 			want:    []string{"apps", "redeploy", "my-app"},
 		},
 		{
+			name:    "allows deployment log follow",
+			command: `deployments logs my-app dep_123 -f`,
+			want:    []string{"deployments", "logs", "my-app", "dep_123", "-f"},
+		},
+		{
+			name:         "rejects unsupported deployment log option",
+			command:      `deployments logs my-app --tail`,
+			errorMessage: "not available over SSH",
+		},
+		{
 			name:    "preserves exec command boundaries",
 			command: `apps exec my-app web -- sh -c 'printf "%s\n" "$1"' _ 'value with spaces'`,
 			want:    []string{"apps", "exec", "my-app", "web", "--", "sh", "-c", `printf "%s\n" "$1"`, "_", "value with spaces"},

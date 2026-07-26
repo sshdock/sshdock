@@ -26,7 +26,7 @@ RUN MIX_ENV=prod mix assets.deploy
 RUN MIX_ENV=prod mix release
 
 FROM ${ALPINE_IMAGE} AS runtime
-RUN apk add --no-cache ca-certificates libgcc libstdc++ ncurses-libs openssl
+RUN apk add --no-cache ca-certificates libgcc libstdc++ ncurses-libs openssl wget
 ENV PHX_SERVER=true \
     PORT=4000 \
     DATABASE_PATH=/app/data/phoenix_liveview.sqlite3

@@ -127,10 +127,6 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		wantService string
 		wantPort    int
 	}{
-		{name: "static site", directory: "static-site", wantService: "web", wantPort: 18080},
-		{name: "wordpress lite", directory: "wordpress-lite", wantService: "web", wantPort: 18081},
-		{name: "build service", directory: "build-service", wantService: "web", wantPort: 18083},
-		{name: "config app", directory: "config-app", env: map[string]string{"APP_MESSAGE": "example route test"}, wantService: "web", wantPort: 18082},
 		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
 		{name: "NestJS", appName: "example-nestjs", directory: filepath.Join("frameworks", "nestjs"), wantService: "web", wantPort: 18101},
 		{name: "Laravel", appName: "example-laravel", directory: filepath.Join("frameworks", "laravel"), env: map[string]string{"APP_KEY": "public-example-route-key"}, wantService: "web", wantPort: 18102},

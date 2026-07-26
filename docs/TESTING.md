@@ -33,7 +33,7 @@ make hardening-e2e
 make backup-restore-e2e
 ```
 
-The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push representative examples through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and Git-based rollback, verify Compose-policy reboot recovery and final-route cleanup, and complete the documented backup/restore drill. At minimum, a dogfood release should cover static-site, build-service, config-backed, one multi-service dependency example, one stateful volume example, and rollback-lab. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
+The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push every maintained public example through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and Git-selected recovery, verify Compose-policy reboot recovery and final-route cleanup, and complete the documented backup/restore drill. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
 
 ## Command
 
@@ -381,11 +381,11 @@ The server push e2e target:
 4. Renders Git receive `authorized_keys` through `sshdock ssh-keys add`.
 5. Starts a local unprivileged OpenSSH daemon.
 6. Pushes an image-service Compose app through real `ssh` with the fake Compose runner.
-7. Pushes a build-service Compose app through real `ssh` with the Docker Compose runner.
+7. Pushes a built Compose app through real `ssh` with the Docker Compose runner.
 8. Verifies app, release, deployment, and event state in SQLite.
-9. Verifies the build-service deploy creates no SSHDock release override or release image tag, starts a running Docker Compose service, and records all-interface and host-bind warnings.
+9. Verifies the built-app deploy creates no SSHDock release override or release image tag, starts a running Docker Compose service, and records all-interface and host-bind warnings.
 
-The build-service test uses the local Docker daemon and may pull `nginx:alpine`.
+The built-app test uses the local Docker daemon and may pull `nginx:alpine`.
 
 ## OpenSSH E2E
 

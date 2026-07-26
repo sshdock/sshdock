@@ -237,8 +237,56 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 		}
 	}
 	for _, example := range examples {
-		if !strings.Contains(guide, example.category) || !strings.Contains(guide, example.guidePath) {
+		if !strings.Contains(guide, example.category) || strings.Count(guide, example.guidePath) != 1 {
 			t.Fatalf("EXAMPLES.md does not register %s under %s", example.name, example.category)
+		}
+	}
+	for _, guidePath := range []string{
+		"examples/labs/config-and-redeploy",
+		"examples/labs/failed-deploy-and-git-recovery",
+		"examples/labs/restricted-ssh-operations",
+		"examples/labs/domains-and-route-check",
+		"examples/labs/health-logs-and-history",
+		"examples/labs/backup-restore-and-volume-boundary",
+	} {
+		if strings.Count(guide, guidePath) != 1 {
+			t.Fatalf("EXAMPLES.md registration count for %q = %d, want 1", guidePath, strings.Count(guide, guidePath))
+		}
+	}
+}
+
+func TestPublicExamples_contract_when_legacy_examples_are_removed(t *testing.T) {
+	// Given the canonical public-example suite.
+	root := repoRoot(t)
+	legacyDirectories := []string{
+		"api-postgres",
+		"build-service",
+		"config-app",
+		"rollback-lab",
+		"static-site",
+		"stateful-counter",
+		"web-worker-redis",
+		"wordpress-lite",
+		"worker-only",
+	}
+
+	// When the repository tree and public documentation are inspected.
+	for _, directory := range legacyDirectories {
+		if fileExists(filepath.Join(root, "examples", directory)) {
+			t.Fatalf("legacy example %q still exists", directory)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(root, "README.md"),
+		filepath.Join(root, "docs", "EXAMPLES.md"),
+		filepath.Join(root, "docs", "INSTALL.md"),
+		filepath.Join(root, "docs", "TESTING.md"),
+	} {
+		text := readTextFile(t, path)
+		for _, legacyPath := range legacyDirectories {
+			if strings.Contains(text, "examples/"+legacyPath) {
+				t.Fatalf("%s still references legacy example %q", path, legacyPath)
+			}
 		}
 	}
 }
@@ -250,4 +298,9 @@ func readTextFile(t *testing.T, path string) string {
 		t.Fatalf("ReadFile(%s): %v", path, err)
 	}
 	return string(contents)
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

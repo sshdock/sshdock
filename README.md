@@ -173,7 +173,7 @@ sudo sshdock apps redeploy my-app
 
 Config values are encrypted in SQLite with a host-local key outside the database. Back up the SQLite database and config key together.
 
-See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for runnable examples covering static sites, build services, config-backed apps, workers, Redis, Postgres, stateful volumes, and Git-based rollback. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
+See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for maintained framework compatibility probes, software recipes, database examples, and executable feature labs. See [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md) for the full config command reference.
 
 ## Docs
 

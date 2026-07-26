@@ -21,7 +21,7 @@ git push sshdock main
 
 Replace `v0.3.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
 
-For runnable confidence checks after installation, see [`EXAMPLES.md`](EXAMPLES.md). It includes static-site, build-service, config-backed, worker-only, web-worker-Redis, API-Postgres, stateful volume, rollback, and lite WordPress examples that can be fetched into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
+For runnable confidence checks after installation, see [`EXAMPLES.md`](EXAMPLES.md). It contains framework compatibility probes, official-image software recipes, PostgreSQL examples, and executable SSHDock feature labs that can be copied into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
 
 ## OS Assumptions
 

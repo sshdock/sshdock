@@ -161,7 +161,7 @@ sudo sshdock apps health my-app
 sudo sshdock backup create
 ```
 
-For a bad-deploy rehearsal, use [`examples/rollback-lab`](../examples/rollback-lab/README.md) as the reference pattern.
+For a bad-deploy rehearsal, use the [failed-deploy and Git-recovery lab](../examples/labs/failed-deploy-and-git-recovery/README.md) as the reference pattern.
 
 ## 8. Cut Over DNS
 

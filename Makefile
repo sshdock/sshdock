@@ -22,6 +22,10 @@ test:
 smoke:
 	go test ./test/harness -run TestSmoke -v
 
+.PHONY: security
+security:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
 e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd|ReceiveInvalidAppNameEndToEnd)' -v
 

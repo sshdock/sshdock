@@ -175,7 +175,7 @@ Focused adoption and example docs checks cover the comparison, migration, troubl
 go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|SoftwareRecipes|PostgreSQLRecipe|SharedPostgreSQLRecipe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
 ```
 
-The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises the software recipes through first-run setup, representative state, persistence, and exact-image updates:
+The maintained public-example Docker target validates route inference for the covered shapes, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises WordPress and Gitea through first-run setup, representative state, persistence, and exact-image updates. Gitea publishes both HTTP and SSH ports, so its route check expects automatic inference to skip it; the recipe documents manual domain attachment. This tier does not replace each recipe's full VPS acceptance:
 
 ```bash
 make public-examples-e2e
@@ -251,7 +251,7 @@ The recovery test:
 
 1. Builds `sshdock` and `sshdockd`.
 2. Creates an app and pushes a good Compose release through a local bare repository hook.
-3. Pushes a second release with `SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR` to force a failed deploy.
+3. Pushes a second release requiring a missing Compose interpolation value to force a failed deploy in the daemon.
 4. Force-pushes the saved good commit back to remote `main`.
 5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful Git-selected deployment, with no SSHDock rollback attempt.
 

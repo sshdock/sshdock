@@ -107,6 +107,10 @@ By default, `scripts/bootstrap.sh` downloads:
 https://github.com/sshdock/sshdock/releases/download/<tag>/sshdock_<tag>_linux_<arch>.tar.gz
 ```
 
+The next release's bootstrap also requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
+
+Always use the bootstrap script from the same release tag as the assets. Older v0.3.1 assets do not contain checksum sidecars and must use their matching older script. An upgrade from an installed v0.3.1 uses the new target release's script and verified assets. A checksum detects a mismatched/corrupt download; it does not authenticate an attacker-controlled release account independently of HTTPS.
+
 For local testing or unreleased builds, set:
 
 ```bash

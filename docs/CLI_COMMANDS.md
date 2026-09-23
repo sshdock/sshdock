@@ -605,6 +605,8 @@ When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lif
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
 
+The app list's `Deploy` column (plain SSH output: `deploy=`) shows the latest deployment attempt from the shared health report. After Git-selected recovery it reflects the recovered attempt, even when a newer failed release remains in history. Release status is historical and does not replace attempt status after a failed same-commit retry. History, queue selection and log retention order UTC timestamps chronologically, including existing records with different fractional-second precision.
+
 Useful keys:
 
 - `j`/`k` or arrows select apps.

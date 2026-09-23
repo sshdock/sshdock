@@ -323,7 +323,7 @@ func listReleases(dbPath string, appID string) ([]releaseRow, error) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`select id, commit_sha from releases where app_id = ? order by created_at`, appID)
+	rows, err := db.Query(`select id, commit_sha from releases where app_id = ? order by rtrim(created_at, 'Z')`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func deploymentStatusForCommit(dbPath string, appID string, commitSHA string, tr
 	err = db.QueryRow(`
 		select status from deployments
 		where app_id = ? and commit_sha = ? and trigger = ?
-		order by started_at desc, id desc limit 1`, appID, commitSHA, string(trigger)).Scan(&status)
+		order by rtrim(started_at, 'Z') desc, id desc limit 1`, appID, commitSHA, string(trigger)).Scan(&status)
 	return status, err
 }
 

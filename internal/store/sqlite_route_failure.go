@@ -37,7 +37,7 @@ func (s *SQLiteStore) ListRouteApplyFailuresByApp(ctx context.Context, appID str
 		select app_id, service_name, domain_name, port, https, operation, detail, updated_at
 		from route_apply_failures
 		where app_id = ?
-		order by updated_at, domain_name`, appID)
+		order by rtrim(updated_at, 'Z'), domain_name`, appID)
 	if err != nil {
 		return nil, fmt.Errorf("list route apply failures for app %q: %w", appID, err)
 	}

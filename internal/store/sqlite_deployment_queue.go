@@ -16,7 +16,7 @@ func (s *SQLiteStore) FindDeploymentByAppCommit(ctx context.Context, appID strin
 		       failure_stage, failure_detail, retry_guidance, error_message
 		from deployments
 		where app_id = ? and commit_sha = ?
-		order by started_at desc, id desc
+		order by rtrim(started_at, 'Z') desc, id desc
 		limit 1`,
 		appID,
 		commitSHA,
@@ -37,7 +37,7 @@ func (s *SQLiteStore) ListDeploymentsByStatus(ctx context.Context, status app.De
 		       failure_stage, failure_detail, retry_guidance, error_message
 		from deployments
 		where status = ?
-		order by started_at, id`, string(status))
+		order by rtrim(started_at, 'Z'), id`, string(status))
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (s *SQLiteStore) ClaimNextPendingDeployment(ctx context.Context) (deploymen
 			select 1 from events
 			where id = 'evt_' || deployments.id || '_queued'
 		  )
-		order by started_at, id
+		order by rtrim(started_at, 'Z'), id
 		limit 1`, string(app.DeploymentStatusPending))
 	deployment, err = scanDeployment(row)
 	if errors.Is(err, sql.ErrNoRows) {

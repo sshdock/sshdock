@@ -83,7 +83,7 @@ func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`select type from events where app_id = ? order by created_at, id`, appID)
+	rows, err := db.Query(`select type from events where app_id = ? order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		t.Fatalf("query events: %v", err)
 	}
@@ -111,7 +111,7 @@ func assertEventMessageContains(t *testing.T, dbPath string, appID string, want 
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`select message from events where app_id = ? order by created_at, id`, appID)
+	rows, err := db.Query(`select message from events where app_id = ? order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		t.Fatalf("query event messages: %v", err)
 	}

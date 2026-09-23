@@ -107,6 +107,10 @@ By default, `scripts/bootstrap.sh` downloads:
 https://github.com/sshdock/sshdock/releases/download/<tag>/sshdock_<tag>_linux_<arch>.tar.gz
 ```
 
+The next release's bootstrap also requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
+
+Always use the bootstrap script from the same release tag as the assets. Older v0.3.1 assets do not contain checksum sidecars and must use their matching older script. An upgrade from an installed v0.3.1 uses the new target release's script and verified assets. A checksum detects a mismatched/corrupt download; it does not authenticate an attacker-controlled release account independently of HTTPS.
+
 For local testing or unreleased builds, set:
 
 ```bash
@@ -480,16 +484,20 @@ Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. Faile
 
 ## Backup And Restore
 
-Create an SSHDock backup before upgrades or host maintenance:
+Create an SSHDock backup before upgrades or host maintenance. The command copies files; it is not an online SQLite or application snapshot. Wait for active deployments to finish, pause CI pushes and operator mutations, and stop the daemon for the copy. Stopping `sshdockd` leaves app containers running:
 
 ```bash
+sudo systemctl stop sshdockd
 sudo sshdock backup create
+sudo systemctl start sshdockd
 ```
 
-To choose a destination:
+To choose a destination, use the same maintenance window:
 
 ```bash
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+sudo systemctl start sshdockd
 ```
 
 Inspect the archive before moving or restoring it:
@@ -528,14 +536,14 @@ Restore order:
 1. Stop `sshdockd`.
 2. Restore the backup archive.
 3. Reinstall or upgrade binaries with `scripts/bootstrap.sh` if needed.
-4. Run `sshdock diagnostics`.
-5. Start `sshdockd`.
+4. Start `sshdockd`.
+5. Run `sshdock diagnostics`.
 
 ```bash
 sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ```
 
 Restore extracts the archive to a temporary directory and validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths. Run restore as a user that can preserve SSHDock state ownership and file modes.

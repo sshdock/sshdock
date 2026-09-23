@@ -119,6 +119,42 @@ func TestRunWithEnvUsesPersistedBaseDomainForCreatedAppRemote(t *testing.T) {
 	}
 }
 
+func TestRunWithEnvReadsPersistedDeploymentLogs(t *testing.T) {
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, "sshdock.db")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
+	ctx := context.Background()
+	sqlite, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlite.Close()
+	now := time.Now().UTC()
+	if err := sqlite.CreateApp(ctx, app.App{ID: "my-app", Name: "my-app", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlite.QueueDeployment(ctx, app.Deployment{ID: "dep_1", AppID: "my-app", CommitSHA: "abc123", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlite.AppendDeploymentLog(ctx, "my-app", "dep_1", "durable deployment output\n", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlite.UpdateDeploymentStatus(ctx, "dep_1", app.DeploymentStatusSucceeded, now, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range [][]string{nil, {"dep_1"}, {"-f"}, {"dep_1", "-f"}} {
+		args := append([]string{"deployments", "logs", "my-app"}, suffix...)
+		var stdout, stderr bytes.Buffer
+		if code := runWithEnv(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("%v: exit=%d stderr=%q", args, code, stderr.String())
+		}
+		if stdout.String() != "durable deployment output\n" {
+			t.Fatalf("%v: stdout=%q", args, stdout.String())
+		}
+	}
+}
+
 func TestRunWithEnvUsageDoesNotOpenStore(t *testing.T) {
 	blockingFile := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(blockingFile, []byte("x"), 0o644); err != nil {

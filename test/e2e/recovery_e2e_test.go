@@ -56,7 +56,9 @@ func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T)
 	goodReleaseID := app.ReleaseID(appName, goodCommit)
 	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
 
+	startDeploymentDaemon(t, sshdockdPath, baseEnv)
 	runGit(t, sourceDir, baseEnv, "push", "prod", "main")
+	waitForDeploymentTerminal(t, cfg.SQLiteDBPath, appName, goodCommit)
 
 	dbPath := cfg.SQLiteDBPath
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
@@ -67,13 +69,13 @@ func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T)
 		t.Fatalf("good deployment status = %q", status)
 	}
 
-	writeRecoveryCompose(t, sourceDir, "example/web:bad")
+	writeRecoveryCompose(t, sourceDir, "${MISSING_RECOVERY_IMAGE:?set an image}")
 	runGit(t, sourceDir, nil, "add", "compose.yml")
 	runGit(t, sourceDir, nil, "commit", "-m", "bad compose app")
 	badCommit := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	badReleaseID := app.ReleaseID(appName, badCommit)
-	failingEnv := append(baseEnv, "SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR=compose failed")
-	runGitAllowError(t, sourceDir, failingEnv, "push", "prod", "main")
+	runGit(t, sourceDir, baseEnv, "push", "prod", "main")
+	waitForDeploymentTerminal(t, dbPath, appName, badCommit)
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusFailed)
 	assertReleaseStatus(t, dbPath, badReleaseID, app.ReleaseStatusFailed)
@@ -84,6 +86,7 @@ func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T)
 	}
 
 	runGit(t, sourceDir, baseEnv, "push", "--force", "prod", goodCommit+":main")
+	waitForDeploymentTerminal(t, dbPath, appName, goodCommit)
 
 	assertAppStatus(t, dbPath, appName, app.AppStatusHealthy)
 	assertReleaseStatus(t, dbPath, goodReleaseID, app.ReleaseStatusSucceeded)

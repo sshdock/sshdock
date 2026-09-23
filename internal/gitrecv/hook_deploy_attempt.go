@@ -66,6 +66,7 @@ func (h *PostReceiveHandler) deployAttempt(ctx context.Context, event PushEvent,
 		failure := deployfailure.New("config", err, "release "+releaseID+" and deployment "+deploymentID+" marked failed before Compose started; containers and routes were not changed", "repair the app config encryption state", retryGuidance)
 		return h.recordFailedAttempt(ctx, pushFailure{attempt: attempt, stage: "config", cause: failure, retryGuidance: retryGuidance})
 	}
+	env = compose.WithGitSHA(env, event.CommitSHA)
 	if _, err := compose.ValidateFileWithEnv(composePath, env); err != nil {
 		err = compose.RedactError(err, redactionValues)
 		if captureOutput {

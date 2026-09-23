@@ -536,8 +536,8 @@ func TestInteractiveDashboardLogsFollowRefreshesOnlyWhileEnabled(t *testing.T) {
 func testDashboardSnapshot() DashboardSnapshot {
 	return DashboardSnapshot{
 		Apps: NewAppListScreen(AppListView{Items: []AppListItem{
-			{ID: "one", Name: "one", Status: "healthy", NodeID: "local", LatestReleaseStatus: "succeeded", DomainCount: 1},
-			{ID: "two", Name: "two", Status: "healthy", NodeID: "local", LatestReleaseStatus: "succeeded", DomainCount: 0},
+			{ID: "one", Name: "one", Status: "healthy", NodeID: "local", LatestDeploymentStatus: "succeeded", DomainCount: 1},
+			{ID: "two", Name: "two", Status: "healthy", NodeID: "local", LatestDeploymentStatus: "succeeded", DomainCount: 0},
 		}}),
 		AppOrder: []string{"one", "two"},
 		AppsByID: map[string]DashboardAppSnapshot{

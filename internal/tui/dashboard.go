@@ -70,7 +70,7 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		return DashboardSnapshot{}, fmt.Errorf("list apps: %w", err)
 	}
 
-	latestReleases := map[string]app.Release{}
+	latestDeployments := map[string]app.DeploymentStatus{}
 	domainsByApp := map[string][]app.Domain{}
 	appOrder := make([]string, 0, len(apps))
 	appsByID := make(map[string]DashboardAppSnapshot, len(apps))
@@ -80,10 +80,6 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		if err != nil {
 			return DashboardSnapshot{}, fmt.Errorf("list releases for %s: %w", model.ID, err)
 		}
-		if latest, ok := latestRelease(releases); ok {
-			latestReleases[model.ID] = latest
-		}
-
 		domains, err := h.store.ListDomainsByApp(ctx, model.ID)
 		if err != nil {
 			return DashboardSnapshot{}, fmt.Errorf("list domains for %s: %w", model.ID, err)
@@ -111,6 +107,7 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		if err != nil {
 			return DashboardSnapshot{}, fmt.Errorf("load health for %s: %w", model.ID, err)
 		}
+		latestDeployments[model.ID] = report.LatestDeploymentStatus
 		services := serviceStatusesFromHealthReport(report)
 		logsByService, err := h.serviceLogs(ctx, model, services)
 		if err != nil {
@@ -124,7 +121,7 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 	}
 
 	return DashboardSnapshot{
-		Apps:     NewAppListScreen(NewAppListView(apps, latestReleases, domainsByApp)),
+		Apps:     NewAppListScreen(NewAppListView(apps, latestDeployments, domainsByApp)),
 		AppOrder: appOrder,
 		AppsByID: appsByID,
 	}, nil
@@ -169,7 +166,7 @@ func renderAppList(writer io.Writer, screen AppListScreen) error {
 	}
 
 	for _, row := range screen.Rows() {
-		if _, err := fmt.Fprintf(writer, "- %s status=%s node=%s latest=%s domains=%d\n", row.Name, row.Status, row.NodeID, valueOrDash(row.LatestReleaseStatus), row.DomainCount); err != nil {
+		if _, err := fmt.Fprintf(writer, "- %s status=%s node=%s deploy=%s domains=%d\n", row.Name, row.Status, row.NodeID, valueOrDash(row.LatestDeploymentStatus), row.DomainCount); err != nil {
 			return err
 		}
 	}
@@ -379,13 +376,6 @@ func renderLogs(writer io.Writer, logsByService map[string]LogsView) error {
 		}
 	}
 	return nil
-}
-
-func latestRelease(releases []app.Release) (app.Release, bool) {
-	if len(releases) == 0 {
-		return app.Release{}, false
-	}
-	return releases[len(releases)-1], true
 }
 
 func valueOrDash(value string) string {

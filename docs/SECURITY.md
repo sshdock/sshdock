@@ -8,6 +8,8 @@ Application config is encrypted on disk. First-time key creation atomically publ
 
 Build SSHDock with Go **1.26.8 or newer**. The minimum patch toolchain and `golang.org/x/crypto` update address the standard-library and SSH advisories identified by the v1 audit. CI runs `make ci` and `make security`; release packaging requires the same workflow to pass first. `make security` runs pinned `govulncheck` against the current official Go vulnerability database and fails on reachable vulnerable symbols. Run it again before releasing: a passing scan is evidence at that time, not a permanent absence-of-vulnerabilities claim.
 
+Backup extraction confines filesystem operations to its temporary directory using Go's `os.Root`, including nested symlink resolution. Restore still requires a trusted archive and stopped runtime; it replaces configured SSHDock state and does not restore Docker volume contents.
+
 The upstream [Go release history](https://go.dev/doc/devel/release) documents supported toolchain fixes. The [Go vulnerability database](https://pkg.go.dev/vuln/) provides the source advisories; scanners may report library call paths whose actual exposure depends on the configured access path. Application images and host packages need their own patching and scans.
 
 Keep private deployment evidence, keys, production domains, backup paths and raw logs out of public issues. Report reproducible non-sensitive reliability problems in the issue tracker; arrange a private channel with a maintainer before sharing a security report containing exploit details or credentials.

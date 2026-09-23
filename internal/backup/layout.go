@@ -10,5 +10,7 @@
 // Restore extracts to a temporary directory first, validates the manifest, safe
 // archive paths, required database entry, config-key mode and length, safe
 // symlinks, and target directory modes, then mutates configured target paths.
+// Extraction uses os.Root to contain filesystem operations even through nested
+// symlink chains; lexical archive-name checks alone do not provide containment.
 // This keeps validation failures from partially replacing runtime state.
 package backup

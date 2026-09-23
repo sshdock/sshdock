@@ -85,6 +85,8 @@ git push sshdock main
 
 `make server-push-e2e` also proves current-main, attachment, and concurrency semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, attached persisted output through terminal success, Ctrl-C-style process-group disconnect with daemon completion, failed deployment diagnostics with remote `main` preserved, force-pushing an older commit as Git-based rollback, and immediate same-app contention rejection.
 
+`make external-build-e2e` uses real Docker and OpenSSH plus a disposable loopback OCI registry. It builds distinct A/B images outside the pushed repository, publishes both commit tags, removes local tags to require pulling, and verifies served content and container image identity. It covers required SHA interpolation, `.env` spoofing, restricted `exec`/`run`, missing-image failure, Git recovery and redeploy. The target has no Dockerfile; no GitHub account or registry credentials are required. This test also runs in `make e2e-docker`.
+
 ## Caddy Route Tier
 
 Run:

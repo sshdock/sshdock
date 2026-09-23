@@ -242,6 +242,7 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 		}
 	}
 	for _, guidePath := range []string{
+		"examples/labs/external-build",
 		"examples/labs/config-and-redeploy",
 		"examples/labs/failed-deploy-and-git-recovery",
 		"examples/labs/restricted-ssh-operations",

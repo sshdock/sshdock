@@ -484,16 +484,20 @@ Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. Faile
 
 ## Backup And Restore
 
-Create an SSHDock backup before upgrades or host maintenance:
+Create an SSHDock backup before upgrades or host maintenance. The command copies files; it is not an online SQLite or application snapshot. Wait for active deployments to finish, pause CI pushes and operator mutations, and stop the daemon for the copy. Stopping `sshdockd` leaves app containers running:
 
 ```bash
+sudo systemctl stop sshdockd
 sudo sshdock backup create
+sudo systemctl start sshdockd
 ```
 
-To choose a destination:
+To choose a destination, use the same maintenance window:
 
 ```bash
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+sudo systemctl start sshdockd
 ```
 
 Inspect the archive before moving or restoring it:
@@ -532,14 +536,14 @@ Restore order:
 1. Stop `sshdockd`.
 2. Restore the backup archive.
 3. Reinstall or upgrade binaries with `scripts/bootstrap.sh` if needed.
-4. Run `sshdock diagnostics`.
-5. Start `sshdockd`.
+4. Start `sshdockd`.
+5. Run `sshdock diagnostics`.
 
 ```bash
 sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ```
 
 Restore extracts the archive to a temporary directory and validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths. Run restore as a user that can preserve SSHDock state ownership and file modes.

@@ -55,11 +55,12 @@ Each failed check prints `why <name>: ...` and `fix <name>: ...` lines. A failed
 
 ### `sshdock backup create [--output <archive>]`
 
-Create a gzip tar archive of SSHDock state.
+Create a gzip tar archive of SSHDock state. This copies files, not an online SQLite snapshot: wait for deployments to finish, pause CI pushes and operator mutations, and stop the daemon before creating it. App containers keep running.
 
 ```bash
-sudo sshdock backup create
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+sudo systemctl start sshdockd
 ```
 
 The default output path is:
@@ -95,8 +96,8 @@ Restore an SSHDock backup archive onto the current host config paths.
 ```bash
 sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ```
 
 Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.

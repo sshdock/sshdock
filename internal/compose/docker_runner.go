@@ -46,6 +46,7 @@ func (r *DockerRunner) DeployWithOutput(ctx context.Context, request DeployReque
 }
 
 func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout io.Writer, stderr io.Writer) (DeployResult, error) {
+	request.Env = WithGitSHA(request.Env, request.CommitSHA)
 	projectName := request.projectName()
 	baseArgs := composeArgs([]string{request.ComposePath}, projectName)
 

@@ -235,7 +235,7 @@ func TestServiceSetRejectsOperationalEnvironmentNames(t *testing.T) {
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	createConfigTestApp(t, ctx, sqlite, "my-app", now)
 	service := NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), WithClock(func() time.Time { return now }))
-	reserved := []string{"SSHDOCK_CONFIG_KEY_PATH", "COMPOSE_PROJECT_NAME", "DOCKER_HOST", "SSH_AUTH_SOCK", "LD_PRELOAD", "BUILDKIT_HOST", "BUILDX_CONFIG", "PATH", "HOME"}
+	reserved := []string{"SSHDOCK_GIT_SHA", "SSHDOCK_CONFIG_KEY_PATH", "COMPOSE_PROJECT_NAME", "DOCKER_HOST", "SSH_AUTH_SOCK", "LD_PRELOAD", "BUILDKIT_HOST", "BUILDX_CONFIG", "PATH", "HOME"}
 
 	for _, name := range reserved {
 		t.Run(name, func(t *testing.T) {

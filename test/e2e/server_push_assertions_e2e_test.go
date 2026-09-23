@@ -77,7 +77,7 @@ func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) 
 
 func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
@@ -105,7 +105,7 @@ func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
 
 func assertEventMessageContains(t *testing.T, dbPath string, appID string, want string) {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
@@ -144,7 +144,7 @@ func countImageRepositoriesWithPrefix(images string, prefix string) int {
 
 func queryString(t *testing.T, dbPath string, query string, args ...any) string {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}

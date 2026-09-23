@@ -93,7 +93,9 @@ func TestGitHookEndToEnd(t *testing.T) {
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	runGit(t, sourceDir, nil, "remote", "add", "prod", repoPath)
 
+	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, env, "push", "prod", "main")
+	waitForDeploymentTerminal(t, cfg.SQLiteDBPath, "my-app", commitSHA)
 
 	releases, err := listReleases(cfg.SQLiteDBPath, "my-app")
 	if err != nil {
@@ -186,6 +188,7 @@ SSH_ORIGINAL_COMMAND="$*" exec sshdockd git-receive
 		"SSHDOCK_DATA_DIR="+dataDir,
 		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
+	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, env, "push", "sshdock", "main")
 
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
@@ -286,7 +289,9 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
 
+	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, env, "push", "prod", "main")
+	runCommand(t, root, env, sshdockPath, "deployments", "logs", appName, "-f")
 
 	status, err := deploymentStatusForCommit(cfg.SQLiteDBPath, appName, commitSHA, app.DeploymentTriggerPush)
 	if err != nil {
@@ -312,7 +317,7 @@ type releaseRow struct {
 }
 
 func listReleases(dbPath string, appID string) ([]releaseRow, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +341,7 @@ func listReleases(dbPath string, appID string) ([]releaseRow, error) {
 }
 
 func deploymentStatusForCommit(dbPath string, appID string, commitSHA string, trigger app.DeploymentTrigger) (string, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return "", err
 	}

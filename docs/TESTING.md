@@ -10,6 +10,8 @@ git remote add sshdock git@server:<app>.git -> git push -> sshdockd git-receive 
 
 ## Test Tiers
 
+Git-push acceptance runs a deployment daemon alongside the Git receiver. A bare-repository push only queues work; tests wait for the recorded attempt and any routing result before asserting state or stopping the daemon. Docker-backed tiers use the real Docker executable after the fake-root installer completes; installer stubs must not mask runtime failures.
+
 The default e2e test uses real local Git commands, a fake SSH transport script, and a real bare repository.
 
 The default e2e still uses fake runtime adapters for:

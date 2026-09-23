@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWildcardDomainEndToEnd(t *testing.T) {
@@ -136,6 +137,22 @@ func pushLocalComposeApp(t *testing.T, tmp string, env []string, repoPath string
 	runGit(t, sourceDir, nil, "commit", "-m", message)
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	runGit(t, sourceDir, nil, "remote", "add", "prod", repoPath)
+	stop := startDeploymentDaemon(t, filepath.Join(tmp, "bin", "sshdockd"), env)
+	defer stop()
 	runGit(t, sourceDir, env, "push", "prod", "main")
-	return commitSHA
+	dataDir := filepath.Dir(filepath.Dir(filepath.Dir(repoPath)))
+	dbPath, appName := filepath.Join(dataDir, "sshdock.db"), filepath.Base(filepath.Dir(repoPath))
+	waitForDeploymentTerminal(t, dbPath, appName, commitSHA)
+	// Routing follows the terminal deployment record; let the daemon finish it.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, event := range eventTypesForApp(t, dbPath, appName) {
+			if event == "router.reloaded" || event == "route.auto_skipped" {
+				return commitSHA
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("daemon did not complete initial routing")
+	return ""
 }

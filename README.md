@@ -17,14 +17,20 @@ v0 is intentionally small:
 
 SSHDock is not a Kubernetes platform, hosted cloud product, multi-node scheduler, team/RBAC system, marketplace, or web control panel.
 
-## Quick Start
+## Published Release: v0.3.1
 
-Install SSHDock on a fresh Ubuntu/Debian server:
+The latest published release is [v0.3.1](https://github.com/sshdock/sshdock/releases/tag/v0.3.1). Install it on a fresh Ubuntu/Debian server with its matching bootstrap script:
 
 ```bash
 wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
 sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
 ```
+
+For the complete v0.3.1 deployment and operations flow, follow the [v0.3.1 quick start](https://github.com/sshdock/sshdock/blob/v0.3.1/README.md#quick-start) and [v0.3.1 installation guide](https://github.com/sshdock/sshdock/blob/v0.3.1/docs/INSTALL.md). That release uses `ssh dashboard@sshdock.example.com`; it does not have the newer `sshdock` operator account or durable deployment logs described below.
+
+## Development Quick Start (Unreleased)
+
+The remaining usage documentation describes the current development checkout, not v0.3.1. Start with the [local development install](docs/INSTALL.md#local-development-install-unreleased) on a dedicated test server. No published release currently provides this full command set. Keep the bootstrap script and binaries from the same checkout.
 
 Set the base domain and authorize your deploy/operator key:
 

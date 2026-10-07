@@ -86,7 +86,7 @@ func TestAdoptionDocsExistAndKeepV0Boundaries(t *testing.T) {
 }
 
 func TestBreakingComposeFirstDocsRejectRemovedBehaviorAndStateHostBoundary(t *testing.T) {
-	// Given the public docs and example guides that describe the shipped operator contract.
+	// Given the public docs and example guides for the current development contract.
 	root := repoRoot(t)
 	paths := []string{
 		filepath.Join(root, "README.md"),
@@ -111,6 +111,11 @@ func TestBreakingComposeFirstDocsRejectRemovedBehaviorAndStateHostBoundary(t *te
 			t.Fatalf("ReadFile(%s): %v", path, err)
 		}
 		text := string(contents)
+		if path == filepath.Join(root, "README.md") || path == filepath.Join(root, "docs", "INSTALL.md") {
+			// The explicitly versioned release section documents the older account.
+			// Keep the removal guard on all current-development instructions.
+			_, text = splitPublishedReleaseDocs(t, text)
+		}
 
 		// Then no current instructions expose the removed control-plane or dashboard account.
 		for _, reject := range []string{

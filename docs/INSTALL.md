@@ -1,27 +1,42 @@
 # SSHDock Installation
 
-This document defines the Dokku-style installation flow for SSHDock v0.
+This document separates the published release from the current development installation contract.
 
-## Quick Start
+## Published Release: v0.3.1
 
-Run this on a fresh Ubuntu LTS or Debian stable VPS:
+The latest published release is [v0.3.1](https://github.com/sshdock/sshdock/releases/tag/v0.3.1). On a fresh Ubuntu LTS or Debian stable VPS, use its matching script and assets:
 
 ```bash
 wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
 sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
+```
 
+Continue with the [v0.3.1 quick start](https://github.com/sshdock/sshdock/blob/v0.3.1/README.md#quick-start) and [v0.3.1 installation guide](https://github.com/sshdock/sshdock/blob/v0.3.1/docs/INSTALL.md) for its setup, examples, and operations. That release uses `ssh dashboard@sshdock.example.com`; it does not have the newer `sshdock` operator account or durable deployment logs described below.
+
+Always take the bootstrap script and binaries from the same release tag. Do not pair the development script with v0.3.1 assets.
+
+## Development Setup (Unreleased)
+
+The remaining sections describe the current development checkout, not v0.3.1. No published release currently provides this full command set. First complete the [local development install](#local-development-install-unreleased) on a dedicated test server.
+
+Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
+
+On the server, authorize your public key and set the base domain:
+
+```bash
 cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
 sudo sshdock server domain set example.com
-
 sudo sshdock diagnostics
+```
 
+From your app's local Git repository:
+
+```bash
 git remote add sshdock git@sshdock.example.com:my-app.git
 git push sshdock main
 ```
 
-Replace `v0.3.1` with the release tag you want to install. Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
-
-For runnable confidence checks after installation, see [`EXAMPLES.md`](EXAMPLES.md). It contains framework compatibility probes, official-image software recipes, PostgreSQL examples, and executable SSHDock feature labs that can be copied into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
+For runnable development checks, see [`EXAMPLES.md`](EXAMPLES.md). It contains framework compatibility probes, official-image software recipes, PostgreSQL examples, and executable SSHDock feature labs that can be copied into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
 
 ## OS Assumptions
 
@@ -65,7 +80,8 @@ By default, the bootstrap script installs missing apt dependencies on real root 
 Set `SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0` to make the script check dependencies only:
 
 ```bash
-sudo SSHDOCK_TAG=v0.3.1 SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash bootstrap.sh
+sudo SSHDOCK_TAG=development SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="$PWD/bin" \
+  SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0 bash scripts/bootstrap.sh
 ```
 
 Check-only mode requires these commands to work before installation continues:
@@ -78,6 +94,18 @@ systemctl --version
 ```
 
 The first authorized push to `my-app.git` should create the app automatically. `sshdock apps create my-app` remains available for scripts and explicit setup, but it should not be required for the happy path.
+
+## Local Development Install (Unreleased)
+
+On a dedicated test server, check out the source revision you intend to test and install the Go version required by `go.mod`. From that checkout, build both binaries and run its bootstrap script:
+
+```bash
+make build
+sudo SSHDOCK_TAG=development SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="$PWD/bin" \
+  bash scripts/bootstrap.sh
+```
+
+This installs the locally built binaries instead of downloading release assets. It changes the server's runtime dependencies, accounts, service, and SSHDock files; use a disposable test server. It does not verify a published-release installation. Continue with [development setup](#development-setup-unreleased) after installation.
 
 ## Current Bootstrap Behavior
 

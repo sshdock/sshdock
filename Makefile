@@ -22,11 +22,19 @@ test:
 smoke:
 	go test ./test/harness -run TestSmoke -v
 
+.PHONY: security
+security:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
 e2e:
 	go test -count=1 -tags e2e ./test/e2e -run 'TestGit(HookEndToEnd|ReceivePushToCreateEndToEnd|ReceiveInvalidAppNameEndToEnd)' -v
 
 e2e-docker:
-	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|(WordPress|Gitea)SoftwareRecipeDocker|ServerPushBuildServiceDocker|DockerServiceCommands)EndToEnd' -v
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(GitHookDockerCompose|DockerRunnerComposeHealthSemantics|PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|(WordPress|Gitea)SoftwareRecipeDocker|ServerPushBuildServiceDocker|DockerServiceCommands|ExternalBuildRegistry)EndToEnd' -v
+
+.PHONY: external-build-e2e
+external-build-e2e:
+	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run TestExternalBuildRegistryEndToEnd -v
 
 public-examples-e2e:
 	SSHDOCK_E2E_DOCKER=1 go test -count=1 -tags e2e ./test/e2e -run 'Test(PublicExamplesEffectiveRoute|FrameworkQuickstartsDocker|(WordPress|Gitea)SoftwareRecipeDocker)EndToEnd' -v

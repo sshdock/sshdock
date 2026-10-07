@@ -87,6 +87,8 @@ before_domains=$(operator domains list "$APP")
 printf '%s\n' "$before_domains"
 grep -F "${SSHDOCK_ROUTE_HOST}"$'\tweb\t18200\ttrue' <<<"$before_domains"
 
+admin sudo systemctl stop sshdockd
+daemon_stopped=1
 created=$(admin sudo sshdock backup create --output "$ARCHIVE")
 printf '%s\n' "$created"
 grep -F "created backup $ARCHIVE" <<<"$created"
@@ -113,12 +115,10 @@ done
 
 expect_rejection "not implemented" admin sudo sshdock backup create --include-volumes --output "$ARCHIVE.with-volumes"
 
-admin sudo systemctl stop sshdockd
-daemon_stopped=1
 admin sudo sshdock backup restore "$ARCHIVE"
-admin sudo sshdock diagnostics
 admin sudo systemctl start sshdockd
 daemon_stopped=0
+admin sudo sshdock diagnostics
 
 wait_for_healthy_app
 restored_secret=$(operator config get "$APP" BACKUP_LAB_SECRET)

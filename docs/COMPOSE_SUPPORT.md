@@ -83,6 +83,27 @@ SSHDock resolves the app's flat encrypted config map before Compose starts and p
 
 Operational names beginning with `SSHDOCK_`, `COMPOSE_`, `DOCKER_`, `SSH_`, `LD_`, `BUILDKIT_`, or `BUILDX_`, plus `PATH` and `HOME`, are reserved so app config cannot redirect SSHDock or Compose execution.
 
+### Git Revision Metadata
+
+SSHDock supplies `SSHDOCK_GIT_SHA` to Compose interpolation. During deployment it is the full commit accepted for that attempt; redeploy uses the resolved remote `main` commit. External CI can publish an image with this tag and push the exact source commit:
+
+```yaml
+services:
+  web:
+    image: ghcr.io/example/app:${SSHDOCK_GIT_SHA:?deploy a commit}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+```
+
+```bash
+git push sshdock "$GIT_SHA:refs/heads/main"
+```
+
+Publish the image before pushing Git. An image-only model runs the same native Compose sequence without building an application image on the VPS. No `config set IMAGE_TAG` step is needed. The registry owner must keep commit tags immutable and retain images required for recovery; SSHDock binds the tag to Git, not the registry's content behind a mutable tag.
+
+Health, logs, lifecycle, exec/run, removal, diagnostics and dashboard operations use the actual checked-out revision, including while a newer `main` is queued. This may be the most recently attempted revision after a failed deploy, consistent with the current worktree contract. Before the first checkout the value is empty. Process environment and `.env` cannot override it, and `config set SSHDOCK_GIT_SHA` is rejected. Metadata is not stored as encrypted app config or included in secret redaction, and is passed into containers only if Compose references it.
+
 Compose `configs` and `secrets` fields are passed to Docker Compose normally. The external-file boundary above applies to Compose definitions loaded through `include` or `extends.file`, not ordinary files referenced by application fields.
 
 See [`CLI_COMMANDS.md`](CLI_COMMANDS.md) for `config set`, `config import`, `config list`, and `config get`.

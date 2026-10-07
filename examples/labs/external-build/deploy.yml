@@ -1,0 +1,89 @@
+name: Test, publish, and deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+# One workflow owns this app. Git fast-forward and SSHDock's busy-app checks
+# still protect it from stale or competing clients outside this workflow.
+concurrency:
+  group: sshdock-gin-external
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SSHDOCK_APP: gin-external
+      SSHDOCK_HOST: ${{ vars.SSHDOCK_HOST }}
+      SSHDOCK_HEALTH_URL: ${{ vars.SSHDOCK_HEALTH_URL }}
+      SSHDOCK_GIT_SHA: ${{ github.sha }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test the pinned official Gin source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          docker build --target source -t gin-test .
+          docker run --rm gin-test go test ./basic
+          echo "IMAGE=$(docker compose config --images)" >> "$GITHUB_ENV"
+
+      - name: Build, smoke test, and publish the commit image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Re-running the same commit reuses its published image.
+          publish=0
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            docker pull "$IMAGE"
+          else
+            docker build --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$IMAGE" .
+            publish=1
+          fi
+          docker run -d --name gin-smoke -p 127.0.0.1:18080:8080 "$IMAGE"
+          trap 'docker rm -f gin-smoke' EXIT
+          test "$(curl -fsS --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:18080/ping)" = pong
+          if [ "$publish" = 1 ]; then docker push "$IMAGE"; fi
+
+      - name: Push the exact commit and verify deployment
+        env:
+          DEPLOY_KEY: ${{ secrets.SSHDOCK_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSHDOCK_KNOWN_HOSTS }}
+        run: |
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS" && test -n "$SSHDOCK_HOST"
+          test -n "$SSHDOCK_HEALTH_URL"
+          umask 077
+          key="$RUNNER_TEMP/sshdock-key"
+          hosts="$RUNNER_TEMP/sshdock-known-hosts"
+          trap 'rm -f "$key" "$hosts"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$hosts"
+          options=(-i "$key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts")
+          printf -v GIT_SSH_COMMAND '%q ' ssh "${options[@]}"
+          export GIT_SSH_COMMAND
+          git push "git@$SSHDOCK_HOST:$SSHDOCK_APP.git" "$GITHUB_SHA:refs/heads/main"
+          ssh "${options[@]}" "sshdock@$SSHDOCK_HOST" deployments logs "$SSHDOCK_APP" -f
+          report="$(ssh "${options[@]}" "sshdock@$SSHDOCK_HOST" apps health "$SSHDOCK_APP")"
+          printf '%s\n' "$report"
+          grep -Fx 'health: ok' <<< "$report"
+          grep -Fx "current main: $GITHUB_SHA" <<< "$report"
+          grep -E "^latest deploy: [^ ]+ succeeded commit=$GITHUB_SHA " <<< "$report"
+          test "$(ssh "${options[@]}" "sshdock@$SSHDOCK_HOST" apps exec "$SSHDOCK_APP" web -- printenv APP_REVISION)" = "$GITHUB_SHA"
+          test "$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 "$SSHDOCK_HEALTH_URL")" = pong
+
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout ghcr.io

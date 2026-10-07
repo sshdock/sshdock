@@ -14,12 +14,12 @@ type AppListView struct {
 }
 
 type AppListItem struct {
-	ID                  string
-	Name                string
-	Status              string
-	NodeID              string
-	LatestReleaseStatus string
-	DomainCount         int
+	ID                     string
+	Name                   string
+	Status                 string
+	NodeID                 string
+	LatestDeploymentStatus string
+	DomainCount            int
 }
 
 type AppDetailView struct {
@@ -100,7 +100,7 @@ type LogsView struct {
 	Lines       []string
 }
 
-func NewAppListView(apps []app.App, latestReleases map[string]app.Release, domains map[string][]app.Domain) AppListView {
+func NewAppListView(apps []app.App, latestDeployments map[string]app.DeploymentStatus, domains map[string][]app.Domain) AppListView {
 	items := make([]AppListItem, 0, len(apps))
 	for _, model := range apps {
 		item := AppListItem{
@@ -110,9 +110,7 @@ func NewAppListView(apps []app.App, latestReleases map[string]app.Release, domai
 			NodeID:      model.NodeID,
 			DomainCount: len(domains[model.ID]),
 		}
-		if latest, ok := latestReleases[model.ID]; ok {
-			item.LatestReleaseStatus = string(latest.Status)
-		}
+		item.LatestDeploymentStatus = string(latestDeployments[model.ID])
 		items = append(items, item)
 	}
 

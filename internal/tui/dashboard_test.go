@@ -86,7 +86,7 @@ func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testin
 		"Apps",
 		"my-app",
 		"healthy",
-		"latest=succeeded",
+		"deploy=failed",
 		"domains=1",
 		"App my-app",
 		"Route: routed",
@@ -270,6 +270,34 @@ func TestDashboardHandlerRendersEmptyAppList(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "No apps") {
 		t.Fatalf("dashboard output = %q", output.String())
+	}
+}
+
+func TestDashboardAppListUsesAttemptAfterGitRecoveryAndFailedRetry(t *testing.T) {
+	now := time.Now().UTC()
+	store := &fakeDashboardStore{
+		apps: []app.App{{ID: "my-app", Name: "my-app", Status: app.AppStatusHealthy}},
+		releasesByApp: map[string][]app.Release{"my-app": {
+			{ID: "old-good", CommitSHA: "A", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+			{ID: "new-bad", CommitSHA: "B", Status: app.ReleaseStatusFailed, CreatedAt: now.Add(time.Hour)},
+		}},
+	}
+	for _, status := range []app.DeploymentStatus{app.DeploymentStatusSucceeded, app.DeploymentStatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			health := &fakeDashboardHealthProvider{reports: map[string]app.HealthReport{"my-app": {
+				LatestDeploymentID: "retry-A", LatestDeploymentCommit: "A", LatestDeploymentStatus: status,
+			}}}
+			snapshot, err := NewDashboardHandler(store, &compose.FakeRunner{}, health).Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := snapshot.Apps.Rows()[0].LatestDeploymentStatus; got != string(status) {
+				t.Fatalf("app list deploy=%s, want %s for A despite newer failed release B", got, status)
+			}
+			if got := snapshot.AppsByID["my-app"].Detail.Releases(); len(got) != 2 {
+				t.Fatalf("historical releases were lost: %#v", got)
+			}
+		})
 	}
 }
 

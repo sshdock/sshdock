@@ -63,15 +63,15 @@ SSHDOCK_BACKUP_LAB_SECRET="$BACKUP_LAB_SECRET" \
 bash acceptance.sh
 ```
 
-Set `SSHDOCK_IDENTITY_FILE=/path/to/key` too when SSH does not already select the operator and administrator key. Set `SSHDOCK_BACKUP_PATH=/root/sshdock-backup-lab.tar.gz` to choose the archive location. The script runs the supported host commands below:
+Set `SSHDOCK_IDENTITY_FILE=/path/to/key` too when SSH does not already select the operator and administrator key. Set `SSHDOCK_BACKUP_PATH=/root/sshdock-backup-lab.tar.gz` to choose the archive location. Wait for deployments to finish and pause CI pushes and operator mutations until this lab completes: the archive is a file copy, not an online snapshot. The script stops the daemon before copying state; app containers keep running. It runs the supported host commands below:
 
 ```bash
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup-lab.tar.gz
 sudo sshdock backup inspect /root/sshdock-backup-lab.tar.gz
-sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup-lab.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ssh sshdock@sshdock.example.com config get backup-restore-and-volume-boundary BACKUP_LAB_SECRET
 sudo docker volume inspect sshdock_backup-restore-and-volume-boundary_wordpress-data
 ```

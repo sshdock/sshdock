@@ -1,0 +1,17 @@
+diff --git a/compose.yml b/compose.yml
+--- a/compose.yml
++++ b/compose.yml
+@@ -1,9 +1,10 @@
+ services:
+   web:
+-    build:
+-      context: .
++    image: ghcr.io/example/gin-external:${SSHDOCK_GIT_SHA:?deploy a commit}
++    environment:
++      APP_REVISION: ${SSHDOCK_GIT_SHA:?deploy a commit}
+     ports:
+-      - "127.0.0.1:18103:8080"
++      - "127.0.0.1:18120:8080"
+     restart: unless-stopped
+     healthcheck:
+       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ping"]

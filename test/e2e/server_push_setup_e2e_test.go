@@ -59,6 +59,12 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
 	)
 	runCommand(t, root, bootstrapEnv, "bash", "scripts/bootstrap.sh")
+	if composeRunner == "docker" {
+		// Bootstrap dependencies are stubbed; runtime acceptance must use real Docker.
+		if err := os.Remove(filepath.Join(fakeBinDir, "docker")); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	installBinDir := filepath.Join(installRoot, "usr", "local", "bin")
 	dataDir := filepath.Join(installRoot, "var", "lib", "sshdock")
@@ -76,13 +82,14 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		composeRunner,
 		filepath.Join(installBinDir, "sshdockd"),
 	)
-	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=fake SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s %s operator",
+	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s %s operator",
 		fakeBinDir,
 		os.PathListSeparator,
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
+		composeRunner,
 		filepath.Join(tmp, "operator.caddyfile"),
 		filepath.Join(installBinDir, "sshdockd"),
 	)

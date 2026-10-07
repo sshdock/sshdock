@@ -55,11 +55,12 @@ Each failed check prints `why <name>: ...` and `fix <name>: ...` lines. A failed
 
 ### `sshdock backup create [--output <archive>]`
 
-Create a gzip tar archive of SSHDock state.
+Create a gzip tar archive of SSHDock state. This copies files, not an online SQLite snapshot: wait for deployments to finish, pause CI pushes and operator mutations, and stop the daemon before creating it. App containers keep running.
 
 ```bash
-sudo sshdock backup create
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+sudo systemctl start sshdockd
 ```
 
 The default output path is:
@@ -95,8 +96,8 @@ Restore an SSHDock backup archive onto the current host config paths.
 ```bash
 sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ```
 
 Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.
@@ -604,6 +605,8 @@ ssh -T sshdock@server
 When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lifecycle operations, domain inspection, logs, release/deployment/event inspection, config commands, restricted service exec, and removable one-off runs. Lifecycle forms are restricted to `apps start`, `apps stop`, `apps restart`, `apps exec`, `apps run`, `apps redeploy`, and `apps remove <name> --force`. Exec and run require `--` before a non-empty container command. The operator preserves quoted argv boundaries, rejects local administration and unsupported arguments, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
+
+The app list's `Deploy` column (plain SSH output: `deploy=`) shows the latest deployment attempt from the shared health report. After Git-selected recovery it reflects the recovered attempt, even when a newer failed release remains in history. Release status is historical and does not replace attempt status after a failed same-commit retry. History, queue selection and log retention order UTC timestamps chronologically, including existing records with different fractional-second precision.
 
 Useful keys:
 

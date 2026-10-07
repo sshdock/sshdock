@@ -35,7 +35,7 @@ func TestDashboardSSHSessionEndToEnd(t *testing.T) {
 		"SSHDock Dashboard",
 		appName,
 		"healthy",
-		"latest=succeeded",
+		"deploy=succeeded",
 		"Current main:",
 		"Latest deploy: dep_",
 		"Services",

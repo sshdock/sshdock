@@ -33,6 +33,7 @@ Recipes use pinned official images and the smallest upstream-supported topology.
 
 Feature labs are executable overlays over a canonical example, not duplicate application trees.
 
+- [External builds](../examples/labs/external-build/README.md) — GitHub Actions and GHCR over the Gin probe, with exact-commit image selection and restricted SSH deployment.
 - [Config and redeploy](../examples/labs/config-and-redeploy/README.md) — required config, redaction, import, and same-commit redeploy.
 - [Failed deploy and Git recovery](../examples/labs/failed-deploy-and-git-recovery/README.md) — failed runtime deployment inspection and Git-selected recovery.
 - [Restricted SSH operations](../examples/labs/restricted-ssh-operations/README.md) — lifecycle, exec, run, route, and removal operations.

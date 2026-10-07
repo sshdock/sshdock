@@ -11,12 +11,11 @@ import (
 )
 
 func TestNewAppListView(t *testing.T) {
-	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	apps := []app.App{
 		{ID: "app_1", Name: "my-app", NodeID: "local", Status: app.AppStatusHealthy},
 	}
-	latest := map[string]app.Release{
-		"app_1": {ID: "rel_1", AppID: "app_1", Status: app.ReleaseStatusSucceeded, CreatedAt: now},
+	latest := map[string]app.DeploymentStatus{
+		"app_1": app.DeploymentStatusSucceeded,
 	}
 	domains := map[string][]app.Domain{
 		"app_1": {
@@ -34,8 +33,8 @@ func TestNewAppListView(t *testing.T) {
 	if item.Name != "my-app" || item.Status != "healthy" || item.NodeID != "local" {
 		t.Fatalf("item = %#v", item)
 	}
-	if item.LatestReleaseStatus != "succeeded" {
-		t.Fatalf("LatestReleaseStatus = %q", item.LatestReleaseStatus)
+	if item.LatestDeploymentStatus != "succeeded" {
+		t.Fatalf("LatestDeploymentStatus = %q", item.LatestDeploymentStatus)
 	}
 	if item.DomainCount != 2 {
 		t.Fatalf("DomainCount = %d", item.DomainCount)

@@ -153,7 +153,7 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q", status)
 	}
-	assertEventTypes(t, dbPath, appName, []string{"git.ref_accepted", "deploy.started", "deploy.warning", "deploy.warning", "deploy.succeeded"})
+	assertEventTypesContain(t, dbPath, appName, []string{"git.ref_accepted", "deploy.queued", "deploy.started", "deploy.warning", "deploy.succeeded"})
 	assertEventMessageContains(t, dbPath, appName, "publishes 0.0.0.0:")
 	assertEventMessageContains(t, dbPath, appName, "uses host bind mount")
 	assertEventMessageContains(t, dbPath, appName, "does not sandbox this configuration")

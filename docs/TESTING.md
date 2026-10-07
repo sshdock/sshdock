@@ -10,6 +10,8 @@ git remote add sshdock git@server:<app>.git -> git push -> sshdockd git-receive 
 
 ## Test Tiers
 
+Git-push acceptance runs a deployment daemon alongside the Git receiver. A bare-repository push only queues work; tests wait for the recorded attempt and any routing result before asserting state or stopping the daemon. Docker-backed tiers use the real Docker executable after the fake-root installer completes; installer stubs must not mask runtime failures.
+
 The default e2e test uses real local Git commands, a fake SSH transport script, and a real bare repository.
 
 The default e2e still uses fake runtime adapters for:
@@ -36,6 +38,8 @@ make backup-restore-e2e
 The local harnesses do not replace VPS dogfood. The release acceptance pass should still install or upgrade from public assets with no local overrides, push every maintained public example through public Git SSH, verify dashboard and CLI lifecycle commands, exercise config redaction and Git-selected recovery, verify Compose-policy reboot recovery and final-route cleanup, and complete the documented backup/restore drill. Keep raw VPS output and host-specific details in private local artifacts; public docs and trackers should record only summarized acceptance.
 
 ## Command
+
+Use Go 1.26.8 or newer. `make security` checks reachable Go vulnerabilities against the current official database; CI and release verification run it in addition to `make ci`. See [Security](SECURITY.md) for the trust and maintenance boundary.
 
 Run:
 
@@ -82,6 +86,8 @@ git push sshdock main
 12. Verify `sshdockd git-receive` creates the app and records the deployment.
 
 `make server-push-e2e` also proves current-main, attachment, and concurrency semantics through real OpenSSH and receive-pack: non-main destination rejection, explicit branch-to-main push, attached persisted output through terminal success, Ctrl-C-style process-group disconnect with daemon completion, failed deployment diagnostics with remote `main` preserved, force-pushing an older commit as Git-based rollback, and immediate same-app contention rejection.
+
+`make external-build-e2e` uses real Docker and OpenSSH plus a disposable loopback OCI registry. It builds distinct A/B images outside the pushed repository, publishes both commit tags, removes local tags to require pulling, and verifies served content and container image identity. It covers required SHA interpolation, `.env` spoofing, restricted `exec`/`run`, missing-image failure, Git recovery and redeploy. The target has no Dockerfile; no GitHub account or registry credentials are required. This test also runs in `make e2e-docker`.
 
 ## Caddy Route Tier
 
@@ -169,7 +175,7 @@ Focused adoption and example docs checks cover the comparison, migration, troubl
 go test ./test/harness -run 'Test(AdoptionDocs|Examples|PublicExamples|NextJSCompatibilityProbe|NestJSCompatibilityProbe|LaravelCompatibilityProbe|GinCompatibilityProbe|PhoenixLiveViewCompatibilityProbe|SoftwareRecipes|PostgreSQLRecipe|SharedPostgreSQLRecipe|ConfigExample|RollbackLab|WordPressExample|ProjectBranding)'
 ```
 
-The maintained public-example Docker target validates route inference for every registered shape, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises the software recipes through first-run setup, representative state, persistence, and exact-image updates:
+The maintained public-example Docker target validates route inference for the covered shapes, builds the framework production images, waits for Compose health, requests each official starter surface, and exercises WordPress and Gitea through first-run setup, representative state, persistence, and exact-image updates. Gitea publishes both HTTP and SSH ports, so its route check expects automatic inference to skip it; the recipe documents manual domain attachment. This tier does not replace each recipe's full VPS acceptance:
 
 ```bash
 make public-examples-e2e
@@ -245,7 +251,7 @@ The recovery test:
 
 1. Builds `sshdock` and `sshdockd`.
 2. Creates an app and pushes a good Compose release through a local bare repository hook.
-3. Pushes a second release with `SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR` to force a failed deploy.
+3. Pushes a second release requiring a missing Compose interpolation value to force a failed deploy in the daemon.
 4. Force-pushes the saved good commit back to remote `main`.
 5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful Git-selected deployment, with no SSHDock rollback attempt.
 

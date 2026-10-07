@@ -77,13 +77,13 @@ func assertEventTypes(t *testing.T, dbPath string, appID string, want []string) 
 
 func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`select type from events where app_id = ? order by created_at, id`, appID)
+	rows, err := db.Query(`select type from events where app_id = ? order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		t.Fatalf("query events: %v", err)
 	}
@@ -105,13 +105,13 @@ func eventTypesForApp(t *testing.T, dbPath string, appID string) []string {
 
 func assertEventMessageContains(t *testing.T, dbPath string, appID string, want string) {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`select message from events where app_id = ? order by created_at, id`, appID)
+	rows, err := db.Query(`select message from events where app_id = ? order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		t.Fatalf("query event messages: %v", err)
 	}
@@ -144,7 +144,7 @@ func countImageRepositoriesWithPrefix(images string, prefix string) int {
 
 func queryString(t *testing.T, dbPath string, query string, args ...any) string {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}

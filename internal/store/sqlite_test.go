@@ -408,7 +408,7 @@ func TestSQLiteStoreClaimNextPendingDeploymentMarksOnlyOneAttemptDeploying(t *te
 		}
 	}
 	first := app.Deployment{ID: "dep_first", AppID: "app_1", ReleaseID: "rel_first", CommitSHA: "first", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
-	second := app.Deployment{ID: "dep_second", AppID: "app_2", ReleaseID: "rel_second", CommitSHA: "second", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+	second := app.Deployment{ID: "dep_second", AppID: "app_2", ReleaseID: "rel_second", CommitSHA: "second", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Nanosecond)}
 	for _, deployment := range []app.Deployment{first, second} {
 		if err := store.QueueDeployment(ctx, deployment, ""); err != nil {
 			t.Fatalf("QueueDeployment(%s): %v", deployment.ID, err)
@@ -435,6 +435,9 @@ func TestSQLiteStoreClaimNextPendingDeploymentMarksOnlyOneAttemptDeploying(t *te
 	}
 	if err := store.CreateEvent(ctx, app.Event{ID: "evt_dep_first_queued", AppID: first.AppID, Type: "deploy.queued", Message: "Deploy queued", CreatedAt: now}); err != nil {
 		t.Fatalf("CreateEvent queued: %v", err)
+	}
+	if err := store.CreateEvent(ctx, app.Event{ID: "evt_dep_second_queued", AppID: second.AppID, Type: "deploy.queued", CreatedAt: second.StartedAt}); err != nil {
+		t.Fatal(err)
 	}
 	claimed, found, err := store.ClaimNextPendingDeployment(ctx)
 
@@ -1065,7 +1068,7 @@ func TestSQLiteStoreQueueDeploymentRetainsOnlyNewestDeploymentLogs(t *testing.T)
 			CommitSHA: fmt.Sprintf("commit_%02d", index),
 			Trigger:   app.DeploymentTriggerPush,
 			Status:    app.DeploymentStatusPending,
-			StartedAt: now.Add(time.Duration(index) * time.Second),
+			StartedAt: now.Add(time.Duration(index) * time.Nanosecond),
 		}
 		if err := store.QueueDeployment(ctx, deployment, fmt.Sprintf("previous_%02d", index)); err != nil {
 			t.Fatalf("QueueDeployment %d: %v", index, err)

@@ -36,6 +36,26 @@ func TestPostReceiveHandlerRecordsCheckoutFailureAsDeploymentAttempt(t *testing.
 	assertPreflightAttempt(t, ctx, sqlite, "dep_checkout", "abc123", "checkout")
 }
 
+func TestPostReceiveHandlerProvidesCommitBeforeComposeValidation(t *testing.T) {
+	ctx := context.Background()
+	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	runner := &compose.FakeRunner{}
+	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+		Store: sqlite, Runner: runner,
+		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, worktreePath string, _ string) error {
+			writeHookCompose(t, worktreePath, "services:\n  web:\n    image: registry.example/app:${SSHDOCK_GIT_SHA:?deploy a commit}\n")
+			return nil
+		}),
+	})
+	sha := strings.Repeat("a", 40)
+	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", t.TempDir(), strings.NewReader("old "+sha+" refs/heads/main\n")); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].Env[compose.GitSHAEnv] != sha {
+		t.Fatalf("deploy requests = %#v", runner.DeployRequests)
+	}
+}
+
 func TestPostReceiveHandlerRecordsComposeDetectionFailureAsDeploymentAttempt(t *testing.T) {
 	// Given
 	ctx := context.Background()

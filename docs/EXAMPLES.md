@@ -2,7 +2,7 @@
 
 The maintained public suite is organized around four deployment questions: which framework to deploy, which recognizable software to run, how to connect databases safely, and how to exercise SSHDock workflows.
 
-Every example is a Git-pushable Compose application. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`. Before a release includes an example, copy it explicitly from `main`; after release promotion, use the matching release tag. Each example README is the source of truth for its required config, deploy, verification, operation, upgrade, cleanup, persistence, limitations, and security boundary.
+Every example is a Git-pushable Compose application. Replace `example.com` with the base domain configured by `sudo sshdock server domain set <domain>`. Copy the deployment envelopes and lab overlays from the matching `v1.0.0` release tag. Each example README is the source of truth for its required config, deploy, verification, operation, upgrade, cleanup, persistence, limitations, and security boundary.
 
 Framework compatibility probes are executable point-in-time checks, not application starters. They generate or fetch pinned official source only during image build; their repository surface is the Dockerfile, root Compose file, and README. Create a real application through the framework's official tooling and carry over the production Compose requirements demonstrated by the probe.
 

@@ -8,14 +8,14 @@ Replace `example.com` below with the SSHDock base domain.
 
 ## Deploy a known-good commit
 
-Copy the Next.js deployment envelope and this one-file failure overlay from `main` until a release tag contains the lab:
+Copy the Next.js deployment envelope and this one-file failure overlay from the matching `v1.0.0` release:
 
 ```bash
 mkdir failed-deploy-and-git-recovery
 cd failed-deploy-and-git-recovery
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/nextjs
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/main/examples/labs/failed-deploy-and-git-recovery/failure.patch \
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/nextjs
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/failed-deploy-and-git-recovery/failure.patch \
   -o failure.patch
 git init -b main
 git add .

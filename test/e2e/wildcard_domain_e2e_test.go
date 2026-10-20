@@ -36,6 +36,7 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 		"SSHDOCK_FAKE_COMPOSE_SERVICES=web:running,api:running,admin:running",
 		"SSHDOCK_FAKE_COMPOSE_LOGS=wildcard log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
+		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyConfigPath,
 	)
 
 	domainOutput := runCommand(t, root, env, sshdockPath, "server", "domain", "set", "example.com")

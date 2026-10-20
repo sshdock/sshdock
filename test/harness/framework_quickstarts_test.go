@@ -15,13 +15,13 @@ func TestNextJSCompatibilityProbe_contract_when_generated_for_production(t *test
 	dockerfile := readTextFile(t, filepath.Join(dir, "Dockerfile"))
 	composeFile := readTextFile(t, filepath.Join(dir, "compose.yml"))
 	for _, want := range []string{
-		"ARG CREATE_NEXT_APP_VERSION=16.2.10",
+		"ARG CREATE_NEXT_APP_VERSION=16.4.2",
 		"ARG NODE_IMAGE=node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f",
 		"FROM ${NODE_IMAGE} AS source",
 		"npx --yes create-next-app@${CREATE_NEXT_APP_VERSION} . --yes --use-npm --disable-git",
 		"FROM ${NODE_IMAGE} AS build",
 		"npm run build",
-		"npm prune --omit=dev",
+		"npm ci --omit=dev --no-audit --no-fund",
 		"FROM build AS runtime-output",
 		"rm -rf .next/cache .next/diagnostics .next/types",
 		"FROM ${NODE_IMAGE} AS runtime",
@@ -46,7 +46,7 @@ func TestNextJSCompatibilityProbe_contract_when_generated_for_production(t *test
 	// Then the documented workflow covers the complete user-visible lifecycle.
 	readme := readTextFile(t, filepath.Join(dir, "README.md"))
 	for _, want := range []string{
-		"create-next-app@16.2.10",
+		"create-next-app@16.4.2",
 		"node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f",
 		"npx create-next-app@latest my-app --yes",
 		"https://nextjs.org/docs/app/getting-started/installation",

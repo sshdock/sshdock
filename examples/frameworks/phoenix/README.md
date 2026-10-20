@@ -30,8 +30,9 @@ Compose publishes port `4000` only on `127.0.0.1:18104`, requires Phoenix's sign
 
 ## Pinned versions
 
-- Generator and Phoenix source: `phx_new 1.8.9`
-- LiveView resolved during this verification: `Phoenix LiveView 1.2.7`
+- Generator: `phx_new 1.8.9`
+- Framework resolved during this verification: `Phoenix 1.8.16`
+- LiveView resolved during this verification: `Phoenix LiveView 1.2.13`
 - Builder: `hexpm/elixir:1.20.2-erlang-28.5.0.3-alpine-3.23.5@sha256:6f03034e254126f063959873d8d3b811ee92abaabab27b62c53982c4a1034e39`
 - Runtime: `alpine:3.23.5@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40`
 
@@ -39,13 +40,13 @@ The generator and multi-platform image manifests are immutable inputs. Hex, GitH
 
 ## Deploy
 
-Until a release tag contains this probe, copy its three-file envelope from `main`:
+Copy this probe's three-file envelope from the matching `v1.0.0` release:
 
 ```bash
 mkdir phoenix
 cd phoenix
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/phoenix
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/phoenix
 git init -b main
 git add .
 git commit -m "Deploy Phoenix LiveView"

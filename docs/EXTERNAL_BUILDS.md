@@ -5,7 +5,7 @@ SSHDock has one Git/Compose deployment contract and two places to build:
 - **Local Build:** push directly to SSHDock; Compose builds `build:` services on the VPS.
 - **External Build:** your CI tests and builds an image, publishes it under the full source commit, then pushes that exact commit to SSHDock. Compose pulls `image:` services on the VPS.
 
-External Build requires a server version containing `SSHDOCK_GIT_SHA`; v0.3.1 does not provide it. Until the next release, this is a source-build feature. The [GitHub Actions and GHCR lab](../examples/labs/external-build/README.md) is a complete example using the existing Gin probe. Any CI and OCI registry can follow the same contract.
+External Build and `SSHDOCK_GIT_SHA` are included in v1.0.0; v0.3.1 does not provide this metadata. The [GitHub Actions and GHCR lab](../examples/labs/external-build/README.md) is a complete example using the existing Gin probe. Any CI and OCI registry can follow the same contract.
 
 ## Commit selects the image
 

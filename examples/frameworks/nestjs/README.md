@@ -32,13 +32,13 @@ The generator version and multi-platform Node manifest are immutable inputs. npm
 
 ## Deploy
 
-Until a release tag contains this probe, copy its three-file envelope from `main`:
+Copy this probe's three-file envelope from the matching `v1.0.0` release:
 
 ```bash
 mkdir nestjs
 cd nestjs
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/nestjs
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/nestjs
 git init -b main
 git add .
 git commit -m "Deploy NestJS"

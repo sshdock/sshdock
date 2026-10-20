@@ -23,33 +23,39 @@ type CaddyCommandExecutor interface {
 }
 
 type CaddyRouterConfig struct {
-	ConfigPath   string
-	Executor     CaddyCommandExecutor
-	UpstreamHost string
-	AdminAddress string
+	ConfigPath     string
+	MainConfigPath string
+	Executor       CaddyCommandExecutor
+	UpstreamHost   string
+	AdminAddress   string
 }
 
 type CaddyRouter struct {
-	configPath   string
-	executor     CaddyCommandExecutor
-	upstreamHost string
-	adminAddress string
-	activeClient *http.Client
-	routes       map[string]Route
+	configPath     string
+	mainConfigPath string
+	executor       CaddyCommandExecutor
+	upstreamHost   string
+	adminAddress   string
+	activeClient   *http.Client
+	routes         map[string]Route
 }
 
 func NewCaddyRouter(config CaddyRouterConfig) *CaddyRouter {
+	if config.MainConfigPath == "" {
+		config.MainConfigPath = config.ConfigPath
+	}
 	if config.UpstreamHost == "" {
 		config.UpstreamHost = "127.0.0.1"
 	}
 
 	return &CaddyRouter{
-		configPath:   config.ConfigPath,
-		executor:     config.Executor,
-		upstreamHost: config.UpstreamHost,
-		adminAddress: config.AdminAddress,
-		activeClient: &http.Client{Timeout: 5 * time.Second},
-		routes:       map[string]Route{},
+		configPath:     config.ConfigPath,
+		mainConfigPath: config.MainConfigPath,
+		executor:       config.Executor,
+		upstreamHost:   config.UpstreamHost,
+		adminAddress:   config.AdminAddress,
+		activeClient:   &http.Client{Timeout: 5 * time.Second},
+		routes:         map[string]Route{},
 	}
 }
 
@@ -85,7 +91,7 @@ func (r *CaddyRouter) Reload(ctx context.Context) error {
 		return nil
 	}
 
-	args := []string{"reload", "--config", r.configPath, "--adapter", "caddyfile"}
+	args := []string{"reload", "--config", r.mainConfigPath, "--adapter", "caddyfile"}
 	if r.adminAddress != "" {
 		args = append(args, "--address", r.adminAddress)
 	}
@@ -107,7 +113,11 @@ func (r *CaddyRouter) writeConfig(ctx context.Context, routes map[string]Route) 
 	}
 	tmpPath := tmp.Name()
 
-	if _, err := tmp.WriteString(renderCaddyfile(routes, r.upstreamHost, r.adminAddress)); err != nil {
+	adminAddress := ""
+	if filepath.Clean(r.mainConfigPath) == filepath.Clean(r.configPath) {
+		adminAddress = r.adminAddress
+	}
+	if _, err := tmp.WriteString(renderCaddyfile(routes, r.upstreamHost, adminAddress)); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		return err

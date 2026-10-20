@@ -12,7 +12,7 @@ For the current release line, Docker Compose is the only implemented runtime eng
 
 ## Why Keep An Engine Boundary
 
-The current Compose runner is enough for the v0 happy path:
+The current Compose runner is enough for the single-node happy path:
 
 - one VPS
 - one Compose app per repo

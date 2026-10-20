@@ -53,6 +53,80 @@ func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
 	}
 }
 
+func TestCaddyRouterReloadsMainConfigAcrossAttachAndFinalDetach(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		separate bool
+		alias    bool
+		admin    string
+	}{
+		{name: "standalone fallback"},
+		{name: "standalone custom admin", admin: "127.0.0.1:22019"},
+		{name: "standalone equivalent paths", alias: true, admin: "127.0.0.1:22019"},
+		{name: "imported routes", separate: true},
+		{name: "main owns custom admin", separate: true, admin: "127.0.0.1:22019"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			dir := t.TempDir()
+			generated := filepath.Join(dir, "sshdock.caddyfile")
+			mainPath := ""
+			mainConfig := ""
+			wantReloadPath := generated
+			if test.alias {
+				mainPath = dir + string(filepath.Separator) + "." + string(filepath.Separator) + "sshdock.caddyfile"
+				wantReloadPath = mainPath
+			}
+			if test.separate {
+				mainPath = filepath.Join(dir, "Caddyfile")
+				wantReloadPath = mainPath
+				if test.admin != "" {
+					mainConfig = "{\n\tadmin " + test.admin + "\n}\n"
+				}
+				mainConfig += ":80 {\n\trespond \"administrator-owned sentinel\"\n}\nimport " + generated + "\n"
+				if err := os.WriteFile(mainPath, []byte(mainConfig), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			executor := &recordingCaddyExecutor{}
+			router := NewCaddyRouter(CaddyRouterConfig{ConfigPath: generated, MainConfigPath: mainPath, AdminAddress: test.admin, Executor: executor})
+			for _, attach := range []bool{true, false} {
+				var err error
+				if attach {
+					err = router.AttachDomain(ctx, Route{DomainName: "managed.example.com", Port: 3000})
+				} else {
+					err = router.DetachDomain(ctx, "managed.example.com")
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				fragment := readText(t, generated)
+				if strings.Contains(fragment, "managed.example.com") != attach {
+					t.Fatalf("attach=%t generated routes:\n%s", attach, fragment)
+				}
+				wantAdmin := test.admin != "" && !test.separate
+				if strings.Contains(fragment, "admin ") != wantAdmin {
+					t.Fatalf("generated admin option: got %q, standalone=%t", fragment, !test.separate)
+				}
+				commands := executor.Commands[len(executor.Commands)-2:]
+				if commands[0].Args[0] != "validate" || commands[0].Args[2] == generated || commands[0].Args[2] == mainPath {
+					t.Fatalf("fragment must be validated before replacement: %#v", commands[0])
+				}
+				wantArgs := []string{"reload", "--config", wantReloadPath, "--adapter", "caddyfile"}
+				if test.admin != "" {
+					wantArgs = append(wantArgs, "--address", test.admin)
+				}
+				if !reflect.DeepEqual(commands[1].Args, wantArgs) {
+					t.Fatalf("reload args = %#v, want %#v", commands[1].Args, wantArgs)
+				}
+				if test.separate && readText(t, mainPath) != mainConfig {
+					t.Fatal("route operation changed the administrator main config")
+				}
+			}
+		})
+	}
+}
+
 func TestCaddyRouterPreservesExistingRoutesWhenAddingDomain(t *testing.T) {
 	ctx := context.Background()
 	configPath := filepath.Join(t.TempDir(), "Caddyfile")

@@ -26,15 +26,22 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	projectName := compose.ProjectName(appName)
 	servicePort := freeLocalPort(t)
 	caddyPort := freeLocalPort(t)
+	unmanagedPort := freeLocalPort(t)
 	caddyAdminPort := freeLocalPort(t)
 	caddyAdminAddress := fmt.Sprintf("127.0.0.1:%d", caddyAdminPort)
-	caddyConfigPath := filepath.Join(paths.tmp, "Caddyfile")
+	caddyConfigPath := filepath.Join(paths.tmp, "sshdock.caddyfile")
+	caddyMainConfigPath := filepath.Join(paths.tmp, "Caddyfile")
+	unmanagedURL := fmt.Sprintf("http://127.0.0.1:%d", unmanagedPort)
+	mainConfig := fmt.Sprintf("{\n\tadmin %s\n}\n%s {\n\trespond \"administrator-owned sentinel\"\n}\nimport %s\n", caddyAdminAddress, unmanagedURL, caddyConfigPath)
 
-	if err := os.WriteFile(caddyConfigPath, []byte(fmt.Sprintf("{\n\tadmin %s\n}\n", caddyAdminAddress)), 0o644); err != nil {
+	if err := os.WriteFile(caddyConfigPath, []byte("# SSHDock generated routes\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile initial route fragment: %v", err)
+	}
+	if err := os.WriteFile(caddyMainConfigPath, []byte(mainConfig), 0o644); err != nil {
 		t.Fatalf("WriteFile initial Caddyfile: %v", err)
 	}
 	caddyCtx, cancelCaddy := context.WithCancel(context.Background())
-	caddyCmd := exec.CommandContext(caddyCtx, caddyPath, "run", "--config", caddyConfigPath)
+	caddyCmd := exec.CommandContext(caddyCtx, caddyPath, "run", "--config", caddyMainConfigPath)
 	caddyLogPath := filepath.Join(paths.tmp, "caddy.log")
 	caddyLog, err := os.Create(caddyLogPath)
 	if err != nil {
@@ -54,6 +61,7 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 		_ = caddyLog.Close()
 	})
 	waitForTCP(t, "127.0.0.1", caddyAdminPort, caddyLogPath)
+	waitForCurl(t, curlPath, unmanagedURL, "administrator-owned sentinel", caddyLogPath)
 
 	commitSHA := pushComposeAppThroughSSH(t, paths, appName, map[string]string{
 		"compose.yml": fmt.Sprintf("services:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"127.0.0.1:%d:80\"\n", servicePort),
@@ -69,13 +77,13 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
+		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyMainConfigPath,
 		"SSHDOCK_CADDY_ADMIN_ADDRESS="+caddyAdminAddress,
 	)
 	runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "attach", appName, "web", routeDomain, "--port", fmt.Sprintf("%d", servicePort))
 
 	config := readFile(t, caddyConfigPath)
 	for _, want := range []string{
-		"admin " + caddyAdminAddress,
 		routeDomain + " {",
 		fmt.Sprintf("reverse_proxy 127.0.0.1:%d", servicePort),
 	} {
@@ -83,8 +91,12 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 			t.Fatalf("Caddyfile missing %q:\n%s", want, config)
 		}
 	}
+	if strings.Contains(config, "admin ") {
+		t.Fatalf("imported route fragment contains global admin options:\n%s", config)
+	}
 
 	waitForCurl(t, curlPath, fmt.Sprintf("http://127.0.0.1:%d", caddyPort), "Welcome to nginx", caddyLogPath)
+	waitForCurl(t, curlPath, unmanagedURL, "administrator-owned sentinel", caddyLogPath)
 	checkOutput := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "check", appName)
 	wantCheck := fmt.Sprintf("%s\tweb\t%d\tfalse\tok\tactive Caddy route matches", routeDomain, servicePort)
 	if !strings.Contains(checkOutput, wantCheck) {
@@ -103,6 +115,17 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 	config = readFile(t, caddyConfigPath)
 	if strings.Contains(config, routeDomain) {
 		t.Fatalf("detached final route remains in generated Caddyfile:\n%s", config)
+	}
+	waitForCurl(t, curlPath, unmanagedURL, "administrator-owned sentinel", caddyLogPath)
+	if got := readFile(t, caddyMainConfigPath); got != mainConfig {
+		t.Fatalf("administrator main Caddyfile changed:\n%s", got)
+	}
+	if output, err := exec.Command(curlPath, "-fsS", "--max-time", "3", routeDomain).CombinedOutput(); err == nil {
+		t.Fatalf("detached managed endpoint still responds: %s", output)
+	}
+	checkOutput = runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "domains", "check", appName)
+	if strings.TrimSpace(checkOutput) != "no domains" {
+		t.Fatalf("final detach left a managed route:\n%s", checkOutput)
 	}
 	assertEventTypes(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "domain.attached", "router.reloaded", "domain.detached", "router.reloaded"})
 	_ = commitSHA

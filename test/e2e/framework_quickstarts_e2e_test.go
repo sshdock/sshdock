@@ -35,7 +35,7 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			directory:   "nextjs",
 			projectName: "nextjs-public-example-e2e",
 			url:         "http://127.0.0.1:18100",
-			wantBody:    []string{"To get started, edit the page.tsx file.", "Deploy Now"},
+			wantBody:    []string{"To get started, edit the", "page.tsx", "Deploy Now"},
 		},
 		{
 			name:         "NestJS",

@@ -18,11 +18,11 @@ Stay on Dokku, or evaluate it first, when you need:
 - Dokku plugins and ecosystem integrations.
 - Mature multi-process management beyond Compose services.
 - A larger production-tested release surface today.
-- Scheduler options outside SSHDock v0's single-node Compose runtime.
+- Scheduler options outside SSHDock's single-node Compose runtime.
 
 ## Quick Comparison
 
-| Area | SSHDock v0 | Dokku |
+| Area | SSHDock | Dokku |
 | --- | --- | --- |
 | Primary model | Docker Compose app in one Git repo | App platform with Git deployment, builders, plugins, and process management |
 | Deploy trigger | `git push sshdock main` to `git@sshdock.<domain>:<app>.git` | Git push to Dokku remotes, plus Dokku commands and plugins |
@@ -36,7 +36,7 @@ Stay on Dokku, or evaluate it first, when you need:
 | Rollback | Push the desired commit or tag to remote `main`; release rows remain inspection history | Dokku release and rollback tooling |
 | Data volumes | Compose volumes are preserved on app removal; backups include volume inventory, not volume contents | Dokku persistent-storage guidance and storage plugin workflows |
 | Backup/restore | `sshdock backup create`, `inspect`, and `restore` for SSHDock host state | Dokku backup guidance emphasizes repo copies, static assets, database dumps, and testing restores |
-| Users/RBAC | One admin key model for v0 | Dokku has its own user and SSH access model |
+| Users/RBAC | One trusted-operator key model | Dokku has its own user and SSH access model |
 
 ## What Migrates Well
 
@@ -52,7 +52,7 @@ Poor candidates:
 - Apps that depend heavily on Dokku plugins.
 - Procfile/buildpack apps that you do not want to convert to Dockerfile or Compose.
 - Apps that rely on Dokku-specific process scaling, checks, or hook behavior.
-- Production apps where you cannot tolerate v0 rough edges or breaking changes.
+- Apps that require high availability or zero-downtime deployment.
 
 ## Migration Pointer
 

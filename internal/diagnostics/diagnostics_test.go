@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/store"
 )
@@ -88,6 +89,16 @@ func TestRunReportsActionableInstallConfidenceFailures(t *testing.T) {
 	root := t.TempDir()
 	cfg := diagnosticsConfig(root)
 	prepareHealthyDiagnosticsRuntime(t, cfg)
+	db, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AttachDomain(context.Background(), app.Domain{ID: "domain_1", AppID: "my-app", ServiceName: "web", DomainName: "app.example.com", Port: 3000, HTTPS: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := os.WriteFile(cfg.CaddyMainConfigPath, []byte("# no import\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile caddy main: %v", err)
@@ -106,7 +117,7 @@ func TestRunReportsActionableInstallConfidenceFailures(t *testing.T) {
 	output := report.String()
 	for _, want := range []string{
 		"fail port 443:",
-		"fix port 443: open TCP port 443",
+		"fix port 443: check the Caddy service and its listener configuration",
 		"fail caddy import:",
 		"fix caddy import: add this exact line to " + cfg.CaddyMainConfigPath + ": import " + cfg.CaddyConfigPath,
 		"fail config key:",

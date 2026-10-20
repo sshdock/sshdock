@@ -82,7 +82,7 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		composeRunner,
 		filepath.Join(installBinDir, "sshdockd"),
 	)
-	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s %s operator",
+	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s SSHDOCK_CADDY_MAIN_CONFIG_PATH=%s %s operator",
 		fakeBinDir,
 		os.PathListSeparator,
 		installBinDir,
@@ -90,6 +90,7 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		os.Getenv("PATH"),
 		dataDir,
 		composeRunner,
+		filepath.Join(tmp, "operator.caddyfile"),
 		filepath.Join(tmp, "operator.caddyfile"),
 		filepath.Join(installBinDir, "sshdockd"),
 	)

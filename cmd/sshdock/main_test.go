@@ -52,6 +52,7 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	t.Setenv("SSHDOCK_NODE_ID", "node-a")
 	t.Setenv("SSHDOCK_GIT_HOST", "sshdock.example.com")
 	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", filepath.Join(dataDir, "Caddyfile"))
+	t.Setenv("SSHDOCK_CADDY_MAIN_CONFIG_PATH", filepath.Join(dataDir, "Caddyfile"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

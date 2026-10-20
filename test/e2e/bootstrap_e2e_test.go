@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -67,6 +68,8 @@ exit 0
 `)
 
 	installRoot := filepath.Join(tmp, "root")
+	caddyMainPath := "/etc/caddy/owner's \"$main\" Caddyfile"
+	caddyAdminAddress := "127.0.0.1:22019"
 	env := append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_TAG=test-local",
@@ -75,6 +78,8 @@ exit 0
 		"SSHDOCK_BOOTSTRAP_INSTALL_DEPS=0",
 		"SSHDOCK_BOOTSTRAP_SKIP_CHOWN=1",
 		"SSHDOCK_BOOTSTRAP_FAKE_LOG="+fakeLogPath,
+		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyMainPath,
+		"SSHDOCK_CADDY_ADMIN_ADDRESS="+caddyAdminAddress,
 	)
 
 	runCommand(t, root, env, "bash", "scripts/bootstrap.sh")
@@ -92,6 +97,8 @@ exit 0
 		"export SSHDOCK_DATA_DIR=/var/lib/sshdock",
 		"export SSHDOCK_APPS_DIR=/var/lib/sshdock/apps",
 		"export SSHDOCK_COMPOSE_RUNNER=docker",
+		"export SSHDOCK_CADDY_MAIN_CONFIG_PATH=",
+		"export SSHDOCK_CADDY_ADMIN_ADDRESS='" + caddyAdminAddress + "'",
 		"exec /usr/local/bin/sshdockd git-receive",
 	} {
 		if !strings.Contains(wrapper, want) {
@@ -103,10 +110,24 @@ exit 0
 	for _, want := range []string{
 		"export SSHDOCK_DATA_DIR=/var/lib/sshdock",
 		"export SSHDOCK_COMPOSE_RUNNER=docker",
+		"export SSHDOCK_CADDY_MAIN_CONFIG_PATH=",
+		"export SSHDOCK_CADDY_ADMIN_ADDRESS='" + caddyAdminAddress + "'",
 		"exec /usr/local/bin/sshdockd operator",
 	} {
 		if !strings.Contains(operatorWrapper, want) {
 			t.Fatalf("operator wrapper missing %q:\n%s", want, operatorWrapper)
+		}
+	}
+
+	probePath := filepath.Join(tmp, "print-caddy-environment")
+	if err := os.WriteFile(probePath, []byte("#!/bin/sh\nprintf '%s\\n' \"$SSHDOCK_CADDY_MAIN_CONFIG_PATH\" \"$SSHDOCK_CADDY_ADMIN_ADDRESS\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{"git": wrapper, "operator": operatorWrapper} {
+		probe := strings.Replace(content, "exec /usr/local/bin/sshdockd", "exec "+probePath, 1)
+		output := runCommand(t, root, []string{"SSHDOCK_CADDY_MAIN_CONFIG_PATH=wrong", "SSHDOCK_CADDY_ADMIN_ADDRESS=wrong"}, "sh", "-c", probe)
+		if want := caddyMainPath + "\n" + caddyAdminAddress + "\n"; output != want {
+			t.Fatalf("%s wrapper Caddy environment = %q, want %q", name, output, want)
 		}
 	}
 
@@ -137,6 +158,8 @@ exit 0
 		"Environment=SSHDOCK_GIT_HOST=server",
 		"Environment=SSHDOCK_COMPOSE_RUNNER=docker",
 		"Environment=SSHDOCK_CADDY_CONFIG_PATH=/etc/caddy/sshdock/sshdock.caddyfile",
+		"Environment=" + strconv.Quote("SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyMainPath),
+		"Environment=" + strconv.Quote("SSHDOCK_CADDY_ADMIN_ADDRESS="+caddyAdminAddress),
 		"ExecStart=/usr/local/bin/sshdockd daemon",
 	} {
 		if !strings.Contains(unit, want) {

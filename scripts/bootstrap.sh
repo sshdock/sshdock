@@ -33,6 +33,18 @@ run() {
 	"$@"
 }
 
+shell_quote() {
+	printf "'"
+	printf '%s' "$1" | sed "s/'/'\\\\''/g"
+	printf "'"
+}
+
+systemd_quote() {
+	printf '"'
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/%/%%/g'
+	printf '"'
+}
+
 run_apt_get() {
 	local attempt output status
 	attempt=1
@@ -476,6 +488,8 @@ export SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
 export SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
 export SSHDOCK_COMPOSE_RUNNER=docker
 export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+export SSHDOCK_CADDY_MAIN_CONFIG_PATH=$(shell_quote "$CADDY_MAIN_CONFIG_PATH")
+export SSHDOCK_CADDY_ADMIN_ADDRESS=$(shell_quote "$CADDY_ADMIN_ADDRESS")
 exec $INSTALL_BIN_DIR/sshdockd git-receive
 WRAPPER
 	run chmod 0755 "$wrapper_actual"
@@ -496,6 +510,8 @@ export SSHDOCK_APPS_DIR=$APPS_DIR
 export SSHDOCK_GIT_HOST=$GIT_HOST
 export SSHDOCK_COMPOSE_RUNNER=docker
 export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+export SSHDOCK_CADDY_MAIN_CONFIG_PATH=$(shell_quote "$CADDY_MAIN_CONFIG_PATH")
+export SSHDOCK_CADDY_ADMIN_ADDRESS=$(shell_quote "$CADDY_ADMIN_ADDRESS")
 exec $INSTALL_BIN_DIR/sshdockd operator
 WRAPPER
 	run chmod 0755 "$wrapper_actual"
@@ -554,6 +570,8 @@ Environment=SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
 Environment=SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
 Environment=SSHDOCK_COMPOSE_RUNNER=docker
 Environment=SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
+Environment=$(systemd_quote "SSHDOCK_CADDY_MAIN_CONFIG_PATH=$CADDY_MAIN_CONFIG_PATH")
+Environment=$(systemd_quote "SSHDOCK_CADDY_ADMIN_ADDRESS=$CADDY_ADMIN_ADDRESS")
 ExecStart=$INSTALL_BIN_DIR/sshdockd daemon
 Restart=on-failure
 RestartSec=5s
@@ -627,6 +645,7 @@ APPS_DIR="${SSHDOCK_APPS_DIR:-$DATA_DIR/apps}"
 SYSTEMD_DIR="${SSHDOCK_SYSTEMD_DIR:-/etc/systemd/system}"
 CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock/sshdock.caddyfile}"
 CADDY_MAIN_CONFIG_PATH="${SSHDOCK_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"
+CADDY_ADMIN_ADDRESS="${SSHDOCK_CADDY_ADMIN_ADDRESS:-}"
 SSH_LISTEN_ADDR="${SSHDOCK_SSH_LISTEN_ADDR:-:2222}"
 OPERATOR_HOME_DIR="${SSHDOCK_OPERATOR_HOME_DIR:-$DATA_DIR}"
 OPERATOR_SHELL="${SSHDOCK_OPERATOR_SHELL:-/bin/sh}"

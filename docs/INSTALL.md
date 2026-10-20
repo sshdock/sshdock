@@ -212,7 +212,7 @@ SSHDock renders Caddy upstreams as:
 reverse_proxy 127.0.0.1:<port>
 ```
 
-`sshdock domains attach` writes the generated config to `SSHDOCK_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads Caddy with `caddy reload --config <config-path>`.
+`sshdock domains attach` writes the generated config to `SSHDOCK_CADDY_CONFIG_PATH`, validates it with `caddy validate --config <temp-file>`, atomically replaces the generated config, and reloads `SSHDOCK_CADDY_MAIN_CONFIG_PATH` so administrator-owned sites and global options remain active, including after the final SSHDock route is detached. Caddy validates the combined configuration before applying the reload; a reload failure leaves the previous active configuration running.
 
 Manual `sshdock domains attach <app> <service> <domain> --port <port>` remains available for custom domains, ambiguous Compose files, and apps that intentionally do not use the default `<app>.<base-domain>` route.
 
@@ -224,7 +224,7 @@ SSHDOCK_CADDY_MAIN_CONFIG_PATH=/tmp/Caddyfile
 SSHDOCK_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
 ```
 
-When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, the generated Caddyfile includes a matching `admin` global option and reload uses `--address`. Production installs can leave it unset and use Caddy's default admin endpoint.
+When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, configure the matching `admin` global option in the main Caddyfile; reload uses `--address` and active-route checks use that endpoint. The generated import contains only app routes. Standalone tests may set both config paths to the same file, in which case the generated file also includes the `admin` option. Production installs can leave the address unset and use Caddy's default admin endpoint.
 
 `sshdock domains check` reads Caddy's active configuration from this admin endpoint. Keep the endpoint local to the host; if it is unavailable, the check reports the connection failure and points to `sudo sshdock diagnostics` instead of treating generated or in-memory state as active.
 

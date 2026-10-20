@@ -82,10 +82,11 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		OperatorAuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
 		OperatorCommand:            cfg.OperatorCommand,
 		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
-			ConfigPath:   cfg.CaddyConfigPath,
-			Executor:     router.LocalCommandExecutor{},
-			AdminAddress: cfg.CaddyAdminAddress,
-			UpstreamHost: "127.0.0.1",
+			ConfigPath:     cfg.CaddyConfigPath,
+			MainConfigPath: cfg.CaddyMainConfigPath,
+			Executor:       router.LocalCommandExecutor{},
+			AdminAddress:   cfg.CaddyAdminAddress,
+			UpstreamHost:   "127.0.0.1",
 		}),
 		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
 			AppsDir:   cfg.AppsDir,

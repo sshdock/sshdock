@@ -89,6 +89,7 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
 		"SSHDOCK_COMPOSE_RUNNER=fake",
 		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(paths.tmp, "operator.caddyfile"),
+		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+filepath.Join(paths.tmp, "operator.caddyfile"),
 	)
 	runCommand(t, paths.tmp, operatorEnv,
 		filepath.Join(paths.installBinDir, "sshdock"),

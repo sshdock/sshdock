@@ -39,7 +39,7 @@ The local harnesses do not replace VPS dogfood. The release acceptance pass shou
 
 ## Command
 
-Use Go 1.26.8 or newer. `make security` checks reachable Go vulnerabilities against the current official database; CI and release verification run it in addition to `make ci`. See [Security](SECURITY.md) for the trust and maintenance boundary.
+Use Go 1.26.10 or newer. `make security` checks reachable Go vulnerabilities against the current official database; CI and release verification run it in addition to `make ci`. See [Security](SECURITY.md) for the trust and maintenance boundary.
 
 Run:
 

@@ -57,6 +57,29 @@ func (s *SQLiteStore) ListDeploymentsByStatus(ctx context.Context, status app.De
 	return deployments, nil
 }
 
+func (s *SQLiteStore) ListUnqueuedPendingDeployments(ctx context.Context) ([]app.Deployment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		select id, app_id, release_id, commit_sha, trigger, status, started_at, finished_at,
+		       failure_stage, failure_detail, retry_guidance, error_message
+		from deployments
+		where status = ? and trigger = ?
+		  and not exists (select 1 from events where id = 'evt_' || deployments.id || '_queued')
+		order by rtrim(started_at, 'Z'), id`, string(app.DeploymentStatusPending), string(app.DeploymentTriggerPush))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var deployments []app.Deployment
+	for rows.Next() {
+		deployment, err := scanDeployment(rows)
+		if err != nil {
+			return nil, err
+		}
+		deployments = append(deployments, deployment)
+	}
+	return deployments, rows.Err()
+}
+
 func (s *SQLiteStore) ClaimNextPendingDeployment(ctx context.Context) (deployment app.Deployment, found bool, returnErr error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -122,7 +145,8 @@ func (s *SQLiteStore) ClaimNextPendingDeployment(ctx context.Context) (deploymen
 }
 
 // RecordDeploymentQueued makes the accepted-ref and queued lifecycle records
-// visible together, before a worker can claim the pending deployment.
+// visible together, before a worker can claim the pending deployment. Repeated
+// recovery preserves existing events while completing a missing queue transition.
 func (s *SQLiteStore) RecordDeploymentQueued(ctx context.Context, accepted app.Event, queued app.Event) (returnErr error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -137,7 +161,8 @@ func (s *SQLiteStore) RecordDeploymentQueued(ctx context.Context, accepted app.E
 	for _, event := range []app.Event{accepted, queued} {
 		if _, err := tx.ExecContext(ctx, `
 			insert into events (id, app_id, type, message, created_at)
-			values (?, ?, ?, ?, ?)`,
+			values (?, ?, ?, ?, ?)
+			on conflict(id) do nothing`,
 			event.ID,
 			event.AppID,
 			event.Type,

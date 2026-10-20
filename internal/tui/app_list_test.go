@@ -6,12 +6,12 @@ func TestAppListScreenRowsExposeOperationalFields(t *testing.T) {
 	screen := NewAppListScreen(AppListView{
 		Items: []AppListItem{
 			{
-				ID:                  "app_1",
-				Name:                "my-app",
-				Status:              "healthy",
-				NodeID:              "local",
-				LatestReleaseStatus: "succeeded",
-				DomainCount:         2,
+				ID:                     "app_1",
+				Name:                   "my-app",
+				Status:                 "healthy",
+				NodeID:                 "local",
+				LatestDeploymentStatus: "succeeded",
+				DomainCount:            2,
 			},
 		},
 	})
@@ -30,8 +30,8 @@ func TestAppListScreenRowsExposeOperationalFields(t *testing.T) {
 	if row.NodeID != "local" {
 		t.Fatalf("NodeID = %q", row.NodeID)
 	}
-	if row.LatestReleaseStatus != "succeeded" {
-		t.Fatalf("LatestReleaseStatus = %q", row.LatestReleaseStatus)
+	if row.LatestDeploymentStatus != "succeeded" {
+		t.Fatalf("LatestDeploymentStatus = %q", row.LatestDeploymentStatus)
 	}
 	if row.DomainCount != 2 {
 		t.Fatalf("DomainCount = %d", row.DomainCount)

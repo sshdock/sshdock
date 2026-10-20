@@ -81,7 +81,7 @@ func (s *SQLiteStore) ListApps(ctx context.Context) ([]app.App, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		select id, name, node_id, repo_path, worktree_path, compose_path, status, created_at, updated_at
 		from apps
-		order by created_at, id`)
+		order by rtrim(created_at, 'Z'), id`)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (s *SQLiteStore) ListReleasesByApp(ctx context.Context, appID string) ([]ap
 		select id, app_id, commit_sha, compose_path, status, created_at, updated_at
 		from releases
 		where app_id = ?
-		order by created_at, id`, appID)
+		order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 		select id, commit_sha, status
 		from deployments
 		where app_id = ? and status in (?, ?)
-		order by started_at, id
+		order by rtrim(started_at, 'Z'), id
 		limit 1`,
 		model.AppID,
 		string(app.DeploymentStatusPending),
@@ -370,7 +370,7 @@ func (s *SQLiteStore) ListDeploymentsByApp(ctx context.Context, appID string) ([
 		       failure_stage, failure_detail, retry_guidance, error_message
 		from deployments
 		where app_id = ?
-		order by started_at, id`, appID)
+		order by rtrim(started_at, 'Z'), id`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +466,7 @@ func (s *SQLiteStore) ListDomains(ctx context.Context) ([]app.Domain, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		select id, app_id, service_name, domain_name, port, https, created_at, updated_at
 		from domains
-		order by created_at, id`)
+		order by rtrim(created_at, 'Z'), id`)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +489,7 @@ func (s *SQLiteStore) ListDomainsByApp(ctx context.Context, appID string) ([]app
 		select id, app_id, service_name, domain_name, port, https, created_at, updated_at
 		from domains
 		where app_id = ?
-		order by created_at, id`, appID)
+		order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +555,7 @@ func (s *SQLiteStore) ListEventsByApp(ctx context.Context, appID string) ([]app.
 		select id, app_id, type, message, created_at
 		from events
 		where app_id = ?
-		order by created_at, id`, appID)
+		order by rtrim(created_at, 'Z'), id`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -1021,6 +1021,8 @@ func scanAppConfigValue(s scanner) (AppConfigValue, error) {
 }
 
 func formatTime(value time.Time) string {
+	// UTC RFC3339Nano has variable precision. SQL sorts rtrim(column, 'Z') so
+	// a shorter fractional prefix precedes a later timestamp, including old rows.
 	return value.UTC().Format(time.RFC3339Nano)
 }
 

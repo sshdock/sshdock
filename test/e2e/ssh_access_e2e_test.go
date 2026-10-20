@@ -175,6 +175,7 @@ LogLevel ERROR
 
 	sshCommand := fmt.Sprintf("%s -p %d -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", sshPath, port, clientKeyPath)
 	pushEnv := append(env, "GIT_SSH_COMMAND="+sshCommand)
+	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, pushEnv, "push", "sshdock", "main")
 
 	status, err := deploymentStatusForCommit(filepath.Join(dataDir, "sshdock.db"), "ssh-app", commitSHA, app.DeploymentTriggerPush)

@@ -168,7 +168,7 @@ func assertRemoteMain(t *testing.T, repoPath string, want string) {
 
 func currentMainAttemptCount(t *testing.T, dbPath string, appName string, commitSHA string) int {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}

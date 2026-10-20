@@ -2,7 +2,13 @@ package appconfig
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/sshdock/sshdock/internal/compose"
 )
 
 type decryptedEntry struct {
@@ -26,7 +32,44 @@ func (s *Service) ResolveEnv(ctx context.Context, appID string) (map[string]stri
 }
 
 func (s *Service) ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error) {
-	return s.ResolveEnv(ctx, appID)
+	env, err := s.ResolveEnv(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	model, err := s.store.GetApp(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	sha, err := checkedOutCommit(model.RepoPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve checked-out revision for app %q: %w; redeploy current remote main", appID, err)
+	}
+	return compose.WithGitSHA(env, sha), nil
+}
+
+// SSHDock checks out full commit IDs into its worktree, leaving the bare
+// repository's HEAD detached. A newly accepted main may still be queued, so
+// resolving refs/heads/main here would select the wrong revision for operations.
+func checkedOutCommit(repoPath string) (string, error) {
+	if repoPath == "" {
+		return "", nil
+	}
+	head, err := os.ReadFile(filepath.Join(repoPath, "HEAD"))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	sha := strings.TrimSpace(string(head))
+	if strings.HasPrefix(sha, "ref: ") {
+		return "", nil // No detached checkout yet; do not use a pending branch tip.
+	}
+	decoded, err := hex.DecodeString(sha)
+	if err != nil || (len(decoded) != 20 && len(decoded) != 32) {
+		return "", fmt.Errorf("repository HEAD is not a full commit ID")
+	}
+	return strings.ToLower(sha), nil
 }
 
 func (s *Service) RedactionValues(ctx context.Context, appID string) (map[string]string, error) {

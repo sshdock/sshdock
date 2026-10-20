@@ -126,6 +126,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		env         map[string]string
 		wantService string
 		wantPort    int
+		wantReason  string
 	}{
 		{name: "Next.js", appName: "example-nextjs", directory: filepath.Join("frameworks", "nextjs"), wantService: "web", wantPort: 18100},
 		{name: "NestJS", appName: "example-nestjs", directory: filepath.Join("frameworks", "nestjs"), wantService: "web", wantPort: 18101},
@@ -133,7 +134,7 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 		{name: "Gin", appName: "example-gin", directory: filepath.Join("frameworks", "gin"), wantService: "web", wantPort: 18103},
 		{name: "Phoenix LiveView", appName: "example-phoenix", directory: filepath.Join("frameworks", "phoenix"), env: map[string]string{"SECRET_KEY_BASE": "phoenix-public-example-secret-key-base-must-be-at-least-sixty-four-bytes", "PHX_HOST": "127.0.0.1"}, wantService: "web", wantPort: 18104},
 		{name: "WordPress", appName: "example-wordpress", directory: filepath.Join("software", "wordpress"), env: map[string]string{"WORDPRESS_DB_NAME": "wordpress", "WORDPRESS_DB_USER": "wordpress", "WORDPRESS_DB_PASSWORD": "public-example-route-password", "WORDPRESS_DB_ROOT_PASSWORD": "public-example-route-root-password"}, wantService: "web", wantPort: 18200},
-		{name: "Gitea", appName: "example-gitea", directory: filepath.Join("software", "gitea"), env: map[string]string{"GITEA_DOMAIN": "gitea.example.com", "GITEA_ROOT_URL": "https://gitea.example.com/", "GITEA_SECRET_KEY": "public-example-gitea-secret-key", "GITEA_INTERNAL_TOKEN": "public-example-gitea-internal-token"}, wantService: "web", wantPort: 18201},
+		{name: "Gitea", appName: "example-gitea", directory: filepath.Join("software", "gitea"), env: map[string]string{"GITEA_DOMAIN": "gitea.example.com", "GITEA_ROOT_URL": "https://gitea.example.com/", "GITEA_SECRET_KEY": "public-example-gitea-secret-key", "GITEA_INTERNAL_TOKEN": "public-example-gitea-internal-token"}, wantReason: "effective Compose model has no service with exactly one published TCP port"},
 		{name: "Planka", appName: "example-planka", directory: filepath.Join("software", "planka"), env: map[string]string{"PLANKA_BASE_URL": "http://127.0.0.1:18204/", "PLANKA_DB_PASSWORD": "public-example-planka-database-password", "PLANKA_SECRET_KEY": "public-example-planka-secret-key", "PLANKA_ADMIN_EMAIL": "admin@example.com", "PLANKA_ADMIN_PASSWORD": "public-example-planka-admin-password", "PLANKA_ADMIN_NAME": "Public Example Admin", "PLANKA_ADMIN_USERNAME": "public-example-admin"}, wantService: "web", wantPort: 18204},
 	}
 	for _, test := range tests {
@@ -155,8 +156,8 @@ func TestPublicExamplesEffectiveRouteEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Deploy effective-model seam: %v", err)
 			}
-			if !result.RouteFound || result.RouteTarget != (compose.RouteTarget{ServiceName: test.wantService, Port: test.wantPort}) {
-				t.Fatalf("route result = %#v, want %s:%d", result, test.wantService, test.wantPort)
+			if result.RouteFound != (test.wantPort != 0) || result.RouteTarget != (compose.RouteTarget{ServiceName: test.wantService, Port: test.wantPort}) || result.RouteReason != test.wantReason {
+				t.Fatalf("route result = %#v, want %s:%d with reason %q", result, test.wantService, test.wantPort, test.wantReason)
 			}
 		})
 	}

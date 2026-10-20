@@ -39,10 +39,10 @@ func TestDockerRunnerDeployUsesNativeComposeModelAndWaitsForHealth(t *testing.T)
 		t.Fatalf("route result = %#v, want web:3100", result)
 	}
 	want := []Command{
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--format", "json"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "pull", "--ignore-buildable"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "build"}},
-		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "up", "-d", "--wait", "--wait-timeout", "120"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--format", "json"}, Env: map[string]string{GitSHAEnv: "abc123"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "pull", "--ignore-buildable"}, Env: map[string]string{GitSHAEnv: "abc123"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "build"}, Env: map[string]string{GitSHAEnv: "abc123"}},
+		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "up", "-d", "--wait", "--wait-timeout", "120"}, Env: map[string]string{GitSHAEnv: "abc123"}},
 	}
 	if !reflect.DeepEqual(executor.Commands, want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)

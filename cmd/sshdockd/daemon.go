@@ -69,7 +69,7 @@ func runDaemonContext(ctx context.Context, stderr io.Writer) int {
 		Checkout: gitrecv.LocalWorktreeCheckout{},
 		Output:   io.Discard,
 	})
-	worker := gitrecv.NewQueuedDeploymentWorker(gitrecv.QueuedDeploymentWorkerConfig{Store: sqlite, Executor: executor})
+	worker := gitrecv.NewQueuedDeploymentWorker(gitrecv.QueuedDeploymentWorkerConfig{Store: sqlite, Executor: executor, LocksDir: cfg.LocksDir})
 	return runQueuedDeploymentLoop(ctx, worker, stderr)
 }
 

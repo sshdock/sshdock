@@ -55,11 +55,12 @@ Each failed check prints `why <name>: ...` and `fix <name>: ...` lines. A failed
 
 ### `sshdock backup create [--output <archive>]`
 
-Create a gzip tar archive of SSHDock state.
+Create a gzip tar archive of SSHDock state. This copies files, not an online SQLite snapshot: wait for deployments to finish, pause CI pushes and operator mutations, and stop the daemon before creating it. App containers keep running.
 
 ```bash
-sudo sshdock backup create
+sudo systemctl stop sshdockd
 sudo sshdock backup create --output /root/sshdock-backup.tar.gz
+sudo systemctl start sshdockd
 ```
 
 The default output path is:
@@ -95,8 +96,8 @@ Restore an SSHDock backup archive onto the current host config paths.
 ```bash
 sudo systemctl stop sshdockd
 sudo sshdock backup restore /root/sshdock-backup.tar.gz
-sudo sshdock diagnostics
 sudo systemctl start sshdockd
+sudo sshdock diagnostics
 ```
 
 Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.
@@ -272,6 +273,8 @@ git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
 ```
 
 Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. After acceptance, push output prints `deploy: queued <deployment-id>` and attaches to that attempt's redacted log until it reaches a terminal state or the client disconnects.
+
+If a receive is interrupted after updating `main` but before recording its queue events, SSHDock recovers the original pending attempt after the receive finishes or through the daemon. Recovery holds the app's receive lock and verifies that remote `main` matches the attempt before restoring its accepted/queued events. An in-progress receive or a reservation for a different commit is never deployed by recovery. The deployment ID, logs, and queue order are preserved.
 
 Pressing Ctrl-C or losing the SSH connection stops only the client attachment. The daemon continues the accepted deployment. Reconnect to the same attempt with `sshdock deployments logs <app> <deployment-id> -f`; if the ID was not saved, find it with `sshdock deployments list <app>` or follow the latest attempt with `sshdock deployments logs <app> -f`.
 
@@ -604,6 +607,8 @@ ssh -T sshdock@server
 When `SSH_ORIGINAL_COMMAND` is present, the operator accepts app inspection, lifecycle operations, domain inspection, logs, release/deployment/event inspection, config commands, restricted service exec, and removable one-off runs. Lifecycle forms are restricted to `apps start`, `apps stop`, `apps restart`, `apps exec`, `apps run`, `apps redeploy`, and `apps remove <name> --force`. Exec and run require `--` before a non-empty container command. The operator preserves quoted argv boundaries, rejects local administration and unsupported arguments, and never invokes a host shell. Run `ssh sshdock@server help` for the exact remote command list. Host administration remains local through `sudo sshdock`.
 
 Interactive TUI tabs are `Summary`, `Services`, `Routes`, `Releases`, `Deploys`, `Events`, and `Logs`. The dashboard summarizes recent deployment attempts; use `sshdock deployments list <app>` for complete history with start and finish times, failure stage, redacted detail, and retry guidance.
+
+The app list's `Deploy` column (plain SSH output: `deploy=`) shows the latest deployment attempt from the shared health report. After Git-selected recovery it reflects the recovered attempt, even when a newer failed release remains in history. Release status is historical and does not replace attempt status after a failed same-commit retry. History, queue selection and log retention order UTC timestamps chronologically, including existing records with different fractional-second precision.
 
 Useful keys:
 

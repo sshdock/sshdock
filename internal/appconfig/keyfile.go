@@ -28,11 +28,35 @@ func LoadOrCreateHostKey(path string) ([]byte, error) {
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, fmt.Errorf("generate config encryption key: %w", err)
 	}
-	if err := os.WriteFile(path, key, 0o600); err != nil {
+	// Publish a complete key without replacing a concurrent creator's key.
+	// O_EXCL on the final path alone would expose an empty/partial key to readers.
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".config-key-*")
+	if err != nil {
+		return nil, fmt.Errorf("stage config encryption key %s: %w", path, err)
+	}
+	defer os.Remove(temporary.Name())
+	defer temporary.Close()
+	if _, err := temporary.Write(key); err != nil {
 		return nil, fmt.Errorf("write config encryption key %s: %w", path, err)
 	}
-	if err := validateKeyFileMode(path); err != nil {
-		return nil, err
+	if err := temporary.Sync(); err != nil {
+		return nil, fmt.Errorf("sync config encryption key %s: %w", path, err)
+	}
+	if err := temporary.Close(); err != nil {
+		return nil, fmt.Errorf("close staged config encryption key: %w", err)
+	}
+	if err := os.Link(temporary.Name(), path); os.IsExist(err) {
+		return LoadHostKey(path)
+	} else if err != nil {
+		return nil, fmt.Errorf("install config encryption key %s: %w", path, err)
+	}
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return nil, fmt.Errorf("open config key directory: %w", err)
+	}
+	defer directory.Close()
+	if err := directory.Sync(); err != nil {
+		return nil, fmt.Errorf("sync config key directory: %w", err)
 	}
 	return key, nil
 }

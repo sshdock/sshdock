@@ -126,7 +126,7 @@ func waitForCurl(t *testing.T, curlPath string, url string, want string, logPath
 
 func assertDomainRow(t *testing.T, dbPath string, appID string, domainName string, port int) {
 	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}

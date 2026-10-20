@@ -398,23 +398,32 @@ detect_arch() {
 
 download_release() {
 	need_command tar
-	local arch base_url url tmp archive
+	need_command sha256sum
+	local arch base_url url archive asset checksum expected_checksum expected_file actual_checksum
 	arch="$(detect_arch)"
 	base_url="${SSHDOCK_RELEASE_BASE_URL:-https://github.com/sshdock/sshdock/releases/download}"
-	url="${base_url%/}/${SSHDOCK_TAG}/sshdock_${SSHDOCK_TAG}_linux_${arch}.tar.gz"
-	tmp="$(mktemp -d)"
-	archive="$tmp/sshdock.tar.gz"
+	asset="sshdock_${SSHDOCK_TAG}_linux_${arch}.tar.gz"
+	url="${base_url%/}/${SSHDOCK_TAG}/$asset"
+	DOWNLOAD_DIR="$(mktemp -d)"
+	archive="$DOWNLOAD_DIR/$asset"
+	checksum="$archive.sha256"
 
 	if command -v curl >/dev/null 2>&1; then
 		run curl -fsSL "$url" -o "$archive"
+		run curl -fsSL "$url.sha256" -o "$checksum"
 	elif command -v wget >/dev/null 2>&1; then
 		run wget -qO "$archive" "$url"
+		run wget -qO "$checksum" "$url.sha256"
 	else
 		die "curl or wget is required to download SSHDock binaries"
 	fi
 
-	run tar -xzf "$archive" -C "$tmp"
-	SOURCE_BIN_DIR="$tmp"
+	read -r expected_checksum expected_file < "$checksum" || die "cannot read release checksum"
+	[[ "$expected_checksum" =~ ^[0-9a-f]{64}$ ]] && [ "$expected_file" = "$asset" ] || die "invalid checksum for $asset"
+	actual_checksum="$(sha256sum "$archive")"
+	[ "${actual_checksum%% *}" = "$expected_checksum" ] || die "checksum mismatch for $asset; download the release again"
+	run tar -xzf "$archive" -C "$DOWNLOAD_DIR" sshdock sshdockd
+	SOURCE_BIN_DIR="$DOWNLOAD_DIR"
 }
 
 install_binaries() {
@@ -426,15 +435,27 @@ install_binaries() {
 	source="${SOURCE_BIN_DIR%/}"
 
 	for bin in sshdock sshdockd; do
-		if [ ! -x "$source/$bin" ]; then
+		if [ ! -f "$source/$bin" ] || [ -L "$source/$bin" ] || [ ! -x "$source/$bin" ]; then
 			die "$source/$bin is required and must be executable"
 		fi
-		target="$bin_dir_actual/$bin"
-		tmp_bin="$bin_dir_actual/.$bin.tmp.$$"
+		run "$source/$bin" version >/dev/null || die "$bin cannot run; check the release and host architecture"
+	done
+	STAGING_DIR="$(mktemp -d "$bin_dir_actual/.sshdock-install.XXXXXX")"
+	for bin in sshdock sshdockd; do
+		tmp_bin="$STAGING_DIR/$bin"
 		run cp "$source/$bin" "$tmp_bin"
 		run chmod 0755 "$tmp_bin"
+	done
+	for bin in sshdock sshdockd; do
+		target="$bin_dir_actual/$bin"
+		tmp_bin="$STAGING_DIR/$bin"
 		run mv -f "$tmp_bin" "$target"
 	done
+}
+
+cleanup_install() {
+	if [ -n "${DOWNLOAD_DIR:-}" ]; then rm -rf -- "$DOWNLOAD_DIR"; fi
+	if [ -n "${STAGING_DIR:-}" ]; then rm -rf -- "$STAGING_DIR"; fi
 }
 
 write_git_receive_wrapper() {
@@ -596,6 +617,7 @@ reload_caddy() {
 }
 
 need_env SSHDOCK_TAG
+trap cleanup_install EXIT
 
 BOOTSTRAP_ROOT="${SSHDOCK_BOOTSTRAP_ROOT:-/}"
 SOURCE_BIN_DIR="${SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR:-}"

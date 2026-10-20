@@ -141,7 +141,7 @@ func TestSmokeFakeAppLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListApps: %v", err)
 	}
-	view := tui.NewAppListView(apps, map[string]app.Release{model.ID: {ID: release.ID, Status: app.ReleaseStatusSucceeded}}, map[string][]app.Domain{model.ID: {domain}})
+	view := tui.NewAppListView(apps, map[string]app.DeploymentStatus{model.ID: app.DeploymentStatusSucceeded}, map[string][]app.Domain{model.ID: {domain}})
 	screen := tui.NewAppListScreen(view)
 	rows := screen.Rows()
 	if len(rows) != 1 {

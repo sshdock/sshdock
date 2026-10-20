@@ -2,6 +2,7 @@ package compose
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,6 +10,18 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/dotenv"
 )
+
+const GitSHAEnv = "SSHDOCK_GIT_SHA"
+
+// WithGitSHA binds interpolation to this attempt without mutating app config.
+func WithGitSHA(env map[string]string, commitSHA string) map[string]string {
+	result := maps.Clone(env)
+	if result == nil {
+		result = make(map[string]string)
+	}
+	result[GitSHAEnv] = commitSHA
+	return result
+}
 
 func interpolationEnvironment(composePath string, extra map[string]string) (map[string]string, error) {
 	environment := make(map[string]string)

@@ -70,7 +70,9 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	commitSHA := strings.TrimSpace(runGitOutput(t, sourceDir, nil, "rev-parse", "HEAD"))
 	releaseID := app.ReleaseID(appName, commitSHA)
 	runGit(t, sourceDir, nil, "remote", "add", "prod", cfg.AppRepoPath(appName))
+	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, env, "push", "prod", "main")
+	waitForDeploymentTerminal(t, cfg.SQLiteDBPath, appName, commitSHA)
 
 	domain := "example.com"
 	runCommand(t, root, env, sshdockPath, "domains", "attach", appName, "web", domain, "--port", "3000")

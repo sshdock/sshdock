@@ -287,7 +287,7 @@ func TestServiceRedeployCurrentMainPassesResolvedConfigEnvironment(t *testing.T)
 	if resolver.requests[0] != (configResolveRequest{appID: "app_1"}) {
 		t.Fatalf("resolver request = %#v", resolver.requests[0])
 	}
-	if len(runner.deploys) != 1 || runner.deploys[0].Env["DATABASE_URL"] != "postgres://secret" {
+	if len(runner.deploys) != 1 || runner.deploys[0].Env["DATABASE_URL"] != "postgres://secret" || runner.deploys[0].Env[compose.GitSHAEnv] != "new" {
 		t.Fatalf("deploy requests = %#v", runner.deploys)
 	}
 }

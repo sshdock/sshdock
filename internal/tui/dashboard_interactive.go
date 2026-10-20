@@ -540,14 +540,14 @@ func (m InteractiveDashboardModel) appListView(width int, compact bool) string {
 		rows = append(rows, []string{
 			strings.TrimSpace(cursor + " " + item.Name),
 			item.Status,
-			valueOrDash(item.LatestReleaseStatus),
+			valueOrDash(item.LatestDeploymentStatus),
 			fmt.Sprintf("%d", item.DomainCount),
 		})
 	}
 	columns := []dashboardTableColumn{
 		{Header: "App", MinWidth: 10, Flex: true, Priority: 0},
 		{Header: "State", MinWidth: 7, Priority: 1},
-		{Header: "Release", MinWidth: 9, Priority: 2},
+		{Header: "Deploy", MinWidth: 9, Priority: 2},
 		{Header: "Doms", MinWidth: 4, Priority: 3},
 	}
 	if compact {
@@ -916,7 +916,7 @@ func appMatchesFilter(item AppListItem, filter string) bool {
 		item.Name,
 		item.Status,
 		item.NodeID,
-		item.LatestReleaseStatus,
+		item.LatestDeploymentStatus,
 		fmt.Sprintf("domains=%d", item.DomainCount),
 	}, " "))
 	for _, term := range strings.Fields(filter) {

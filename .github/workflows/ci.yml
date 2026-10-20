@@ -5,6 +5,10 @@ on:
     branches:
       - main
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   ci:
@@ -21,3 +25,6 @@ jobs:
 
       - name: Run CI
         run: make ci
+
+      - name: Check reachable Go vulnerabilities
+        run: make security

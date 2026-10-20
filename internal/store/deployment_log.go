@@ -28,7 +28,7 @@ func (s *SQLiteStore) LatestDeploymentLog(ctx context.Context, appID string) (ap
 		select deployment_id, app_id, content, truncated, created_at, updated_at
 		from deployment_logs
 		where app_id = ?
-		order by created_at desc, deployment_id desc
+		order by rtrim(created_at, 'Z') desc, deployment_id desc
 		limit 1`, appID)
 	log, err := scanDeploymentLog(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -96,7 +96,7 @@ func retainRecentDeploymentLogs(ctx context.Context, executor deploymentLogExecu
 			select deployment_id
 			from deployment_logs
 			where app_id = ?
-			order by created_at desc, deployment_id desc
+			order by rtrim(created_at, 'Z') desc, deployment_id desc
 			limit -1 offset 20
 		)`, appID); err != nil {
 		return fmt.Errorf("retain deployment logs: %w", err)

@@ -17,6 +17,7 @@ import (
 )
 
 type receivePackStore interface {
+	pendingDeploymentStore
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
 	ListApps(ctx context.Context) ([]app.App, error)
@@ -37,13 +38,14 @@ type ReceivePackRequest struct {
 }
 
 type ReceivePackServiceConfig struct {
-	Store             receivePackStore
-	AppsDir           string
-	LocksDir          string
-	NodeID            string
-	RepoManager       *RepoManager
-	ReceivePackRunner ReceivePackRunner
-	Now               func() time.Time
+	Store               receivePackStore
+	AppsDir             string
+	LocksDir            string
+	NodeID              string
+	RepoManager         *RepoManager
+	ReceivePackRunner   ReceivePackRunner
+	Now                 func() time.Time
+	CurrentMainResolver app.CurrentMainResolver
 }
 
 type ReceivePackService struct {
@@ -55,6 +57,7 @@ type ReceivePackService struct {
 	deploymentLogs    *DeploymentLogStreamer
 	coordination      *deploycoord.Manager
 	now               func() time.Time
+	currentMain       app.CurrentMainResolver
 }
 
 func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService {
@@ -80,6 +83,10 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 	if locksDir == "" {
 		locksDir = filepath.Join(filepath.Dir(config.AppsDir), "locks")
 	}
+	currentMain := config.CurrentMainResolver
+	if currentMain == nil {
+		currentMain = LocalCurrentMainResolver{}
+	}
 
 	return &ReceivePackService{
 		store:             config.Store,
@@ -90,6 +97,7 @@ func NewReceivePackService(config ReceivePackServiceConfig) *ReceivePackService 
 		deploymentLogs:    NewDeploymentLogStreamer(DeploymentLogStreamerConfig{Store: config.Store}),
 		coordination:      deploycoord.NewManager(locksDir),
 		now:               now,
+		currentMain:       currentMain,
 	}
 }
 
@@ -176,7 +184,8 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	if err != nil {
 		return fmt.Errorf("list deployments before receive for %q: %w", model.Name, err)
 	}
-	if err := s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr); err != nil {
+	receiveErr := s.receivePackRunner.RunReceivePack(ctx, model.RepoPath, request.Stdin, request.Stdout, request.Stderr)
+	if err := errors.Join(receiveErr, recoverPendingDeployments(ctx, s.store, s.currentMain, model)); err != nil {
 		return err
 	}
 	deployment, found, err := s.acceptedDeploymentAfterReceive(ctx, model.ID, before)

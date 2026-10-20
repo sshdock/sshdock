@@ -57,7 +57,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkDir("operator authorized_keys dir", filepath.Dir(cfg.OperatorAuthorizedKeysPath))
 	report.checkDir("caddy config dir", filepath.Dir(cfg.CaddyConfigPath))
 
-	serverConfig, hasServerConfig := report.checkStore(ctx, cfg, executor)
+	serverConfig, hasServerConfig, requiresHTTPS := report.checkStore(ctx, cfg, executor)
 
 	report.checkLinux(ctx, executor)
 	report.checkCommand(ctx, executor, "docker", Command{Name: "docker", Args: []string{"version"}}, "Docker Engine runs app containers.", "install or start Docker Engine, then rerun sudo sshdock diagnostics")
@@ -68,7 +68,7 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkCommand(ctx, executor, "git", Command{Name: "git", Args: []string{"--version"}}, "Git receives app pushes and manages bare repositories.", "install Git")
 	report.checkCommand(ctx, executor, "systemd", Command{Name: "systemctl", Args: []string{"--version"}}, "The installer manages sshdockd, Docker, Caddy, and sshd through systemd.", "use a systemd-based Ubuntu or Debian VPS")
 	report.checkCommand(ctx, executor, "sshdockd service", Command{Name: "systemctl", Args: []string{"is-active", "sshdockd.service"}}, "The daemon must be active for Git receive hooks and operator access.", "run sudo systemctl enable --now sshdockd.service and inspect sudo systemctl status sshdockd.service")
-	report.checkPorts(ctx, executor)
+	report.checkPorts(ctx, executor, requiresHTTPS)
 	report.checkDNS(ctx, executor, serverConfig, hasServerConfig)
 	report.checkCaddyImport(cfg)
 	report.checkCommand(ctx, executor, "caddy config", Command{Name: "caddy", Args: []string{"validate", "--config", cfg.CaddyMainConfigPath}}, "Caddy must be able to load the main config and SSHDock's generated import.", "fix the Caddyfile error, then run sudo systemctl reload caddy")
@@ -162,24 +162,39 @@ func (r *Report) checkCommand(ctx context.Context, executor CommandExecutor, nam
 	r.add(name, true, strings.TrimSpace(command.Name+" "+strings.Join(command.Args, " ")))
 }
 
-func (r *Report) checkStore(ctx context.Context, cfg config.Config, executor CommandExecutor) (store.ServerConfig, bool) {
+func (r *Report) checkStore(ctx context.Context, cfg config.Config, executor CommandExecutor) (store.ServerConfig, bool, bool) {
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
 		r.addFix("sqlite migrations", false, err.Error(), "SSHDock stores app, release, route, key, and config metadata in SQLite.", "restore or repair sshdock.db, then rerun sudo sshdock diagnostics")
-		return store.ServerConfig{}, false
+		return store.ServerConfig{}, false, true
 	}
 	serverConfig, err := sqlite.GetServerConfig(ctx)
 	hasServerConfig := err == nil
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	serverConfigReadable := err == nil || errors.Is(err, store.ErrNotFound)
+	if !serverConfigReadable {
 		r.addFix("server config", false, err.Error(), "Diagnostics need the stored base domain to validate DNS.", "repair sshdock.db or rerun sudo sshdock server domain set <domain>")
+	}
+	requiresHTTPS := true
+	domains, err := sqlite.ListDomains(ctx)
+	if err != nil {
+		r.addFix("app routes", false, err.Error(), "Diagnostics need stored routes to determine whether Caddy must listen for HTTPS.", "restore or repair sshdock.db, then rerun sudo sshdock diagnostics")
+	} else if serverConfigReadable {
+		requiresHTTPS = false
+		// Caddy determines HTTPS from the rendered address, not the stored HTTPS metadata.
+		for _, domain := range domains {
+			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(domain.DomainName)), "http://") {
+				requiresHTTPS = true
+				break
+			}
+		}
 	}
 	r.checkRestartPolicies(ctx, cfg, executor, sqlite)
 	if closeErr := sqlite.Close(); closeErr != nil {
 		r.addFix("sqlite migrations", false, closeErr.Error(), "SSHDock stores app, release, route, key, and config metadata in SQLite.", "close other database users and rerun sudo sshdock diagnostics")
-		return serverConfig, hasServerConfig
+		return serverConfig, hasServerConfig, true
 	}
 	r.add("sqlite migrations", true, cfg.SQLiteDBPath)
-	return serverConfig, hasServerConfig
+	return serverConfig, hasServerConfig, requiresHTTPS
 }
 
 func (r *Report) checkLinux(ctx context.Context, executor CommandExecutor) {
@@ -195,19 +210,27 @@ func (r *Report) checkLinux(ctx context.Context, executor CommandExecutor) {
 	r.add("operating system", true, "Linux")
 }
 
-func (r *Report) checkPorts(ctx context.Context, executor CommandExecutor) {
+func (r *Report) checkPorts(ctx context.Context, executor CommandExecutor, requiresHTTPS bool) {
 	output, err := runDiagnosticCommand(ctx, executor, Command{Name: "ss", Args: []string{"-ltn"}})
 	for _, port := range []string{"22", "80", "443"} {
 		name := "port " + port
 		if err != nil {
-			r.addFix(name, false, err.Error(), "Public SSHDock installs need SSH, HTTP, and HTTPS listeners reachable.", "install iproute2 so ss -ltn works, then confirm TCP port "+port+" is open")
+			r.addFix(name, false, err.Error(), "Public SSHDock installs need local SSH, HTTP, and configured HTTPS listeners.", "install iproute2 so ss -ltn works, then confirm TCP port "+port+" is listening")
 			continue
 		}
 		if listensOnPort(output, port) {
 			r.add(name, true, "listening")
 			continue
 		}
-		r.addFix(name, false, "not listening", "Public SSHDock installs need SSH, HTTP, and HTTPS listeners reachable.", "open TCP port "+port+" in the host firewall and VPS provider firewall")
+		if port == "443" && !requiresHTTPS {
+			r.addWarning(name, "not listening; no HTTPS app routes configured")
+			continue
+		}
+		service := "Caddy"
+		if port == "22" {
+			service = "OpenSSH"
+		}
+		r.addFix(name, false, "not listening", "Public SSHDock installs need local SSH, HTTP, and configured HTTPS listeners.", "check the "+service+" service and its listener configuration, then rerun ss -ltn")
 	}
 }
 

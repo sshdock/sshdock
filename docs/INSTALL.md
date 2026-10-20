@@ -508,7 +508,9 @@ The command checks:
 - Git
 - SQLite open and migration execution
 
-Each check is printed as `ok <name>: <detail>` or `fail <name>: <detail>`. Failed checks also print `why <name>: ...` and `fix <name>: ...` lines. A failed check exits non-zero.
+When no HTTPS app routes are configured, a missing port `443` listener is a warning because Caddy enables HTTPS after a route is added; listener checks do not verify host or provider firewall rules.
+
+Each check is printed as `ok <name>: <detail>`, `warn <name>: <detail>`, or `fail <name>: <detail>`. Failed checks also print `why <name>: ...` and `fix <name>: ...` lines. A failed check exits non-zero.
 
 ## Backup And Restore
 

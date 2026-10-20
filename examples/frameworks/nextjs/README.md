@@ -21,11 +21,11 @@ Replace `example.com` below with the server's base domain.
 
 ## Topology
 
-The root `compose.yml` builds one `web` service. The Dockerfile generates the official starter in a source stage, builds it in an intermediate stage, prunes development dependencies, and copies only production output and runtime dependencies into the final non-root image. Compose publishes port `3000` only on `127.0.0.1:18100`, checks the real starter page, and applies `restart: unless-stopped`.
+The root `compose.yml` builds one `web` service. The Dockerfile generates the official starter in a source stage, builds it in an intermediate stage, installs production dependencies afresh from its generated lockfile, and copies only production output and runtime dependencies into the final non-root image. Compose publishes port `3000` only on `127.0.0.1:18100`, checks the real starter page, and applies `restart: unless-stopped`.
 
 ## Pinned versions
 
-- Generator and framework source: `create-next-app@16.2.10`
+- Generator and framework source: `create-next-app@16.4.2`
 - Builder and runtime: `node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f`
 
 The generator version and multi-platform Node manifest are immutable inputs. npm registry availability and transitive resolution can still change, so this is a tested compatibility claim for this SSHDock commit, not a promise of bit-for-bit rebuilds forever.

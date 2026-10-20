@@ -1,4 +1,4 @@
-ARG CREATE_NEXT_APP_VERSION=16.2.10
+ARG CREATE_NEXT_APP_VERSION=16.4.2
 ARG NODE_IMAGE=node:24.13.0-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
 
 FROM ${NODE_IMAGE} AS source
@@ -12,7 +12,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=source /app ./
 RUN npm run build \
-    && npm prune --omit=dev --no-audit --no-fund
+    && npm ci --omit=dev --no-audit --no-fund
 
 FROM build AS runtime-output
 RUN rm -rf .next/cache .next/diagnostics .next/types

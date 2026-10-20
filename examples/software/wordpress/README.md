@@ -28,13 +28,13 @@ These are exact supported version-and-variant tags with multi-platform manifest 
 
 ## Deploy
 
-Until a release tag contains this recipe, copy its two public files from `main`:
+Copy this recipe's two public files from the matching `v1.0.0` release:
 
 ```bash
 mkdir wordpress
 cd wordpress
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/software/wordpress
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/software/wordpress
 git init -b main
 git add .
 git commit -m "Deploy WordPress"

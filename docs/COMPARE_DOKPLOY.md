@@ -22,7 +22,7 @@ Use Dokploy when you want:
 
 ## Quick Comparison
 
-| Area | SSHDock v0 | Dokploy |
+| Area | SSHDock | Dokploy |
 | --- | --- | --- |
 | Primary model | Git push Compose apps to one VPS | Web UI for applications, Docker Compose, providers, remote servers, and supporting services |
 | Deploy trigger | Git push to SSHDock's Git SSH endpoint | Provider integrations, Git repositories, Docker images, zip uploads, raw Docker Compose, and webhooks |
@@ -32,9 +32,9 @@ Use Dokploy when you want:
 | Config/secrets | Compose interpolation declares requirements; flat encrypted values are stored by SSHDock | UI-defined environment variables for applications and Docker Compose |
 | Domains | Base-domain defaults plus `sshdock domains attach/list/check` | UI-managed domains for applications and Docker Compose |
 | Logs and deploy history | CLI and SSH dashboard show logs, releases, deployments, events, and failure detail | UI log viewer and deployment history |
-| Multi-server | Not in v0 | Documented remote-server and cluster-oriented surfaces |
+| Multi-server | Not supported | Documented remote-server and cluster-oriented surfaces |
 | Backups | SSHDock host-state backup; Docker volume inventory only by default | Dokploy has backup and volume-backup features for supported setups |
-| Teams/RBAC | Not in v0 | Team/enterprise surfaces exist in Dokploy docs |
+| Teams/RBAC | Not supported | Team/enterprise surfaces exist in Dokploy docs |
 
 ## What Migrates Well
 

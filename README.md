@@ -2,11 +2,11 @@
 
 Git push Compose apps. Operate over SSH.
 
-**Under active development:** SSHDock is good for testing and dogfooding, but it is not for production yet. Expect rough edges and breaking changes.
+SSHDock targets a trusted operator on one Linux VPS. See the [release validation boundary](docs/RELEASE_ACCEPTANCE.md) for the tested environment and operational limits.
 
 SSHDock is an SSH-native PaaS for solo developers running Docker Compose apps on one VPS. It gives you a Heroku-like app lifecycle without a web dashboard: install once, push over Git SSH, let SSHDock run Compose, route through Caddy, and operate from the terminal.
 
-v0 is intentionally small:
+SSHDock stays small:
 
 - single node
 - Docker Engine and Docker Compose
@@ -17,22 +17,20 @@ v0 is intentionally small:
 
 SSHDock is not a Kubernetes platform, hosted cloud product, multi-node scheduler, team/RBAC system, marketplace, or web control panel.
 
-## Published Release: v0.3.1
+## Published Release: v1.0.0
 
-The latest published release is [v0.3.1](https://github.com/sshdock/sshdock/releases/tag/v0.3.1). Install it on a fresh Ubuntu/Debian server with its matching bootstrap script:
+Install [v1.0.0](https://github.com/sshdock/sshdock/releases/tag/v1.0.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v1.0.0 bash bootstrap.sh
 ```
 
-For the complete v0.3.1 deployment and operations flow, follow the [v0.3.1 quick start](https://github.com/sshdock/sshdock/blob/v0.3.1/README.md#quick-start) and [v0.3.1 installation guide](https://github.com/sshdock/sshdock/blob/v0.3.1/docs/INSTALL.md). That release uses `ssh dashboard@sshdock.example.com`; it does not have the newer `sshdock` operator account or durable deployment logs described below.
+Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/README.md#quick-start) and [v1.0.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
 
-## Development Quick Start (Unreleased)
+## Quick Start
 
-The remaining usage documentation describes the current development checkout, not v0.3.1. Start with the [local development install](docs/INSTALL.md#local-development-install-unreleased) on a dedicated test server. No published release currently provides this full command set. Keep the bootstrap script and binaries from the same checkout.
-
-Set the base domain and authorize your deploy/operator key:
+After installation, set the base domain and authorize your deploy/operator key:
 
 ```bash
 sudo sshdock server domain set example.com
@@ -84,7 +82,7 @@ https://my-app.example.com
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 
-You can build on the VPS (**Local Build**) or publish commit-tagged images from your own CI and registry (**External Build**). Both use the same Git push and Compose contract. See [External builds](docs/EXTERNAL_BUILDS.md) for `SSHDOCK_GIT_SHA` and a complete GitHub Actions/GHCR example; this metadata requires a version newer than v0.3.1.
+You can build on the VPS (**Local Build**) or publish commit-tagged images from your own CI and registry (**External Build**). Both use the same Git push and Compose contract. See [External builds](docs/EXTERNAL_BUILDS.md) for `SSHDOCK_GIT_SHA` and a complete GitHub Actions/GHCR example; this metadata is included in v1.0.0.
 
 Remote `main` is the desired source revision. Push any local branch, tag, or commit explicitly to remote `main`; other destination refs are rejected. An accepted push records a durable pending deployment, prints its deployment ID, and follows its redacted deployment log while the daemon owns the work. Pressing Ctrl-C or losing the SSH connection detaches only that client; it does not cancel the accepted deployment. Reconnect with `deployments logs <app> <deployment-id> -f`, or use `deployments list <app>` to find the ID.
 

@@ -8,13 +8,13 @@ Replace `example.com` below with the SSHDock base domain.
 
 ## Deploy the Laravel probe
 
-Copy the untouched Laravel deployment envelope from `main` until a release tag contains this lab:
+Copy the untouched Laravel deployment envelope from the matching `v1.0.0` release:
 
 ```bash
 mkdir restricted-ssh-operations
 cd restricted-ssh-operations
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/frameworks/laravel
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/laravel
 git init -b main
 git add .
 git commit -m "Deploy Laravel restricted SSH operations lab"

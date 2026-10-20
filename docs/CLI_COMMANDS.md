@@ -1,6 +1,6 @@
 # SSHDock CLI Commands
 
-This is the command reference for the v0 SSHDock binaries.
+This is the command reference for the SSHDock v1.0.0 binaries.
 
 SSHDock has two command-line entry points:
 
@@ -102,7 +102,7 @@ sudo sshdock diagnostics
 
 Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.
 
-Run restore as a user that can preserve SSHDock state ownership and modes. v0 backup archives are intended for compatible single-node SSHDock installs, not cross-host migration guarantees.
+Run restore as a user that can preserve SSHDock state ownership and modes. SSHDock backup archives are intended for compatible single-node SSHDock installs, not cross-host migration guarantees.
 
 ### `sshdock config set <app> <key>`
 
@@ -199,7 +199,7 @@ This local encryption model protects against database-only leaks and ordinary SQ
 
 ### `sshdock server domain set <domain>`
 
-Set the canonical v0 base domain. SSHDock derives the Git/operator control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.
+Set the canonical base domain. SSHDock derives the Git/operator control host as `sshdock.<domain>` and default app hosts as `<app>.<domain>`.
 
 ```bash
 sudo sshdock server domain set example.com
@@ -282,7 +282,7 @@ Git ref acceptance and deployment completion are separate. If deployment fails, 
 
 When a base domain is configured, inspect the route after deployment completes with `sshdock domains list <app>` or `sshdock apps health <app>`.
 
-Manual app creation remains useful for scripts and debugging. The default v0 user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
+Manual app creation remains useful for scripts and debugging. The default user flow is push-to-create, where the first authorized push to `git@<server-domain>:<app>.git` creates the app automatically.
 
 App names must already be normalized DNS labels: lowercase letters, numbers, and interior hyphens, up to 63 characters. Invalid names are rejected rather than changed silently. The error includes a deterministic suggestion and the exact command to update the conventional `sshdock` Git remote:
 
@@ -424,7 +424,7 @@ When the current worktree has a Compose entry, the Docker runner first runs the 
 docker compose down --remove-orphans
 ```
 
-It intentionally does not pass `--volumes`, so Docker volumes are preserved in v0. It leaves image and build-cache garbage collection to Docker, deletes the app repo/worktree, removes live app metadata, releases, deployments, and domains from SQLite, and rebuilds Caddy routes from remaining domains. Removal audit events remain queryable with `events list <name>`; recreating the same app name keeps that earlier audit history.
+It intentionally does not pass `--volumes`, so Docker volumes are preserved. It leaves image and build-cache garbage collection to Docker, deletes the app repo/worktree, removes live app metadata, releases, deployments, and domains from SQLite, and rebuilds Caddy routes from remaining domains. Removal audit events remain queryable with `events list <name>`; recreating the same app name keeps that earlier audit history.
 
 Successful output includes a Docker-volume preservation note. Remove app-specific Docker volumes manually only after backing up any data you need.
 
@@ -498,7 +498,7 @@ Attach a public domain to an app service and rebuild Caddy routes.
 sudo sshdock domains attach my-app web example.com --port 3000
 ```
 
-For v0, Caddy runs on the host and proxies to a loopback-published Compose port. The app Compose file must publish the selected service on `127.0.0.1:<port>`, and `--port` is that host port:
+Caddy runs on the host and proxies to a loopback-published Compose port. The app Compose file must publish the selected service on `127.0.0.1:<port>`, and `--port` is that host port:
 
 ```yaml
 services:
@@ -578,7 +578,7 @@ Run the direct SSH dashboard server.
 sshdockd serve
 ```
 
-In the installed v0 path, operator access goes through host OpenSSH with a forced `sshdockd operator` command instead of exposing the direct dashboard listener.
+In the installed path, operator access goes through host OpenSSH with a forced `sshdockd operator` command instead of exposing the direct dashboard listener.
 
 ### `sshdockd daemon`
 
@@ -624,7 +624,7 @@ Useful keys:
 
 TUI app actions cover start app, stop app, restart app, restart service, redeploy current main, attach domain, detach a listed domain, and remove app with exact app-name confirmation. Revision selection remains a Git operation: push the desired commit or tag to remote `main`.
 
-The v0 TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
+The TUI is not a full setup/admin surface. `server domain set`, `diagnostics`, `apps create`, `ssh-keys add/list/remove`, and binary/version commands remain CLI-only.
 
 ### `sshdockd git-receive`
 

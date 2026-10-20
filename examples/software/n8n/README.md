@@ -19,7 +19,7 @@ The root `compose.yml` runs one official n8n service using its default SQLite da
 
 The official image is the smallest supported one-service topology for this recipe. SQLite needs no additional service. A production reverse proxy requires `WEBHOOK_URL` and `N8N_PROXY_HOPS=1`; SSHDock's Caddy route supplies the forwarded headers. Workflow scheduling belongs to n8n or the Compose application, not SSHDock.
 
-The health check uses n8n's [`/healthz/readiness`](https://docs.n8n.io/hosting/logging-monitoring/monitoring/) endpoint so deployment waits for the database connection and migrations before accepting traffic. The `/healthz` liveness endpoint can succeed while n8n is still starting.
+The health check uses n8n's [`/healthz/readiness`](https://docs.n8n.io/hosting/logging-monitoring/monitoring/) endpoint so deployment waits for database connection, migrations and startup initialization to complete. The `/healthz` liveness endpoint can succeed while n8n is still starting.
 
 ## Pinned versions
 
@@ -29,13 +29,13 @@ This is an exact stable version and multi-platform manifest digest from n8n's of
 
 ## Deploy
 
-Until a release tag contains this recipe, copy its two public files from `main`:
+Copy this recipe's two public files from the matching `v1.0.0` release:
 
 ```bash
 mkdir n8n
 cd n8n
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/software/n8n
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/software/n8n
 git init -b main
 git add .
 git commit -m "Deploy n8n"
@@ -79,11 +79,16 @@ The webhook returns n8n's `{"message":"Workflow was started"}` response, the edi
 sudo sshdock logs n8n web --tail 100
 ssh sshdock@sshdock.example.com apps exec n8n web -- n8n --version
 sudo sshdock apps restart n8n
+```
+
+`apps start` and `apps restart` can return before n8n is ready. Wait until the service is healthy and `/healthz/readiness` returns `{"status":"ok"}` before checking the webhook:
+
+```bash
 curl -fsS https://n8n.example.com/webhook/recipe-proof
 sudo sshdock apps health n8n
 ```
 
-The restart keeps the named volume, so the published workflow and its webhook execution surface remain available. Schedule Trigger and other timed workflows run in n8n; `restart: unless-stopped` only restores the Compose service after a daemon or host restart.
+The restart keeps the named volume. After restart reaches readiness, the published workflow and its webhook execution surface are available again. Schedule Trigger and other timed workflows run in n8n; `restart: unless-stopped` only restores the Compose service after a daemon or host restart.
 
 ## Upgrade
 
@@ -119,6 +124,23 @@ sudo docker volume rm sshdock_n8n_n8n-data
 `n8n-data` persists the upstream `/home/node/.n8n` directory. With the default SQLite topology, it contains n8n's SQLite database for workflows and executions as well as instance data. `N8N_ENCRYPTION_KEY` is stored separately through SSHDock config; retain it with the named volume and database backup so encrypted n8n credentials remain readable.
 
 ## Limitations
+
+SSHDock's default Compose readiness wait is 120 seconds. A slow cold start can exceed that window, record a failed deployment, and continue initializing in the same container. The readiness check observes startup; an existing Caddy route still points at the same host port during replacement.
+
+For that specific timeout, inspect `apps health`, `deployments list` and app logs. Confirm that the same container remains running and healthy, remote `main` still matches the failed attempt's commit, and this server-local request returns `{"status":"ok"}`:
+
+```bash
+curl -fsS http://127.0.0.1:18202/healthz/readiness
+```
+
+Only after confirming readiness, issue one explicit redeploy of that unchanged remote `main`, then verify that the newest attempt succeeded for the intended commit:
+
+```bash
+sudo sshdock apps redeploy n8n
+sudo sshdock deployments list n8n
+```
+
+The earlier failed attempt remains in history. If this explicit recovery fails, retain the app state and diagnose it; do not loop deployments until one happens to pass.
 
 This is the smallest single-service SQLite topology. It does not demonstrate queue mode, workers, Redis, external PostgreSQL, high availability, or an SSHDock-managed scheduler. Choose an upstream-supported n8n topology when those requirements apply.
 

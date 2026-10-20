@@ -1,23 +1,19 @@
 # SSHDock Installation
 
-This document separates the published release from the current development installation contract.
+This guide covers v1.0.0 and a separate local source-build installation path. See the [release validation boundary](RELEASE_ACCEPTANCE.md) before choosing a deployment environment.
 
-## Published Release: v0.3.1
+## Published Release: v1.0.0
 
-The latest published release is [v0.3.1](https://github.com/sshdock/sshdock/releases/tag/v0.3.1). On a fresh Ubuntu LTS or Debian stable VPS, use its matching script and assets:
+Install [v1.0.0](https://github.com/sshdock/sshdock/releases/tag/v1.0.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v0.3.1/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v0.3.1 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v1.0.0 bash bootstrap.sh
 ```
 
-Continue with the [v0.3.1 quick start](https://github.com/sshdock/sshdock/blob/v0.3.1/README.md#quick-start) and [v0.3.1 installation guide](https://github.com/sshdock/sshdock/blob/v0.3.1/docs/INSTALL.md) for its setup, examples, and operations. That release uses `ssh dashboard@sshdock.example.com`; it does not have the newer `sshdock` operator account or durable deployment logs described below.
+Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/README.md#quick-start) and [v1.0.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
 
-Always take the bootstrap script and binaries from the same release tag. Do not pair the development script with v0.3.1 assets.
-
-## Development Setup (Unreleased)
-
-The remaining sections describe the current development checkout, not v0.3.1. No published release currently provides this full command set. First complete the [local development install](#local-development-install-unreleased) on a dedicated test server.
+## Setup
 
 Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
 
@@ -36,11 +32,11 @@ git remote add sshdock git@sshdock.example.com:my-app.git
 git push sshdock main
 ```
 
-For runnable development checks, see [`EXAMPLES.md`](EXAMPLES.md). It contains framework compatibility probes, official-image software recipes, PostgreSQL examples, and executable SSHDock feature labs that can be copied into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
+For runnable deployment checks, see [`EXAMPLES.md`](EXAMPLES.md). It contains framework compatibility probes, official-image software recipes, PostgreSQL examples, and executable SSHDock feature labs that can be copied into a new local Git repository and pushed through SSHDock. See [`COMPOSE_SUPPORT.md`](COMPOSE_SUPPORT.md) for root-file selection, Compose authority, project isolation, and the external-file boundary.
 
 ## OS Assumptions
 
-v0 targets one Linux VPS.
+SSHDock targets one Linux VPS.
 
 Expected baseline:
 
@@ -58,7 +54,7 @@ Recommended first targets:
 
 ## Runtime Requirements
 
-SSHDock v0 requires:
+SSHDock requires:
 
 - Docker Engine
 - Docker Compose plugin, available as `docker compose`
@@ -105,7 +101,7 @@ sudo SSHDOCK_TAG=development SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR="$PWD/bin" \
   bash scripts/bootstrap.sh
 ```
 
-This installs the locally built binaries instead of downloading release assets. It changes the server's runtime dependencies, accounts, service, and SSHDock files; use a disposable test server. It does not verify a published-release installation. Continue with [development setup](#development-setup-unreleased) after installation.
+This installs the locally built binaries instead of downloading release assets. It changes the server's runtime dependencies, accounts, service, and SSHDock files; use a disposable test server. It does not verify a published-release installation. Continue with [setup](#setup) after installation.
 
 ## Current Bootstrap Behavior
 
@@ -135,7 +131,7 @@ By default, `scripts/bootstrap.sh` downloads:
 https://github.com/sshdock/sshdock/releases/download/<tag>/sshdock_<tag>_linux_<arch>.tar.gz
 ```
 
-The next release's bootstrap also requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
+The v1.0.0 bootstrap also requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
 
 Always use the bootstrap script from the same release tag as the assets. Older v0.3.1 assets do not contain checksum sidecars and must use their matching older script. An upgrade from an installed v0.3.1 uses the new target release's script and verified assets. A checksum detects a mismatched/corrupt download; it does not authenticate an attacker-controlled release account independently of HTTPS.
 
@@ -196,7 +192,7 @@ import /etc/caddy/sshdock/sshdock.caddyfile
 
 If `/etc/caddy/Caddyfile` already exists and lacks the import, the installer writes a one-time backup beside it before appending the import.
 
-For v0, SSHDock assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`. With a base domain configured, successful deploys automatically create `<app>.<base-domain>` when SSHDock can infer one public Compose service and one TCP host-published port:
+SSHDock assumes Caddy runs on the host and reaches app services through host loopback ports. App Compose files should publish the routed service on `127.0.0.1:<port>`. With a base domain configured, successful deploys automatically create `<app>.<base-domain>` when SSHDock can infer one public Compose service and one TCP host-published port:
 
 ```yaml
 services:
@@ -304,9 +300,9 @@ Interactive dashboard controls:
 
 The interactive dashboard uses column tables for the app list and detail tabs. Narrow terminals hide lower-priority columns before truncating core app/status information.
 
-The dashboard is the v0 operator surface for deployed apps. It can start or stop existing containers, restart apps or services, redeploy current remote main, attach or detach domains, and remove an app after exact app-name confirmation. Select older revisions with Git by pushing the desired commit or tag to remote `main`. App removal preserves Docker volumes, matching `sshdock apps remove`.
+The dashboard is the operator surface for deployed apps. It can start or stop existing containers, restart apps or services, redeploy current remote main, attach or detach domains, and remove an app after exact app-name confirmation. Select older revisions with Git by pushing the desired commit or tag to remote `main`. App removal preserves Docker volumes, matching `sshdock apps remove`.
 
-Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only in v0.
+Server setup, diagnostics, app creation, SSH key management, and binary/version commands remain CLI-only.
 
 Default operator SSH settings:
 
@@ -352,17 +348,17 @@ For scripts and one-off jobs, omit the PTY. `apps exec` and `apps run` require `
 
 The install flow should configure an SSH entry point for Git pushes.
 
-Expected Git remote format for v0:
+Expected Git remote format:
 
 ```text
 git@<server-domain>:<app>.git
 ```
 
-The SSH key authorization model for v0 is single-admin/deploy-key oriented:
+The SSH key authorization model is single-admin/deploy-key oriented:
 
 - Authorized keys may deploy any app on the single node.
 - First push to a missing normalized DNS-label app name creates that app.
-- Paths containing `/`, such as `<owner>/<repo>.git`, are rejected in v0.
+- Paths containing `/`, such as `<owner>/<repo>.git`, are rejected.
 - Namespace ownership can be added later by mapping SSH keys to owners or admin roles before authorizing `owner/repo` paths.
 
 The default Git receive user is:

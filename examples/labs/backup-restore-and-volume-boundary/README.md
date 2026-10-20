@@ -13,8 +13,8 @@ Copy the untouched recipe, create the SSHDock app, and store its required config
 ```bash
 mkdir backup-restore-and-volume-boundary
 cd backup-restore-and-volume-boundary
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/software/wordpress
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/software/wordpress
 git init -b main
 git add .
 git commit -m "Deploy WordPress backup and restore lab"
@@ -53,7 +53,7 @@ Complete WordPress’s first-run setup and create one post before continuing. Th
 Download the lab script beside the copied WordPress envelope. Set the restricted SSHDock operator target, a normal server-administrator SSH target, the app route, and the exact secret supplied above.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/main/examples/labs/backup-restore-and-volume-boundary/acceptance.sh \
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/backup-restore-and-volume-boundary/acceptance.sh \
   -o acceptance.sh
 
 SSHDOCK_TARGET=sshdock@sshdock.example.com \

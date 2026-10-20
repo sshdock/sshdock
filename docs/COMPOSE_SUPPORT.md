@@ -1,6 +1,6 @@
 # SSHDock Compose Support
 
-SSHDock v0 deploys Docker Compose apps on one node. Docker Compose is the schema authority for application fields: SSHDock passes standard services, images, builds, commands, ports, networks, volumes, resources, health checks, configs, secrets, labels, profiles, and other Compose fields to `docker compose config` instead of maintaining a second field allowlist.
+SSHDock deploys Docker Compose apps on one node. Docker Compose is the schema authority for application fields: SSHDock passes standard services, images, builds, commands, ports, networks, volumes, resources, health checks, configs, secrets, labels, profiles, and other Compose fields to `docker compose config` instead of maintaining a second field allowlist.
 
 ## Root File Detection
 

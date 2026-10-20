@@ -14,13 +14,13 @@ Use two hostnames under that base domain. In the examples, the automatic route i
 
 ## Deploy
 
-Copy the untouched WordPress deployment envelope from `main` until a release tag contains this lab:
+Copy the untouched WordPress deployment envelope from the matching `v1.0.0` release:
 
 ```bash
 mkdir domains-and-route-check
 cd domains-and-route-check
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/software/wordpress
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/software/wordpress
 git init -b main
 git add .
 git commit -m "Deploy WordPress domains and route check lab"

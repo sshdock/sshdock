@@ -61,7 +61,8 @@ func TestPhoenixLiveViewCompatibilityProbe_contract_when_generated_for_productio
 	for _, want := range []string{
 		"Phoenix LiveView framework compatibility probe",
 		"phx_new 1.8.9",
-		"Phoenix LiveView 1.2.7",
+		"Phoenix 1.8.16",
+		"Phoenix LiveView 1.2.13",
 		"hexpm/elixir:1.20.2-erlang-28.5.0.3-alpine-3.23.5@sha256:6f03034e254126f063959873d8d3b811ee92abaabab27b62c53982c4a1034e39",
 		"alpine:3.23.5@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40",
 		"https://hexdocs.pm/phoenix/Mix.Tasks.Phx.New.html",

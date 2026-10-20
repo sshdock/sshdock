@@ -34,13 +34,13 @@ Create the stable, operator-owned network once. Do not add `--attachable` or pub
 sudo docker network create sshdock-shared-postgres
 ```
 
-Until a release tag contains this example, copy its two public files from `main`:
+Copy this example's two public files from the matching `v1.0.0` release:
 
 ```bash
 mkdir shared-postgres
 cd shared-postgres
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=4 sshdock-main/examples/databases/shared-postgres
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.0.0/examples/databases/shared-postgres
 git init -b main
 git add .
 git commit -m "Deploy shared PostgreSQL"

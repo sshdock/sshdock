@@ -19,6 +19,8 @@ The root `compose.yml` runs one official n8n service using its default SQLite da
 
 The official image is the smallest supported one-service topology for this recipe. SQLite needs no additional service. A production reverse proxy requires `WEBHOOK_URL` and `N8N_PROXY_HOPS=1`; SSHDock's Caddy route supplies the forwarded headers. Workflow scheduling belongs to n8n or the Compose application, not SSHDock.
 
+The health check uses n8n's [`/healthz/readiness`](https://docs.n8n.io/hosting/logging-monitoring/monitoring/) endpoint so deployment waits for the database connection and migrations before accepting traffic. The `/healthz` liveness endpoint can succeed while n8n is still starting.
+
 ## Pinned versions
 
 - n8n: `docker.n8n.io/n8nio/n8n:2.30.5@sha256:450853cd21a2ce36587c4c860eb26927c1ceba9496bf55f4c213b5d3a6dc8c6f`

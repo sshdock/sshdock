@@ -15,7 +15,7 @@ services:
     volumes:
       - n8n-data:/home/node/.n8n
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5678/healthz"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5678/healthz/readiness"]
       interval: 5s
       timeout: 5s
       retries: 30

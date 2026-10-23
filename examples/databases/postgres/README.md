@@ -102,7 +102,7 @@ sudo sshdock apps restart postgres
 sudo sshdock apps health postgres
 ```
 
-Restarting the service keeps `postgres-data`. Use the same administrator SSH tunnel for database administration; SSHDock has no database console, user management, migration, or backup command.
+Restarting the service keeps `postgres-data`. Use the same administrator SSH tunnel for database administration. For a manual consistent logical dump and fresh-database restore, follow the [PostgreSQL-native backup recipe](../../../docs/APPLICATION_DATA_BACKUPS.md#postgresql-logical-dump-and-restore), which uses existing binary-clean `apps exec` over SSH and the container's matching clients. SSHDock does not manage database users, migrations or backup scheduling.
 
 ## Upgrade
 
@@ -133,7 +133,7 @@ sudo docker volume rm sshdock_postgres_postgres-data
 
 ## Persistence
 
-`postgres-data` persists PostgreSQL data at `/var/lib/postgresql/data`. Restarts, redeploys, exact-image upgrades, and ordinary app removal preserve it. SSHDock backup inventories Docker volumes but does not copy their contents; use PostgreSQL-native backup and recovery procedures for database data.
+`postgres-data` persists PostgreSQL data at `/var/lib/postgresql/data`. Restarts, redeploys, exact-image upgrades, and ordinary app removal preserve it. SSHDock host-state archives inventory Docker volumes without copying their contents. Use the [native logical dump/restore recipe](../../../docs/APPLICATION_DATA_BACKUPS.md#postgresql-logical-dump-and-restore) for a running database; copying live PGDATA is not a consistent hot backup.
 
 ## Limitations
 

@@ -124,7 +124,7 @@ sudo docker volume rm sshdock_planka_planka-data sshdock_planka_postgres-data
 
 ## Persistence
 
-`planka-data` persists Planka application data at `/app/data`, including uploaded attachments. `postgres-data` persists the PostgreSQL database that holds users, boards, lists, and cards. Restarts, redeploys, exact-image upgrades, and ordinary app removal preserve both named volumes. SSHDock backup inventories Docker volumes but does not copy their contents; make an application-consistent Planka and PostgreSQL backup separately.
+`planka-data` persists Planka application data at `/app/data`, including uploaded attachments. `postgres-data` persists the PostgreSQL database that holds users, boards, lists, and cards. Restarts, redeploys, exact-image upgrades, and ordinary app removal preserve both named volumes. SSHDock host-state backup inventories Docker volumes but does not copy their contents; make an application-consistent Planka and PostgreSQL backup separately.
 
 ## Limitations
 

@@ -146,4 +146,4 @@ This is the smallest single-service SQLite topology. It does not demonstrate que
 
 ## Security boundaries
 
-n8n's editor and published webhooks are public through the attached HTTPS route. Protect the first owner account, use unique operator and n8n credentials, and review published workflows before exposing their paths. SSHDock encrypts `N8N_ENCRYPTION_KEY` at rest, but a host administrator, SSHDock process, Docker runtime, or a workload with access to the n8n environment can still read it. SSHDock backup inventories Docker volumes but does not copy their contents; make an application-consistent n8n database backup separately.
+n8n's editor and published webhooks are public through the attached HTTPS route. Protect the first owner account, use unique operator and n8n credentials, and review published workflows before exposing their paths. SSHDock encrypts `N8N_ENCRYPTION_KEY` at rest, but a host administrator, SSHDock process, Docker runtime, or a workload with access to the n8n environment can still read it. SSHDock host-state backup inventories Docker volumes but does not copy their contents; make an application-consistent n8n database backup separately.

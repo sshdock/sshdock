@@ -34,7 +34,7 @@ Stay on Dokku, or evaluate it first, when you need:
 | Domains | Base-domain default route, `domains attach`, `domains list`, `domains check` | Domains plugin and proxy/SSL configuration |
 | Logs | `sshdock logs <app> [service] --tail <n>` | Dokku log commands |
 | Rollback | Push the desired commit or tag to remote `main`; release rows remain inspection history | Dokku release and rollback tooling |
-| Data volumes | Compose volumes are preserved on app removal; backups include volume inventory, not volume contents | Dokku persistent-storage guidance and storage plugin workflows |
+| Data volumes | Compose volumes are preserved on app removal; host-state archives include volume inventory, not volume contents | Dokku persistent-storage guidance and storage plugin workflows |
 | Backup/restore | `sshdock backup create`, `inspect`, and `restore` for SSHDock host state | Dokku backup guidance emphasizes repo copies, static assets, database dumps, and testing restores |
 | Users/RBAC | One trusted-operator key model | Dokku has its own user and SSH access model |
 

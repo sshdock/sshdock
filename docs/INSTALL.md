@@ -454,7 +454,7 @@ No web dashboard port should be opened.
 
 SSHDock coordinates app Git receive, Compose deployment, Caddy routes, encrypted app config, operator commands, and audit history. Normal server tooling remains responsible for operating-system patching, firewall policy, disk monitoring, Docker Engine maintenance, Caddy maintenance, and VPS-provider operations such as instance recovery and provider backups.
 
-These manual OSS operations run without an SSHDock Cloud account, API, or subscription. The VPS owner is responsible for app availability, consistent application-data backups, and choosing, initiating, and verifying recovery. Git-selected recovery does not reverse database migrations or external-resource changes. Current SSHDock backups contain host state and volume inventory, not application volume contents; see [Backup And Restore](#backup-and-restore). Optional paid hosted operations remain future research and do not limit the OSS runtime.
+These manual OSS operations run without an SSHDock Cloud account, API, or subscription. The VPS owner is responsible for app availability, consistent application-data backups, and choosing, initiating, and verifying recovery. Git-selected recovery does not reverse database migrations or external-resource changes. Host-state archives contain volume inventory; [manual volume and PostgreSQL data backups](APPLICATION_DATA_BACKUPS.md) are separate. Optional paid hosted operations remain future research and do not limit the OSS runtime.
 
 Use SSHDock logs, health, events, diagnostics, and command exit codes as inputs to third-party monitoring. SSHDock does not collect host metrics, deliver alerts, page operators, patch the host, or remediate Docker, Caddy, disk, firewall, or provider failures.
 
@@ -555,7 +555,7 @@ caddy/generated.caddyfile
 caddy/main.Caddyfile
 ```
 
-The backup command records Docker volume inventory by default, but it does not copy Docker volume contents. `--include-volumes` currently exits with an explicit unsupported message instead of taking a partial or surprising snapshot. Back up application data volumes with app-specific tooling until a safe SSHDock volume backup flow exists.
+The host-state backup command records Docker volume inventory but does not copy Docker volume contents. `--include-volumes` remains explicitly unsupported. Use [manual application-data backup and restore](APPLICATION_DATA_BACKUPS.md) for separate quiesced volume archives, PostgreSQL logical dumps, and compatible destination recovery. Preserve those archives as well as host state.
 
 `config.key` is the host-local 32-byte encryption key for app config values. Keep it outside SQLite, preserve `0600`-style permissions, and back it up with `sshdock.db`. Losing either the database or this key makes encrypted config values unrecoverable.
 

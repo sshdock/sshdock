@@ -133,6 +133,8 @@ func runBackup(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "volume":
+		return runVolumeBackup(args[1:], stdout, stderr)
 	case "create":
 		output, includeVolumes, ok := parseBackupCreateArgs(args[1:])
 		if !ok {
@@ -234,16 +236,21 @@ func isBackupHelpArg(arg string) bool {
 }
 
 func printBackupUsage(stdout io.Writer) {
-	fmt.Fprint(stdout, `Backup commands create, inspect, and restore SSHDock state archives.
+	fmt.Fprint(stdout, `Backup commands manage host-state and separate manual volume archives.
 
 Usage:
   sshdock backup create [--output <archive>]
   sshdock backup inspect <archive>
   sshdock backup restore <archive>
+  sshdock backup volume export <volume> --output <archive> --quiesced
+  sshdock backup volume inspect <archive>
+  sshdock backup volume restore <archive> --name <new-volume>
 
 Notes:
-  Backup archives include Docker volume inventory only.
-  --include-volumes is rejected until volume content backup has a safe implementation.
+  Host-state archives include Docker volume inventory only; --include-volumes remains unsupported.
+  Volume export requires stopped writers and an explicit --quiesced acknowledgement.
+  Volume restore creates a new volume and refuses existing targets.
+  Archives are unencrypted and may contain secrets; protect and encrypt them yourself.
 `)
 }
 

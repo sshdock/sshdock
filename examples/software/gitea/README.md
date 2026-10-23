@@ -130,7 +130,7 @@ sudo docker volume rm sshdock_gitea_gitea-data sshdock_gitea_gitea-config
 
 ## Persistence
 
-`gitea-data` stores repositories, SQLite state, attachments, packages, and other application data at `/var/lib/gitea`. `gitea-config` stores the generated `app.ini` at `/etc/gitea`. Restart, redeploy, exact rootless-image upgrades, and ordinary app removal preserve both named volumes; SSHDock backup archives inventory these volumes but do not copy their contents.
+`gitea-data` stores repositories, SQLite state, attachments, packages, and other application data at `/var/lib/gitea`. `gitea-config` stores the generated `app.ini` at `/etc/gitea`. Restart, redeploy, exact rootless-image upgrades, and ordinary app removal preserve both named volumes; SSHDock host-state archives inventory these volumes but do not copy their contents.
 
 ## Limitations
 

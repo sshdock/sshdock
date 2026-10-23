@@ -144,7 +144,7 @@ sudo docker network rm sshdock-shared-postgres
 
 ## Persistence
 
-`shared-postgres-data` preserves PostgreSQL data, including `client_a` and `client_b`, across restart, redeploy, exact-image upgrades, and ordinary app removal. SSHDock backup inventories Docker volumes but does not copy their contents; use PostgreSQL-native backup and recovery procedures for database data. The external network persists independently because it is operator-owned.
+`shared-postgres-data` preserves PostgreSQL data, including `client_a` and `client_b`, across restart, redeploy, exact-image upgrades, and ordinary app removal. SSHDock host-state backup inventories Docker volumes but does not copy their contents; use PostgreSQL-native backup and recovery procedures for database data. The external network persists independently because it is operator-owned.
 
 ## Limitations
 

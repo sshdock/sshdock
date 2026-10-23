@@ -83,7 +83,7 @@ The archive includes:
 - Caddy main config from `SSHDOCK_CADDY_MAIN_CONFIG_PATH`
 - Docker volume inventory at `docker/volumes.json`
 
-The backup command records Docker volume inventory only. It does not silently copy Docker volume contents. `--include-volumes` currently exits non-zero with an explicit unsupported message.
+The host-state backup command records Docker volume inventory only. It does not silently copy Docker volume contents. `--include-volumes` exits non-zero with an explicit unsupported message; use the separate manual data commands below.
 
 ### `sshdock backup inspect <archive>`
 
@@ -109,6 +109,32 @@ sudo sshdock diagnostics
 Restore extracts to a temporary directory first, validates the manifest format, safe archive paths, required SQLite entry, safe symlinks, `config.key` length and permissions, and existing target directory modes before replacing the target data directory. Restore also writes archived Caddy config files back to the configured Caddy paths.
 
 Run restore as a user that can preserve SSHDock state ownership and modes. SSHDock backup archives are intended for compatible single-node SSHDock installs, not cross-host migration guarantees.
+
+### `sshdock backup volume export <volume> --output <archive> --quiesced`
+
+Export one exact ordinary local named volume during an owner-controlled stopped-writer window. This **unreleased v1.1** host-admin command checks running read/write consumers across all containers; `--quiesced` acknowledges the remaining host/external-writer responsibility. The archive must not exist and is published complete with private permissions.
+
+```bash
+sudo sshdock backup volume export sshdock_my-app_data --output /root/my-app-data.tar.gz --quiesced
+```
+
+### `sshdock backup volume inspect <archive>`
+
+Validate the complete separate `sshdock-volume/v1` archive and report source identity, counts, size and filesystem scope without Docker or restoring files.
+
+```bash
+sudo sshdock backup volume inspect /root/my-app-data.tar.gz
+```
+
+### `sshdock backup volume restore <archive> --name <new-volume>`
+
+Fully validate/stage the archive, then create and populate a new named volume. Every existing destination is refused; no overwrite flag is provided. Only operation-owned resources are eligible for failure cleanup. This does not update Compose, Git, app state or traffic.
+
+```bash
+sudo sshdock backup volume restore /root/my-app-data.tar.gz --name my-app-restored-data
+```
+
+These commands support regular files/directories, numeric UID/GID and basic modes. Unsupported links/special metadata are rejected; host-only metadata is not guaranteed observable or preserved. Archives are unencrypted and may contain secrets. Volume commands are local administration, not restricted SSH or JSON commands. Exit `0` means completed, `1` operation/validation/cleanup failure, and `2` invalid syntax or missing required flags. See [consistency, filesystem limits, PostgreSQL and destination recovery](APPLICATION_DATA_BACKUPS.md).
 
 ### `sshdock config set <app> <key>`
 

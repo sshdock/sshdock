@@ -12,6 +12,7 @@ import (
 func TestOperatorJSONAllowlist(t *testing.T) {
 	for _, command := range []string{
 		"apps list --json", "apps info app --json", "apps health app --json",
+		"apps check app --json",
 		"releases list app --json", "deployments list app --json", "deployments info app dep_1 --json",
 		"domains list app --json", "domains check app --json", "events list app --json",
 		"deployments info app dep_1", "apps exec app web -- printf --json",
@@ -28,6 +29,31 @@ func TestOperatorJSONAllowlist(t *testing.T) {
 		if _, err := operatorOriginalCommandArgs(command); err == nil {
 			t.Fatalf("accepted unsupported command %q", command)
 		}
+	}
+}
+
+func TestOperatorPreflightMissingStoreDoesNotInitializeState(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "absent")
+	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+	t.Setenv("SSH_ORIGINAL_COMMAND", "apps check missing --json")
+	var stdout, stderr bytes.Buffer
+	if code := runDashboard(nil, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+	var result struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Error.Code != "unavailable" || stderr.Len() != 0 {
+		t.Fatalf("stdout=%s stderr=%s", &stdout, &stderr)
+	}
+	if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+		t.Fatalf("restricted check initialized state: %v", err)
 	}
 }
 

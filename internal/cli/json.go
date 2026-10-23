@@ -45,14 +45,14 @@ func ParseOutputArgs(args []string) ([]string, bool, error) {
 	}
 	normalized := args[:len(args)-1]
 	if !jsonCommandAllowed(normalized) {
-		return normalized, true, JSONError("invalid_arguments", "--json is supported only for apps list/info/health, releases list, deployments list/info, domains list/check, events list, and diagnostics")
+		return normalized, true, JSONError("invalid_arguments", "--json is supported only for check, apps list/info/health/check, releases list, deployments list/info, domains list/check, events list, and diagnostics")
 	}
 	return normalized, true, nil
 }
 
 func jsonCommandAllowed(args []string) bool {
 	if len(args) == 1 {
-		return args[0] == "diagnostics"
+		return args[0] == "diagnostics" || args[0] == "check"
 	}
 	if len(args) < 2 {
 		return false
@@ -63,8 +63,10 @@ func jsonCommandAllowed(args []string) bool {
 		}
 	}
 	switch args[0] {
+	case "check":
+		return len(args) == 2 && args[1] != "" && !strings.HasPrefix(args[1], "-")
 	case "apps":
-		return len(args) == 2 && args[1] == "list" || len(args) == 3 && (args[1] == "info" || args[1] == "health")
+		return len(args) == 2 && args[1] == "list" || len(args) == 3 && (args[1] == "info" || args[1] == "health" || args[1] == "check")
 	case "releases", "events":
 		return len(args) == 3 && args[1] == "list"
 	case "deployments":
@@ -88,7 +90,7 @@ func JSONCommandName(args []string) string {
 			}
 		}
 		return args[0]
-	case "diagnostics", "config", "logs", "backup", "server", "ssh-keys", "help", "version":
+	case "check", "diagnostics", "config", "logs", "backup", "server", "ssh-keys", "help", "version":
 		return args[0]
 	}
 	return "unknown"
@@ -125,6 +127,7 @@ func (r *Runner) runJSON(args []string, stdout io.Writer, stderr io.Writer) int 
 	command := JSONCommandName(args)
 	var data any
 	var err error
+	exitCode := 0
 	switch command {
 	case "apps.list":
 		var apps []App
@@ -138,6 +141,14 @@ func (r *Runner) runJSON(args []string, stdout io.Writer, stderr io.Writer) int 
 		report.Checks = jsonList(report.Checks)
 		report.Services = jsonList(report.Services)
 		data = report
+	case "apps.check":
+		report, checkErr := r.appPreflight(args[2])
+		err = checkErr
+		report.Checks = jsonList(report.Checks)
+		data = report
+		if !report.OK {
+			exitCode = 1
+		}
 	case "releases.list":
 		var releases []Release
 		releases, err = r.backend.ListReleases(args[2])
@@ -174,7 +185,7 @@ func (r *Runner) runJSON(args []string, stdout io.Writer, stderr io.Writer) int 
 		}
 		return 1
 	}
-	return 0
+	return exitCode
 }
 
 func (r *Runner) deploymentInfo(appName string, deploymentID string) (Deployment, error) {

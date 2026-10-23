@@ -47,6 +47,9 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	if parseErr != nil {
 		return fail(parseErr, 2)
 	}
+	if len(args) >= 1 && args[0] == "check" {
+		return runLocalPreflight(args[1:], jsonOutput, stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "diagnostics" {
 		return runDiagnostics(stdout, stderr, jsonOutput)
 	}
@@ -61,14 +64,23 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	if err := cfg.Validate(); err != nil {
 		return fail(err, 1)
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return fail(fmt.Errorf("create data dir: %w", err), 1)
-	}
-	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
-		return fail(fmt.Errorf("create database dir: %w", err), 1)
+	readOnlyCheck := len(args) == 3 && args[0] == "apps" && args[1] == "check"
+	if !readOnlyCheck {
+		if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+			return fail(fmt.Errorf("create data dir: %w", err), 1)
+		}
+		if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+			return fail(fmt.Errorf("create database dir: %w", err), 1)
+		}
 	}
 
-	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	var sqlite *store.SQLiteStore
+	var err error
+	if readOnlyCheck {
+		sqlite, err = store.OpenSQLiteReadOnly(context.Background(), cfg.SQLiteDBPath)
+	} else {
+		sqlite, err = store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+	}
 	if err != nil {
 		return fail(fmt.Errorf("open store: %w", err), 1)
 	}

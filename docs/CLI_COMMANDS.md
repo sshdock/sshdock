@@ -1,6 +1,6 @@
 # SSHDock CLI Commands
 
-This is the command reference for the current source. Published v1.0.0 documentation remains available at [its release tag](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/CLI_COMMANDS.md). The JSON output and deployment detail commands below are additions for unreleased v1.1.
+This is the command reference for the current source. Published v1.0.0 documentation remains available at [its release tag](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/CLI_COMMANDS.md). JSON output, deployment detail, and preflight commands below are additions for unreleased v1.1.
 
 SSHDock has two command-line entry points:
 
@@ -33,7 +33,11 @@ sshdock apps --help
 
 Invalid commands print a short error and a help command to run next.
 
-Supported read-only commands accept a trailing `--json` for the versioned [machine-readable contract](JSON_OUTPUT.md). Human-readable output remains the default. This includes `diagnostics`, `apps list/info/health`, `releases list`, `deployments list/info`, `domains list/check`, and `events list`. The same supported inspection commands work over restricted SSH; host diagnostics remains local.
+Supported read-only commands accept a trailing `--json` for the versioned [machine-readable contract](JSON_OUTPUT.md). Human-readable output remains the default. This includes `check`, `diagnostics`, `apps list/info/health/check`, `releases list`, `deployments list/info`, `domains list/check`, and `events list`. The same supported app inspection commands work over restricted SSH; host diagnostics and local project checks remain local.
+
+### `sshdock check [directory]`
+
+Inspect a local Compose project without deployment or host-state initialization. The directory defaults to the working directory. Use `sshdock apps check <app>` locally on the server or through restricted SSH to inspect an existing app's current worktree and stored config. Add `--json` to either command for the same typed report. See [preflight checks and limits](PREFLIGHT.md); no confirmed blockers does not imply all conditions were verified.
 
 ### `sshdock version`
 

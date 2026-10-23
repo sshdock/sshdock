@@ -125,6 +125,7 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	}{
 		{[]string{"deployments", "info", appName, attempts.Data[0].ID, "--json"}, 0, ""},
 		{[]string{"deployments", "info", appName, "dep_missing", "--json"}, 1, "not_found"},
+		{[]string{"apps", "check", appName, "--json"}, 1, "unavailable"},
 		{[]string{"apps", "stop", appName, "--json"}, 2, "invalid_arguments"},
 	} {
 		command := exec.Command(sshPath, append(dashboardSSHArgs(paths, server, false), test.args...)...)

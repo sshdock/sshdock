@@ -28,7 +28,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if originalCommand != "" {
 		args, commandErr = operatorOriginalCommandArgs(originalCommand)
 	}
-	_, jsonOutput, outputErr := cli.ParseOutputArgs(args)
+	normalized, jsonOutput, outputErr := cli.ParseOutputArgs(args)
 	fail := func(err error, code int) int {
 		if jsonOutput {
 			if writeErr := cli.WriteJSON(stdout, cli.JSONCommandName(args), nil, err); writeErr != nil {
@@ -51,14 +51,23 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if err := cfg.Validate(); err != nil {
 		return fail(err, 1)
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return fail(fmt.Errorf("create data dir: %w", err), 1)
-	}
-	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
-		return fail(fmt.Errorf("create database dir: %w", err), 1)
+	readOnlyCheck := len(normalized) == 3 && normalized[0] == "apps" && normalized[1] == "check"
+	if !readOnlyCheck {
+		if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+			return fail(fmt.Errorf("create data dir: %w", err), 1)
+		}
+		if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+			return fail(fmt.Errorf("create database dir: %w", err), 1)
+		}
 	}
 
-	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
+	var sqlite *store.SQLiteStore
+	var err error
+	if readOnlyCheck {
+		sqlite, err = store.OpenSQLiteReadOnly(ctx, cfg.SQLiteDBPath)
+	} else {
+		sqlite, err = store.OpenSQLite(ctx, cfg.SQLiteDBPath)
+	}
 	if err != nil {
 		return fail(err, 1)
 	}

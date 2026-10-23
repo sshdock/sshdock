@@ -20,7 +20,7 @@ func commandNeedsStore(args []string) bool {
 	if len(args) == 2 && args[0] == "apps" && args[1] == "list" {
 		return true
 	}
-	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info" || args[1] == "health") {
+	if len(args) == 3 && args[0] == "apps" && (args[1] == "create" || args[1] == "info" || args[1] == "health" || args[1] == "check") {
 		return true
 	}
 	if len(args) >= 3 && len(args) <= 4 && args[0] == "apps" && args[1] == "remove" {
@@ -84,7 +84,7 @@ func commandNeedsRecoveryRunner(args []string) bool {
 	if len(args) >= 2 && args[0] == "logs" {
 		return true
 	}
-	if len(args) == 3 && args[0] == "apps" && args[1] == "health" {
+	if len(args) == 3 && args[0] == "apps" && (args[1] == "health" || args[1] == "check") {
 		return true
 	}
 	if len(args) == 3 && args[0] == "apps" && (args[1] == "start" || args[1] == "stop" || args[1] == "restart" || args[1] == "redeploy") {

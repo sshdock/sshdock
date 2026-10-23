@@ -111,6 +111,7 @@ Usage:
   apps list
   apps info <app>
   apps health <app>
+  apps check <app>
   apps start <app>
   apps stop <app>
   apps restart <app> [service]
@@ -119,7 +120,7 @@ Usage:
   apps redeploy <app>
   apps remove <app> --force
 
-Read-only list, info, and health commands also accept a trailing --json.
+Read-only list, info, health, and check commands also accept a trailing --json.
 `,
 	},
 	"config": {
@@ -188,7 +189,7 @@ func appOperatorCommandAllowed(args []string) bool {
 	}
 	if len(args) == 2 {
 		switch args[0] {
-		case "info", "health", "start", "stop", "restart", "redeploy":
+		case "info", "health", "check", "start", "stop", "restart", "redeploy":
 			return true
 		default:
 			return false
@@ -280,6 +281,7 @@ Inspection:
   apps list
   apps info <app>
   apps health <app>
+  apps check <app>
   domains list <app>
   domains check <app>
   releases list <app>

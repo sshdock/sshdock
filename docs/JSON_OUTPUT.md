@@ -15,9 +15,11 @@ ssh sshdock@sshdock.example.com domains list my-app --json
 ssh sshdock@sshdock.example.com domains check my-app --json
 ssh sshdock@sshdock.example.com events list my-app --json
 sudo sshdock diagnostics --json
+sshdock check ./my-app --json
+ssh sshdock@sshdock.example.com apps check my-app --json
 ```
 
-All listed inspection commands also work locally. `diagnostics` remains host administration and is unavailable over restricted SSH. Mutations, config values, and streaming logs do not accept this output flag. A container command's own `--json` after the required `apps exec/run ... --` delimiter is passed through unchanged.
+All listed app inspection commands also work locally. `diagnostics` remains host administration and is unavailable over restricted SSH; `check [directory]` inspects a local project. Mutations, config values, and streaming logs do not accept this output flag. A container command's own `--json` after the required `apps exec/run ... --` delimiter is passed through unchanged.
 
 ## Envelope and compatibility
 
@@ -40,10 +42,12 @@ Error codes are `invalid_arguments` (unsupported syntax or output flag), `not_fo
 | Exit | Meaning |
 | --- | --- |
 | `0` | Query completed. The returned deployment may still be pending, deploying, or failed; health/route checks may warn or fail. |
-| `1` | Query failed (`error` is non-null), output could not be written, or diagnostics completed with `data.ok=false`. |
+| `1` | Query failed (`error` is non-null), output could not be written, or diagnostics/preflight completed with `data.ok=false`. |
 | `2` | Invalid command or arguments. |
 
 On ordinary JSON success/error responses stderr is empty. An output-writing failure can instead be reported there. Diagnostics returns its completed report with `error:null` even when checks fail; use both its exit and `data.ok`.
+
+Preflight behaves the same way for completed blocking reports. `check` and `apps.check` return `ok`, `scope`, `compose_path`, and `checks` with `name`, `status`, `detail`, `fix`, `blocking`. Statuses are `ok`, `warn`, `fail`, `unknown`; `ok:true` only means no confirmed blockers. See [preflight scope and uncertainty](PREFLIGHT.md).
 
 ## Result fields
 

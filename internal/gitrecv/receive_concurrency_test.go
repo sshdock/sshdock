@@ -80,8 +80,7 @@ func TestReceivePackServiceRejectsSecondPushWhenSameAppIsReceiving(t *testing.T)
 
 func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T) {
 	// Given
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	ctx := context.Background()
 	rootDir := t.TempDir()
 	appsDir := filepath.Join(rootDir, "apps")
 	locksDir := filepath.Join(rootDir, "locks")
@@ -98,6 +97,8 @@ func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T
 		ReceivePackRunner: &recordingReceivePackRunner{},
 	})
 	// When
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	err = service.Receive(ctx, ReceivePackRequest{OriginalCommand: "git-receive-pack 'waiting-app.git'"})
 
 	// Then

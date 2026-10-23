@@ -2,7 +2,7 @@
 
 Git push Compose apps. Operate over SSH.
 
-SSHDock targets a trusted operator on one Linux VPS. See the [release validation boundary](docs/RELEASE_ACCEPTANCE.md) for the tested environment and operational limits.
+SSHDock targets a trusted operator on one Linux VPS. See the [v1.1 candidate validation](docs/V1_1_ACCEPTANCE.md) for current-source checks and limits; [v1.0.0 validation](docs/RELEASE_ACCEPTANCE.md) remains historical.
 
 SSHDock is an SSH-native PaaS for solo developers running Docker Compose apps on one VPS. It gives you a Heroku-like app lifecycle without a web dashboard: install once, push over Git SSH, let SSHDock run Compose, route through Caddy, and operate from the terminal.
 
@@ -96,6 +96,16 @@ After the daemon completes a successful deployment, SSHDock can route the app at
 ```text
 https://my-app.example.com
 ```
+
+Verify service health, the active route and public HTTPS separately:
+
+```bash
+ssh sshdock@sshdock.example.com apps health my-app
+ssh sshdock@sshdock.example.com domains check my-app
+curl --fail --show-error --connect-timeout 5 --max-time 20 https://my-app.example.com/
+```
+
+A successful deployment records the Compose result; it does not prove that Caddy applied the route or that public DNS/TLS works. Inspect warning/failure details before retrying a deployment. See [routing troubleshooting](docs/TROUBLESHOOTING.md#deploy-fails).
 
 Deploys use native Compose behavior: validate the effective model, pull images, build services, then run bounded `docker compose up -d --wait`. Services with health checks must become healthy; services without one must remain running. A failed replacement is recorded without automatic rollback, and an existing route is not a zero-downtime traffic switch.
 

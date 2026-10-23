@@ -1,6 +1,6 @@
 # SSHDock Installation
 
-This guide covers v1.0.0 and a separate local source-build installation path. See the [release validation boundary](RELEASE_ACCEPTANCE.md) before choosing a deployment environment.
+This guide includes published v1.0.0 and a separate local source-build installation path. See the [v1.1 candidate validation](V1_1_ACCEPTANCE.md) for current-source checks and limits; [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains historical.
 
 ## Published Release: v1.0.0
 
@@ -235,6 +235,7 @@ DNS and HTTPS limits:
 - Public DNS must point the domain at the server before normal public HTTP routing works.
 - For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `sshdock.example.com A <server-ip>`.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
+- Certificate management can continue in the background after config loading. Check active routes and public HTTPS separately with bounded connection/request timeouts; retain failed observations and inspect DNS/listeners/Caddy logs before changing app history. See [Caddy's certificate-management boundary](https://caddyserver.com/docs/automatic-https#errors).
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
 - No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through the `sshdock` operator account's forced command.
 

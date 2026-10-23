@@ -1,6 +1,6 @@
 # SSHDock Installation
 
-This guide covers v1.0.0 and a separate local source-build installation path. See the [release validation boundary](RELEASE_ACCEPTANCE.md) before choosing a deployment environment.
+This guide includes published v1.0.0 and a separate local source-build installation path. See the [v1.1 candidate validation](V1_1_ACCEPTANCE.md) for current-source checks and limits; [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains historical.
 
 ## Published Release: v1.0.0
 
@@ -17,13 +17,19 @@ Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/R
 
 Replace `example.com` with a real base domain. Point `sshdock.example.com` and wildcard app DNS such as `*.example.com` at the server before running diagnostics or expecting public Git, HTTP, or HTTPS traffic to work.
 
-On the server, authorize your public key and set the base domain:
+On the server, set the base domain:
 
 ```bash
-cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
 sudo sshdock server domain set example.com
-sudo sshdock diagnostics
 ```
+
+From your workstation, send one selected public key through your existing administrator SSH connection (replace the account/host and public-key filename):
+
+```bash
+ssh ubuntu@server.example.com 'sudo sshdock ssh-keys add admin' < ~/.ssh/id_ed25519.pub
+```
+
+The public key normally lives on your workstation; no private key needs to be copied to the VPS. Do not submit the server's whole `authorized_keys` file, which can contain options or multiple keys. Verify the SSH host key through your trusted setup, then run `sudo sshdock diagnostics` on the server.
 
 From your app's local Git repository:
 
@@ -220,7 +226,7 @@ SSHDOCK_CADDY_MAIN_CONFIG_PATH=/tmp/Caddyfile
 SSHDOCK_CADDY_ADMIN_ADDRESS=127.0.0.1:22019
 ```
 
-When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, configure the matching `admin` global option in the main Caddyfile; reload uses `--address` and active-route checks use that endpoint. The generated import contains only app routes. Standalone tests may set both config paths to the same file, in which case the generated file also includes the `admin` option. Production installs can leave the address unset and use Caddy's default admin endpoint.
+When `SSHDOCK_CADDY_ADMIN_ADDRESS` is set, use a bare `host:port` such as `127.0.0.1:2019`, without an `http://` or `https://` prefix. Configure the matching `admin` global option in the main Caddyfile; reload passes this value to Caddy's `--address`, while active-route checks use the HTTP admin API. The generated import contains only app routes. Standalone tests may set both config paths to the same file, in which case the generated file also includes the `admin` option. Production installs can leave the address unset and use Caddy's default admin endpoint.
 
 `sshdock domains check` reads Caddy's active configuration from this admin endpoint. Keep the endpoint local to the host; if it is unavailable, the check reports the connection failure and points to `sudo sshdock diagnostics` instead of treating generated or in-memory state as active.
 
@@ -229,6 +235,7 @@ DNS and HTTPS limits:
 - Public DNS must point the domain at the server before normal public HTTP routing works.
 - For the default route model, configure wildcard DNS such as `*.example.com A <server-ip>` and a control-host record such as `sshdock.example.com A <server-ip>`.
 - Caddy handles HTTPS automatically when DNS, ports 80/443, and ACME conditions are available.
+- Certificate management can continue in the background after config loading. Check active routes and public HTTPS separately with bounded connection/request timeouts; retain failed observations and inspect DNS/listeners/Caddy logs before changing app history. See [Caddy's certificate-management boundary](https://caddyserver.com/docs/automatic-https#errors).
 - Local route tests can use an address such as `http://127.0.0.1:<port>` to avoid public DNS and ACME.
 - No web dashboard port should be opened. The SSH dashboard uses the host OpenSSH daemon on port `22` through the `sshdock` operator account's forced command.
 
@@ -377,12 +384,7 @@ The login shell is `/bin/sh` because OpenSSH forced commands run through the acc
 
 The bootstrap script also installs `/usr/local/bin/sshdock-git-receive` and a narrow `/etc/sudoers.d/sshdock-git-receive` rule so the SSH-only `git` account can hand off Git receive work to the `sshdock` daemon user. The sudoers rule preserves `SSH_ORIGINAL_COMMAND`, which is how SSHDock recovers the requested `<app>.git` path.
 
-Deploy keys are managed on the server with:
-
-```bash
-sudo sshdock server domain set example.com
-cat ~/.ssh/authorized_keys | sudo sshdock ssh-keys add admin
-```
+Deploy keys are managed by the administrator with `sshdock ssh-keys add`. Follow [Setup](#setup) to set the base domain on the server and submit one selected workstation public key through the existing administrator SSH connection.
 
 `sshdock server domain set` stores the base domain in SQLite. App remote output derives `git@sshdock.<base-domain>:<app>.git`; app URLs derive as `https://<app>.<base-domain>` after the first successful deploy creates the route.
 
@@ -460,6 +462,8 @@ Use SSHDock logs, health, events, diagnostics, and command exit codes as inputs 
 
 ## Upgrade Notes
 
+Before upgrading, finish deployments, pause pushes/operator mutations and take separate host-state and application-data backups. Retain the original bootstrap settings and service overrides privately. The matching bootstrap script writes its service unit and Git/operator wrappers from the environment supplied to that invocation; it does **not** import settings from the existing unit. Re-supply nondefault paths, accounts, Git host, node/runtime and Caddy settings explicitly. Preserve any administrator-owned systemd drop-ins and external Caddy credentials/configuration.
+
 An upgrade should:
 
 1. Stop or reload `sshdockd` safely.
@@ -468,6 +472,8 @@ An upgrade should:
 4. Preserve `/var/lib/sshdock/`.
 5. Preserve generated app repositories, worktrees, releases, and SQLite state.
 6. Reload Caddy only after route config is valid.
+
+Compare the daemon's effective settings and both generated SSH wrappers after installation. Verify key/config decryption, Git refs, deployment history, active routes, existing container/volume identities and saved data before intentionally redeploying. An upgrade must not replay completed deployments. Do not remove the data directory or volumes as an upgrade step.
 
 SSHDock does not prune Docker images during deploy, removal, or upgrade. BuildKit and Docker own build cache and image garbage collection; use normal Docker maintenance appropriate for the host.
 

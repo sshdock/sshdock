@@ -708,7 +708,7 @@ services:
 		"detail=caddy reload failed",
 		"changed=domain was stored, but generated Caddy routes may not be active",
 		"fix=run sudo sshdock diagnostics",
-		"retry=sudo sshdock apps redeploy my-app",
+		"retry=sudo sshdock domains attach my-app web my-app.example.com --port 3100",
 	)
 }
 

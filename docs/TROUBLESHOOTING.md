@@ -71,7 +71,7 @@ Common cases:
 - Compose validation failure: run `docker compose config` in the app repository, then fix the reported Compose error.
 - Image pull or build failure: fix the image reference, registry access, Dockerfile, or build context, then push again.
 - Service start or health-wait failure: inspect `sudo sshdock apps health <app>` and `sudo sshdock logs <app> --tail 200`, then fix services that exited, became unhealthy, or exceeded the bounded wait before redeploying.
-- Caddy reload failure: run `sudo sshdock domains check <app>` and `sudo sshdock diagnostics`, then fix route or Caddy config state.
+- Caddy reload failure: inspect `domains list`, `domains check` and `diagnostics`, then fix the main Caddyfile or admin endpoint (`SSHDOCK_CADDY_ADMIN_ADDRESS` uses bare `host:port`, without a URL scheme). Reapply the intended stored route with `sudo sshdock domains attach <app> <service> <domain> --port <port>`. An app redeploy alone skips initial auto-routing when a domain row already exists. Verify active routing and public HTTPS separately; a service deployment can succeed while route application fails.
 
 Stored config values are redacted from deploy output, events, logs, and dashboard views.
 
@@ -244,7 +244,7 @@ sudo sshdock diagnostics
 sudo systemctl start sshdockd
 ```
 
-Backups include SSHDock host state, app repos/worktrees, SQLite metadata, `config.key`, Git/operator key state, generated Caddy config, and Docker volume inventory. They do not silently include Docker volume contents.
+Host-state backups include app repos/worktrees, SQLite metadata, `config.key`, Git/operator key state, generated Caddy config, and Docker volume inventory. They do not include Docker volume contents. Use the separate [manual file-volume or PostgreSQL backup workflow](APPLICATION_DATA_BACKUPS.md) for application data, and test restoration after the disposable source data is removed.
 
 ## Still Unsure
 

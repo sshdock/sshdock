@@ -23,6 +23,8 @@ The default e2e still uses fake runtime adapters for:
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
 The SSH dashboard is covered by `make tui-e2e`. Failed-deploy persistence and Git-main recovery are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`. Backup archive restore is covered by `make backup-restore-e2e`.
 
+The portable [agent skill](AGENT_OPERATIONS.md) has executable read-command examples checked against fake-backed CLI handlers in `make ci`. Agent discovery and deploy/diagnose/recover/backup behavior require a separate real VPS journey; command parsing and mocked status alone do not establish that acceptance.
+
 ## Internal Dogfood Readiness
 
 Before accepting a dogfood release line, run the normal local gate plus the focused install, config, and hardening harnesses:

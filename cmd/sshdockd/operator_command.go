@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/sshdock/sshdock/internal/cli"
 )
 
 func operatorOriginalCommandArgs(command string) ([]string, error) {
@@ -13,7 +15,7 @@ func operatorOriginalCommandArgs(command string) ([]string, error) {
 		return nil, fmt.Errorf("parse SSH command: %w", err)
 	}
 	if !operatorCommandAllowed(args) {
-		return nil, fmt.Errorf("command is not available over SSH; run `ssh sshdock@<host> help` for supported commands")
+		return args, fmt.Errorf("command is not available over SSH; run `ssh sshdock@<host> help` for supported commands")
 	}
 	return args, nil
 }
@@ -116,6 +118,8 @@ Usage:
   apps run <app> <service> -- <command> [args...]
   apps redeploy <app>
   apps remove <app> --force
+
+Read-only list, info, and health commands also accept a trailing --json.
 `,
 	},
 	"config": {
@@ -143,6 +147,8 @@ Usage:
 Usage:
   domains list <app>
   domains check <app>
+
+Both commands also accept a trailing --json.
 `,
 	},
 	"deployments": {
@@ -151,7 +157,10 @@ Usage:
 
 Usage:
   deployments list <app>
+  deployments info <app> <deployment-id>
   deployments logs <app> [deployment-id] [-f]
+
+List and info also accept a trailing --json.
 `,
 	},
 	"events": listOperatorCommandSpec("app events", "events list <app>"),
@@ -194,11 +203,14 @@ func appOperatorCommandAllowed(args []string) bool {
 func listOperatorCommandSpec(description string, usage string) operatorCommandSpec {
 	return operatorCommandSpec{
 		allowed: func(args []string) bool { return len(args) == 2 && args[0] == "list" },
-		help:    fmt.Sprintf("Inspect %s over restricted SSH.\n\nUsage:\n  %s\n", description, usage),
+		help:    fmt.Sprintf("Inspect %s over restricted SSH.\n\nUsage:\n  %s [--json]\n", description, usage),
 	}
 }
 
 func deploymentOperatorCommandAllowed(args []string) bool {
+	if len(args) == 3 && args[0] == "info" {
+		return true
+	}
 	if len(args) == 2 && args[0] == "list" {
 		return true
 	}
@@ -212,6 +224,11 @@ func deploymentOperatorCommandAllowed(args []string) bool {
 }
 
 func operatorCommandAllowed(args []string) bool {
+	var err error
+	args, _, err = cli.ParseOutputArgs(args)
+	if err != nil {
+		return false
+	}
 	if len(args) == 0 {
 		return false
 	}
@@ -267,6 +284,7 @@ Inspection:
   domains check <app>
   releases list <app>
   deployments list <app>
+  deployments info <app> <deployment-id>
   events list <app>
   logs <app> [service] [-f] [--tail <lines>]
 
@@ -288,5 +306,6 @@ Config:
   config unset <app> <key>
 
 Host administration remains local through sudo sshdock.
+Read-only inspection except logs accepts a trailing --json.
 `)
 }

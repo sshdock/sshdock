@@ -13,6 +13,7 @@ import (
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestStoreBackendHistoryAndLogErrorsRedactStoredConfigValues(t *testing.T) {
@@ -27,7 +28,7 @@ func TestStoreBackendHistoryAndLogErrorsRedactStoredConfigValues(t *testing.T) {
 	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte(secret)}); err != nil {
 		t.Fatalf("Set config: %v", err)
 	}
-	deployment := app.Deployment{ID: "dep_secret", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)}
+	deployment := app.Deployment{ID: "dep_secret", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute), RetryGuidance: "retry with " + secret}
 	if err := sqlite.QueueDeployment(ctx, deployment, "old"); err != nil {
 		t.Fatalf("QueueDeployment: %v", err)
 	}
@@ -40,11 +41,19 @@ func TestStoreBackendHistoryAndLogErrorsRedactStoredConfigValues(t *testing.T) {
 	if err := sqlite.AppendDeploymentLog(ctx, "my-app", "dep_secret", "deployment output for "+secret+"\n", now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("AppendDeploymentLog: %v", err)
 	}
+	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_secret", AppID: "my-app", ServiceName: "web", DomainName: "my-app.example.com", Port: 3000, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"my-app.example.com", "removed.example.com"} {
+		if err := sqlite.UpsertRouteApplyFailure(ctx, store.RouteApplyFailure{AppID: "my-app", ServiceName: "web", DomainName: name, Port: 3000, Operation: store.RouteApplyDetach, Detail: "apply failed for " + secret, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	runner := &compose.FakeRunner{LogsErr: errors.New("logs failed for " + secret)}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, RecoveryRunner: runner, ConfigManager: configService})
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, RecoveryRunner: runner, ConfigManager: configService, Router: &fakeRoutePublisher{RoutesErr: errors.New("inspection failed for " + secret)}})
 	cliRunner := NewRunner(backend, "dev")
 
-	for _, args := range [][]string{{"releases", "list", "my-app"}, {"events", "list", "my-app"}, {"logs", "my-app", "web"}, {"deployments", "logs", "my-app", "dep_secret"}} {
+	for _, args := range [][]string{{"releases", "list", "my-app"}, {"events", "list", "my-app"}, {"logs", "my-app", "web"}, {"deployments", "logs", "my-app", "dep_secret"}, {"deployments", "list", "my-app"}, {"domains", "check", "my-app"}} {
 		// When
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer

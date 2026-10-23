@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -98,6 +99,56 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	server := startDashboardSSHServer(t, paths, sshdPath, sshKeygenPath)
 
 	// When
+	jsonBytes, err := exec.Command(sshPath,
+		append(dashboardSSHArgs(paths, server, false), "deployments", "list", appName, "--json")...).Output()
+	if err != nil {
+		t.Fatalf("remote deployments query: %v", err)
+	}
+	jsonOutput := string(jsonBytes)
+	var attempts struct {
+		SchemaVersion string `json:"schema_version"`
+		Data          []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOutput), &attempts); err != nil {
+		t.Fatalf("decode remote deployments: %v\n%s", err, jsonOutput)
+	}
+	if attempts.SchemaVersion != "1" || len(attempts.Data) != 1 || attempts.Data[0].Status != "succeeded" {
+		t.Fatalf("remote attempts = %s", jsonOutput)
+	}
+	for _, test := range []struct {
+		args      []string
+		code      int
+		errorCode string
+	}{
+		{[]string{"deployments", "info", appName, attempts.Data[0].ID, "--json"}, 0, ""},
+		{[]string{"deployments", "info", appName, "dep_missing", "--json"}, 1, "not_found"},
+		{[]string{"apps", "stop", appName, "--json"}, 2, "invalid_arguments"},
+	} {
+		command := exec.Command(sshPath, append(dashboardSSHArgs(paths, server, false), test.args...)...)
+		output, err := command.Output()
+		code := 0
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code = exitErr.ExitCode()
+			} else {
+				t.Fatal(err)
+			}
+		}
+		var result struct {
+			Error *struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(output, &result); err != nil {
+			t.Fatalf("%v: %v\n%s", test.args, err, output)
+		}
+		if code != test.code || test.errorCode == "" && result.Error != nil || test.errorCode != "" && (result.Error == nil || result.Error.Code != test.errorCode) {
+			t.Fatalf("%v: exit=%d output=%s", test.args, code, output)
+		}
+	}
 	inspectionOutput := runCommand(t, paths.tmp, nil,
 		sshPath,
 		append(dashboardSSHArgs(paths, server, false), "apps", "list")...,

@@ -1,6 +1,6 @@
 # SSHDock CLI Commands
 
-This is the command reference for the SSHDock v1.0.0 binaries.
+This is the command reference for the current source. Published v1.0.0 documentation remains available at [its release tag](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/CLI_COMMANDS.md). The JSON output and deployment detail commands below are additions for unreleased v1.1.
 
 SSHDock has two command-line entry points:
 
@@ -32,6 +32,8 @@ sshdock apps --help
 ```
 
 Invalid commands print a short error and a help command to run next.
+
+Supported read-only commands accept a trailing `--json` for the versioned [machine-readable contract](JSON_OUTPUT.md). Human-readable output remains the default. This includes `diagnostics`, `apps list/info/health`, `releases list`, `deployments list/info`, `domains list/check`, and `events list`. The same supported inspection commands work over restricted SSH; host diagnostics remains local.
 
 ### `sshdock version`
 
@@ -461,6 +463,14 @@ Output format:
 ```
 
 Empty values are printed as `-`. Config values are redacted from failure detail, and terminal control characters are replaced with spaces.
+
+### `sshdock deployments info <app> <deployment-id>`
+
+Inspect one exact app-scoped attempt, including its commit, trigger, state, timing, and redacted failure/retry details. Available in unreleased v1.1, locally and over restricted SSH; add `--json` for the [versioned polling contract](JSON_OUTPUT.md#ci-polling-example). A successful lookup exits `0` even when the recorded attempt is incomplete or failed.
+
+```bash
+ssh sshdock@<host> deployments info my-app dep_01H... --json
+```
 
 ### `sshdock deployments logs <app> [deployment-id] [-f]`
 

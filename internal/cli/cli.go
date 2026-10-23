@@ -18,18 +18,18 @@ import (
 )
 
 type App struct {
-	Name       string
-	Status     string
-	NodeID     string
-	DefaultURL string
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	NodeID     string `json:"node_id"`
+	DefaultURL string `json:"default_url"`
 }
 
 type Domain struct {
-	AppName     string
-	ServiceName string
-	DomainName  string
-	Port        int
-	HTTPS       bool
+	AppName     string `json:"app_name"`
+	ServiceName string `json:"service_name"`
+	DomainName  string `json:"domain_name"`
+	Port        int    `json:"port"`
+	HTTPS       bool   `json:"https"`
 }
 
 type SSHKey struct {
@@ -39,35 +39,36 @@ type SSHKey struct {
 }
 
 type Release struct {
-	ID          string
-	AppName     string
-	CommitSHA   string
-	ComposePath string
-	Status      string
-	Failure     string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `json:"id"`
+	AppName     string    `json:"app_name"`
+	CommitSHA   string    `json:"commit_sha"`
+	ComposePath string    `json:"compose_path"`
+	Status      string    `json:"status"`
+	Failure     string    `json:"failure"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Deployment struct {
-	ID            string
-	AppName       string
-	ReleaseID     string
-	CommitSHA     string
-	Trigger       string
-	Status        string
-	StartedAt     time.Time
-	FinishedAt    time.Time
-	FailureStage  string
-	FailureDetail string
-	RetryGuidance string
+	ID            string    `json:"id"`
+	AppName       string    `json:"app_name"`
+	ReleaseID     string    `json:"release_id"`
+	CommitSHA     string    `json:"commit_sha"`
+	Trigger       string    `json:"trigger"`
+	Status        string    `json:"status"`
+	StartedAt     time.Time `json:"started_at"`
+	FinishedAt    time.Time `json:"finished_at,omitzero"`
+	FailureStage  string    `json:"failure_stage"`
+	FailureDetail string    `json:"failure_detail"`
+	RetryGuidance string    `json:"retry_guidance"`
 }
 
 type Event struct {
-	AppName   string
-	Type      string
-	Message   string
-	CreatedAt time.Time
+	ID        string    `json:"id"`
+	AppName   string    `json:"app_name"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type AppHealth = appmodel.HealthReport
@@ -75,12 +76,12 @@ type AppHealth = appmodel.HealthReport
 type HealthCheck = appmodel.HealthCheck
 
 type DomainCheck struct {
-	DomainName  string
-	ServiceName string
-	Port        int
-	HTTPS       bool
-	Status      string
-	Detail      string
+	DomainName  string `json:"domain_name"`
+	ServiceName string `json:"service_name"`
+	Port        int    `json:"port"`
+	HTTPS       bool   `json:"https"`
+	Status      string `json:"status"`
+	Detail      string `json:"detail"`
 }
 
 type ConfigEntry struct {
@@ -146,7 +147,7 @@ func (b *MemoryBackend) ListApps() ([]App, error) {
 func (b *MemoryBackend) GetApp(name string) (App, error) {
 	model, ok := b.apps[name]
 	if !ok {
-		return App{}, fmt.Errorf("app %q not found", name)
+		return App{}, appNotFoundError(name)
 	}
 
 	return model, nil
@@ -213,7 +214,7 @@ func (b *MemoryBackend) RemoveApp(name string) error {
 func (b *MemoryBackend) AppHealth(name string) (AppHealth, error) {
 	model, ok := b.apps[name]
 	if !ok {
-		return AppHealth{}, fmt.Errorf("app %q not found", name)
+		return AppHealth{}, appNotFoundError(name)
 	}
 	report := AppHealth{
 		AppName:     model.Name,
@@ -271,7 +272,7 @@ func (b *MemoryBackend) DeploymentLogs(request DeploymentLogRequest, stdout io.W
 
 func (b *MemoryBackend) ListReleases(appName string) ([]Release, error) {
 	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 	var releases []Release
 	for _, release := range b.releases {
@@ -290,7 +291,7 @@ func (b *MemoryBackend) ListReleases(appName string) ([]Release, error) {
 
 func (b *MemoryBackend) ListDeployments(appName string) ([]Deployment, error) {
 	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 	var deployments []Deployment
 	for _, deployment := range b.deployments {
@@ -315,7 +316,7 @@ func (b *MemoryBackend) ListEvents(appName string) ([]Event, error) {
 		}
 	}
 	if _, ok := b.apps[appName]; !ok && len(events) == 0 {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 	sort.Slice(events, func(i, j int) bool {
 		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
@@ -328,7 +329,7 @@ func (b *MemoryBackend) ListEvents(appName string) ([]Event, error) {
 
 func (b *MemoryBackend) ListDomains(appName string) ([]Domain, error) {
 	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 	var domains []Domain
 	for _, domain := range b.domains {
@@ -344,7 +345,7 @@ func (b *MemoryBackend) ListDomains(appName string) ([]Domain, error) {
 
 func (b *MemoryBackend) CheckDomains(appName string) ([]DomainCheck, error) {
 	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 	domains := memoryDomainsForApp(b.domains, appName)
 	checks := make([]DomainCheck, 0, len(domains))
@@ -501,6 +502,19 @@ func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	normalized, jsonOutput, err := ParseOutputArgs(args)
+	if err != nil {
+		if writeErr := WriteJSON(stdout, JSONCommandName(normalized), nil, err); writeErr != nil {
+			fmt.Fprintln(stderr, writeErr)
+			return 1
+		}
+		return 2
+	}
+	if jsonOutput {
+		return r.runJSON(normalized, stdout, stderr)
+	}
+	args = normalized
+
 	if len(args) == 0 || (len(args) == 1 && isHelpArg(args[0])) {
 		printRootHelp(stdout)
 		return 0
@@ -798,6 +812,19 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 }
 
 func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 3 && args[0] == "info" {
+		deployment, err := r.deploymentInfo(args[1], args[2])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "id: %s\napp: %s\nrelease: %s\ncommit: %s\ntrigger: %s\nstatus: %s\nstarted: %s\nfinished: %s\nfailure stage: %s\nfailure detail: %s\nretry guidance: %s\n",
+			cliField(deployment.ID), cliField(deployment.AppName), cliField(deployment.ReleaseID), cliField(deployment.CommitSHA),
+			cliField(deployment.Trigger), cliField(deployment.Status), formatCLITime(deployment.StartedAt), formatCLITime(deployment.FinishedAt),
+			cliField(deployment.FailureStage), cliField(deployment.FailureDetail), cliField(deployment.RetryGuidance))
+		return 0
+	}
+
 	if len(args) >= 2 && args[0] == "logs" {
 		request, ok := parseDeploymentLogArgs(args[1:])
 		if !ok {

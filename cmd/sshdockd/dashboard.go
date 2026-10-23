@@ -22,42 +22,56 @@ import (
 )
 
 func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND"))
+	var args []string
+	var commandErr error
+	if originalCommand != "" {
+		args, commandErr = operatorOriginalCommandArgs(originalCommand)
+	}
+	_, jsonOutput, outputErr := cli.ParseOutputArgs(args)
+	fail := func(err error, code int) int {
+		if jsonOutput {
+			if writeErr := cli.WriteJSON(stdout, cli.JSONCommandName(args), nil, err); writeErr != nil {
+				fmt.Fprintln(stderr, writeErr)
+				return 1
+			}
+		} else {
+			fmt.Fprintln(stderr, err)
+		}
+		return code
+	}
+	if outputErr != nil {
+		return fail(outputErr, 2)
+	}
+	if commandErr != nil {
+		return fail(cli.JSONError("invalid_arguments", commandErr.Error()), 2)
+	}
 	ctx := context.Background()
 	cfg := config.LoadFromEnv()
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+		return fail(err, 1)
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		fmt.Fprintf(stderr, "create data dir: %v\n", err)
-		return 1
+		return fail(fmt.Errorf("create data dir: %w", err), 1)
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
-		fmt.Fprintf(stderr, "create database dir: %v\n", err)
-		return 1
+		return fail(fmt.Errorf("create database dir: %w", err), 1)
 	}
 
 	sqlite, err := store.OpenSQLite(ctx, cfg.SQLiteDBPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+		return fail(err, 1)
 	}
 	defer sqlite.Close()
 
 	composeRunner, err := dashboardRunnerFromEnv()
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+		return fail(err, 1)
 	}
 
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
-	if originalCommand := strings.TrimSpace(os.Getenv("SSH_ORIGINAL_COMMAND")); originalCommand != "" {
-		args, err := operatorOriginalCommandArgs(originalCommand)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 2
-		}
+	if originalCommand != "" {
 		cliRunner := cli.NewRunner(backend, version.String()).WithInteractiveTerminal(dashboardHasInteractiveTerminal(stdin, stdout))
 		if operatorHelpRequested(args) {
 			printOperatorHelp(stdout, args)

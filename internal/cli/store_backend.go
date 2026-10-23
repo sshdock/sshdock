@@ -122,7 +122,7 @@ func (b *StoreBackend) ListApps() ([]App, error) {
 func (b *StoreBackend) GetApp(name string) (App, error) {
 	model, err := b.store.GetApp(context.Background(), name)
 	if errors.Is(err, store.ErrNotFound) {
-		return App{}, fmt.Errorf("app %q not found", name)
+		return App{}, appNotFoundError(name)
 	}
 	if err != nil {
 		return App{}, fmt.Errorf("get app %q: %w", name, err)

@@ -15,7 +15,7 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	ctx := context.Background()
 	model, err := b.store.GetApp(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return AppHealth{}, fmt.Errorf("app %q not found", name)
+		return AppHealth{}, appNotFoundError(name)
 	}
 	if err != nil {
 		return AppHealth{}, fmt.Errorf("get app %q: %w", name, err)
@@ -51,6 +51,8 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	latestDeployment, hasLatestDeployment := latestAppDeployment(deployments)
 	release, hasRelease := latestAppRelease(releases)
 	if hasLatestDeployment {
+		report.AttemptReleaseID = latestDeployment.ReleaseID
+		hasRelease = false
 		for _, candidate := range releases {
 			if candidate.ID == latestDeployment.ReleaseID {
 				release = candidate
@@ -63,6 +65,8 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 		report.AttemptReleaseID = release.ID
 		report.AttemptReleaseStatus = release.Status
 		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, string(release.Status)))
+	} else if hasLatestDeployment {
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: fmt.Sprintf("no release record for latest deployment %s (release %s)", latestDeployment.ID, cliValueOrDash(latestDeployment.ReleaseID))})
 	} else {
 		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
 	}
@@ -75,8 +79,19 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 	} else {
 		report.Checks = append(report.Checks, healthCheckForDeployment("", ""))
 	}
+	if report.CurrentMainCommit != "" {
+		if !hasLatestDeployment {
+			report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "current main deployment", Detail: fmt.Sprintf("current main %s has no deployment attempt; run sudo sshdock apps redeploy %s", report.CurrentMainCommit, name)})
+		} else if report.CurrentMainCommit != latestDeployment.CommitSHA {
+			report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "current main deployment", Detail: fmt.Sprintf("current main %s differs from latest attempted commit %s; run sudo sshdock apps redeploy %s", report.CurrentMainCommit, cliValueOrDash(latestDeployment.CommitSHA), name)})
+		}
+	}
+	var lastSuccess appmodel.Deployment
 	var recentFailure appmodel.Deployment
 	for _, deployment := range deployments {
+		if deployment.Status == appmodel.DeploymentStatusSucceeded && (lastSuccess.ID == "" || deployment.StartedAt.After(lastSuccess.StartedAt) || deployment.StartedAt.Equal(lastSuccess.StartedAt) && deployment.ID > lastSuccess.ID) {
+			lastSuccess = deployment
+		}
 		if deployment.Status != appmodel.DeploymentStatusFailed {
 			continue
 		}
@@ -84,6 +99,9 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 			recentFailure = deployment
 		}
 	}
+	report.LastSuccessfulDeploymentID = lastSuccess.ID
+	report.LastSuccessfulDeploymentCommit = lastSuccess.CommitSHA
+	report.LastSuccessfulReleaseID = lastSuccess.ReleaseID
 	if recentFailure.ID != "" {
 		report.LastFailureDeploymentID = recentFailure.ID
 		summary := strings.TrimSpace(recentFailure.FailureDetail)

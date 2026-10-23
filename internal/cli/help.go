@@ -50,6 +50,7 @@ Operations:
   logs <app> [service] [-f] [--tail <lines>]
   releases list <app>
   deployments list <app>
+	deployments info <app> <deployment-id>
 	deployments logs <app> [deployment-id] [-f]
   events list <app>
 
@@ -62,6 +63,8 @@ Server:
   server domain set <domain>
 
 Use "sshdock help <command>" for details.
+Read-only apps list/info/health, releases list, deployments list/info,
+domains list/check, events list, and diagnostics accept a trailing --json.
 `)
 }
 
@@ -70,9 +73,9 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 	case "apps":
 		printTopicHelp(stdout, "Apps manage Compose app records and lifecycle actions.", []string{
 			"sshdock apps create <name>",
-			"sshdock apps list",
-			"sshdock apps info <name>",
-			"sshdock apps health <name>",
+			"sshdock apps list [--json]",
+			"sshdock apps info <name> [--json]",
+			"sshdock apps health <name> [--json]",
 			"sshdock apps start <name>",
 			"sshdock apps stop <name>",
 			"sshdock apps restart <name> [service]",
@@ -105,8 +108,8 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 	case "domains":
 		printTopicHelp(stdout, "Domain commands attach public hostnames to app services.", []string{
 			"sshdock domains attach <app> <service> <domain> --port <port>",
-			"sshdock domains list <app>",
-			"sshdock domains check <app>",
+			"sshdock domains list <app> [--json]",
+			"sshdock domains check <app> [--json]",
 			"sshdock domains detach <app> <domain>",
 		}, []string{
 			"sudo sshdock domains attach my-app web app.example.com --port 3000",
@@ -130,11 +133,11 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sudo systemctl stop sshdockd && sudo sshdock backup restore /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",
 		})
 	case "releases":
-		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{"sshdock releases list <app>"}, []string{"sudo sshdock releases list my-app"})
+		printTopicHelp(stdout, "Release commands inspect deployable release records.", []string{"sshdock releases list <app> [--json]"}, []string{"sudo sshdock releases list my-app"})
 	case "deployments":
-		printTopicHelp(stdout, "Deployment commands inspect every execution attempt and its durable output.", []string{"sshdock deployments list <app>", "sshdock deployments logs <app> [deployment-id] [-f]"}, []string{"sudo sshdock deployments list my-app", "ssh sshdock@<host> deployments logs my-app -f"})
+		printTopicHelp(stdout, "Deployment commands inspect every execution attempt and its durable output.", []string{"sshdock deployments list <app> [--json]", "sshdock deployments info <app> <deployment-id> [--json]", "sshdock deployments logs <app> [deployment-id] [-f]"}, []string{"sudo sshdock deployments list my-app", "ssh sshdock@<host> deployments logs my-app -f"})
 	case "events":
-		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events, including retained removal audit history.", []string{"sshdock events list <app>"}, []string{"sudo sshdock events list my-app"})
+		printTopicHelp(stdout, "Event commands inspect app runtime and deployment events, including retained removal audit history.", []string{"sshdock events list <app> [--json]"}, []string{"sudo sshdock events list my-app"})
 	case "server":
 		printTopicHelp(stdout, "Server commands configure single-node SSHDock host behavior.", []string{"sshdock server domain set <domain>"}, []string{"sudo sshdock server domain set example.com"})
 	case "ssh-keys":
@@ -149,7 +152,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 	case "version":
 		printTopicHelp(stdout, "Version prints the CLI version.", []string{"sshdock version"}, []string{"sshdock version"})
 	case "diagnostics":
-		printTopicHelp(stdout, "Diagnostics checks SSHDock runtime readiness.", []string{"sshdock diagnostics"}, []string{"sudo sshdock diagnostics"})
+		printTopicHelp(stdout, "Diagnostics checks SSHDock runtime readiness.", []string{"sshdock diagnostics [--json]"}, []string{"sudo sshdock diagnostics"})
 	default:
 		fmt.Fprintf(stderr, "unknown help topic %q\n", topic)
 		fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)

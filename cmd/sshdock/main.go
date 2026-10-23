@@ -31,34 +31,46 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
+	originalArgs := args
+	args, jsonOutput, parseErr := cli.ParseOutputArgs(args)
+	fail := func(err error, code int) int {
+		if jsonOutput {
+			if writeErr := cli.WriteJSON(stdout, cli.JSONCommandName(originalArgs), nil, err); writeErr != nil {
+				fmt.Fprintln(stderr, writeErr)
+				return 1
+			}
+		} else {
+			fmt.Fprintln(stderr, err)
+		}
+		return code
+	}
+	if parseErr != nil {
+		return fail(parseErr, 2)
+	}
 	if len(args) == 1 && args[0] == "diagnostics" {
-		return runDiagnostics(stdout)
+		return runDiagnostics(stdout, stderr, jsonOutput)
 	}
 	if len(args) >= 1 && args[0] == "backup" {
 		return runBackup(args[1:], stdout, stderr)
 	}
 	if !commandNeedsStore(args) {
-		return run(args, stdout, stderr)
+		return run(originalArgs, stdout, stderr)
 	}
 
 	cfg := config.LoadFromEnv()
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+		return fail(err, 1)
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		fmt.Fprintf(stderr, "create data dir: %v\n", err)
-		return 1
+		return fail(fmt.Errorf("create data dir: %w", err), 1)
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
-		fmt.Fprintf(stderr, "create database dir: %v\n", err)
-		return 1
+		return fail(fmt.Errorf("create database dir: %w", err), 1)
 	}
 
 	sqlite, err := store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "open store: %v\n", err)
-		return 1
+		return fail(fmt.Errorf("open store: %w", err), 1)
 	}
 	defer sqlite.Close()
 
@@ -68,8 +80,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	if commandNeedsRecoveryRunner(args) {
 		recoveryRunner, err = cliRunnerFromEnv()
 		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
+			return fail(err, 1)
 		}
 	}
 
@@ -100,7 +111,7 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 		ConfigManager:       configService,
 	})
 	runner := cli.NewRunner(backend, version.String())
-	return runner.RunWithInput(args, os.Stdin, stdout, stderr)
+	return runner.RunWithInput(originalArgs, os.Stdin, stdout, stderr)
 }
 
 func runBackup(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -229,9 +240,16 @@ func printBackupInvalidUsage(stderr io.Writer) {
 	fmt.Fprintln(stderr, `Run "sshdock help backup" for usage.`)
 }
 
-func runDiagnostics(stdout io.Writer) int {
+func runDiagnostics(stdout io.Writer, stderr io.Writer, jsonOutput bool) int {
 	report := diagnostics.Run(context.Background(), config.LoadFromEnv(), diagnosticsLocalExecutor{})
-	fmt.Fprint(stdout, report.String())
+	if jsonOutput {
+		if err := cli.WriteJSON(stdout, "diagnostics", report, nil); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+	} else {
+		fmt.Fprint(stdout, report.String())
+	}
 	if !report.OK {
 		return 1
 	}

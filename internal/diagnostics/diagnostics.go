@@ -25,17 +25,17 @@ type CommandExecutor interface {
 }
 
 type Report struct {
-	Checks []Check
-	OK     bool
+	Checks []Check `json:"checks"`
+	OK     bool    `json:"ok"`
 }
 
 type Check struct {
-	Name    string
-	OK      bool
-	Warning bool
-	Message string
-	Why     string
-	Fix     string
+	Name    string `json:"name"`
+	OK      bool   `json:"ok"`
+	Warning bool   `json:"warning"`
+	Message string `json:"message"`
+	Why     string `json:"why"`
+	Fix     string `json:"fix"`
 }
 
 func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Report {

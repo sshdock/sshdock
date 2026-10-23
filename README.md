@@ -199,6 +199,7 @@ See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for maintained framework compatibilit
 
 - [`docs/INSTALL.md`](docs/INSTALL.md): install, upgrade, firewall, backup, and restore notes.
 - [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md): complete `sshdock` and `sshdockd` command reference.
+- [`docs/JSON_OUTPUT.md`](docs/JSON_OUTPUT.md): unreleased v1.1 structured inspection and deployment polling contract.
 - [`docs/EXAMPLES.md`](docs/EXAMPLES.md): runnable user-story examples.
 - Adoption docs: [`docs/COMPARE_DOKKU.md`](docs/COMPARE_DOKKU.md), [`docs/COMPARE_DOKPLOY.md`](docs/COMPARE_DOKPLOY.md), [`docs/MIGRATE_FROM_DOKKU.md`](docs/MIGRATE_FROM_DOKKU.md), [`docs/MIGRATE_FROM_DOKPLOY.md`](docs/MIGRATE_FROM_DOKPLOY.md), and [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 - [`docs/RUNTIME_ENGINES.md`](docs/RUNTIME_ENGINES.md): current Compose runtime and future engine boundary.

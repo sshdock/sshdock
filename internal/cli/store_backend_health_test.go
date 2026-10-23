@@ -157,6 +157,127 @@ func TestStoreBackendAppsHealthUsesLatestAttemptReleaseAfterGitRollback(t *testi
 	if report.LatestDeploymentID != "dep_rollback" || report.LastFailureDeploymentID != "dep_failed" {
 		t.Fatalf("deployment history = %#v", report)
 	}
+	if report.LastSuccessfulDeploymentID != "dep_rollback" || report.LastSuccessfulDeploymentCommit != "old" || report.LastSuccessfulReleaseID != "rel_old" {
+		t.Fatalf("last successful deployment = %#v", report)
+	}
+}
+
+func TestStoreBackendAppsHealthDoesNotBorrowHistoricalReleaseForPendingAttempt(t *testing.T) {
+	for _, releaseID := range []string{"rel_pending", ""} {
+		t.Run("release="+releaseID, func(t *testing.T) {
+			ctx := context.Background()
+			sqlite := newStoreBackendTestStore(t, ctx)
+			now := time.Date(2026, 10, 23, 11, 0, 0, 0, time.UTC)
+			seedRecoveryApp(t, ctx, sqlite, filepath.Join(t.TempDir(), "apps"), now)
+			for _, deployment := range []app.Deployment{
+				{ID: "dep_ok", AppID: "my-app", ReleaseID: "rel_new", CommitSHA: "new", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusSucceeded, StartedAt: now},
+				{ID: "dep_pending", AppID: "my-app", ReleaseID: releaseID, CommitSHA: "unbuilt", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now.Add(time.Minute)},
+			} {
+				if err := sqlite.CreateDeployment(ctx, deployment); err != nil {
+					t.Fatal(err)
+				}
+			}
+			report, err := NewStoreBackend(sqlite, StoreBackendConfig{}).AppHealth("my-app")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.AttemptReleaseID != releaseID || report.AttemptReleaseStatus != "" || report.LatestDeploymentID != "dep_pending" || report.LastSuccessfulReleaseID != "rel_new" {
+				t.Fatalf("pending attempt borrowed historical release: %#v", report)
+			}
+			for _, check := range report.Checks {
+				if check.Name == "release" && check.Status == "warn" && strings.Contains(check.Detail, "no release record for latest deployment dep_pending") {
+					return
+				}
+			}
+			t.Fatalf("missing release-record warning: %#v", report.Checks)
+		})
+	}
+}
+
+func TestStoreBackendAppsHealthKeepsSuccessfulIdentityIndependentOfLatestAttempt(t *testing.T) {
+	now := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
+	attempt := func(id, commit, release string, status app.DeploymentStatus, offset time.Duration) app.Deployment {
+		return app.Deployment{ID: id, AppID: "my-app", ReleaseID: release, CommitSHA: commit, Trigger: app.DeploymentTriggerPush, Status: status, StartedAt: now.Add(offset)}
+	}
+	interrupted := attempt("dep_interrupted", "new", "rel_new", app.DeploymentStatusFailed, time.Minute)
+	interrupted.FailureStage = "daemon restart"
+	interrupted.FailureDetail = "daemon restarted while this deployment was active; it was not automatically rerun"
+	for _, test := range []struct {
+		name, main, latest, success, successCommit, successRelease, failure string
+		attempts                                                            []app.Deployment
+		stale                                                               bool
+	}{
+		{
+			name: "failed same commit retry", main: "new", latest: "dep_retry", success: "dep_ok", successCommit: "new", successRelease: "rel_new", failure: "dep_retry",
+			attempts: []app.Deployment{attempt("dep_ok", "new", "rel_new", app.DeploymentStatusSucceeded, 0), attempt("dep_retry", "new", "rel_new", app.DeploymentStatusFailed, time.Minute)},
+		},
+		{
+			name: "queued attempt", main: "new", latest: "dep_pending", success: "dep_ok", successCommit: "old", successRelease: "rel_old",
+			attempts: []app.Deployment{attempt("dep_ok", "old", "rel_old", app.DeploymentStatusSucceeded, 0), attempt("dep_pending", "new", "rel_new", app.DeploymentStatusPending, time.Minute)},
+		},
+		{
+			name: "deploying attempt", main: "new", latest: "dep_deploying", success: "dep_ok", successCommit: "old", successRelease: "rel_old",
+			attempts: []app.Deployment{attempt("dep_ok", "old", "rel_old", app.DeploymentStatusSucceeded, 0), attempt("dep_deploying", "new", "rel_new", app.DeploymentStatusDeploying, time.Minute)},
+		},
+		{
+			name: "interrupted attempt", main: "new", latest: "dep_interrupted", success: "dep_ok", successCommit: "old", successRelease: "rel_old", failure: "dep_interrupted",
+			attempts: []app.Deployment{attempt("dep_ok", "old", "rel_old", app.DeploymentStatusSucceeded, 0), interrupted},
+		},
+		{
+			name: "stale current main", main: "new", latest: "dep_ok", success: "dep_ok", successCommit: "old", successRelease: "rel_old", stale: true,
+			attempts: []app.Deployment{attempt("dep_ok", "old", "rel_old", app.DeploymentStatusSucceeded, 0)},
+		},
+		{name: "current main without attempts", main: "new", stale: true},
+		{
+			name: "failed attempt without success", main: "new", latest: "dep_failed", failure: "dep_failed",
+			attempts: []app.Deployment{attempt("dep_failed", "new", "rel_new", app.DeploymentStatusFailed, 0)},
+		},
+		{
+			name: "tied attempts use ID", main: "old", latest: "dep_z", success: "dep_z", successCommit: "old", successRelease: "rel_old",
+			attempts: []app.Deployment{attempt("dep_z", "old", "rel_old", app.DeploymentStatusSucceeded, 0), attempt("dep_a", "new", "rel_new", app.DeploymentStatusSucceeded, 0)},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			sqlite := newStoreBackendTestStore(t, ctx)
+			seedRecoveryApp(t, ctx, sqlite, filepath.Join(t.TempDir(), "apps"), now)
+			for _, deployment := range test.attempts {
+				if err := sqlite.CreateDeployment(ctx, deployment); err != nil {
+					t.Fatal(err)
+				}
+			}
+			domain := app.Domain{ID: "dom_1", AppID: "my-app", ServiceName: "web", DomainName: "app.example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}
+			if err := sqlite.AttachDomain(ctx, domain); err != nil {
+				t.Fatal(err)
+			}
+			backend := NewStoreBackend(sqlite, StoreBackendConfig{
+				RecoveryRunner: &compose.FakeRunner{Services: []compose.ServiceStatus{{Name: "web", State: "running"}}},
+				Router:         &fakeRoutePublisher{StoredRoutes: []router.Route{{AppID: domain.AppID, ServiceName: domain.ServiceName, DomainName: domain.DomainName, Port: domain.Port, HTTPS: domain.HTTPS}}},
+				CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) {
+					return test.main, nil
+				}),
+			})
+			report, err := backend.AppHealth("my-app")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.LatestDeploymentID != test.latest || report.LastSuccessfulDeploymentID != test.success || report.LastSuccessfulDeploymentCommit != test.successCommit || report.LastSuccessfulReleaseID != test.successRelease || report.LastFailureDeploymentID != test.failure {
+				t.Fatalf("deployment identities = %#v", report)
+			}
+			stale := false
+			for _, check := range report.Checks {
+				if check.Name == "current main deployment" {
+					stale = check.Status == "warn" && strings.Contains(check.Detail, test.main) && strings.Contains(check.Detail, "sudo sshdock apps redeploy my-app")
+				}
+			}
+			if stale != test.stale {
+				t.Fatalf("stale current main warning = %v, want %v: %#v", stale, test.stale, report.Checks)
+			}
+			if report.ActiveRouteCount != 1 || report.RouteAttentionCount != 0 || report.RunningServiceCount != 1 || report.AttentionServiceCount != 0 {
+				t.Fatalf("attempt identity changed independent runtime/route observations: %#v", report)
+			}
+		})
+	}
 }
 
 func TestStoreBackendAppsHealthReportsActiveRouteState(t *testing.T) {

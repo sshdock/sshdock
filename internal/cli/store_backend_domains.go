@@ -42,7 +42,7 @@ func routesFromDomains(domains []appmodel.Domain) []router.Route {
 func (b *StoreBackend) ListDomains(appName string) ([]Domain, error) {
 	ctx := context.Background()
 	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	} else if err != nil {
 		return nil, fmt.Errorf("get app %q: %w", appName, err)
 	}

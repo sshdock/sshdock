@@ -13,7 +13,7 @@ import (
 func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 	ctx := context.Background()
 	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	} else if err != nil {
 		return nil, fmt.Errorf("get app %q: %w", appName, err)
 	}
@@ -45,7 +45,7 @@ func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 func (b *StoreBackend) ListDeployments(appName string) ([]Deployment, error) {
 	ctx := context.Background()
 	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	} else if err != nil {
 		return nil, fmt.Errorf("get app %q: %w", appName, err)
 	}
@@ -59,7 +59,7 @@ func (b *StoreBackend) ListDeployments(appName string) ([]Deployment, error) {
 	}
 	deployments := make([]Deployment, 0, len(models))
 	for _, model := range models {
-		deployments = append(deployments, Deployment{ID: model.ID, AppName: model.AppID, ReleaseID: model.ReleaseID, CommitSHA: model.CommitSHA, Trigger: string(model.Trigger), Status: string(model.Status), StartedAt: model.StartedAt, FinishedAt: model.FinishedAt, FailureStage: model.FailureStage, FailureDetail: compose.RedactValues(model.FailureDetail, redactionValues), RetryGuidance: model.RetryGuidance})
+		deployments = append(deployments, Deployment{ID: model.ID, AppName: model.AppID, ReleaseID: model.ReleaseID, CommitSHA: model.CommitSHA, Trigger: string(model.Trigger), Status: string(model.Status), StartedAt: model.StartedAt, FinishedAt: model.FinishedAt, FailureStage: model.FailureStage, FailureDetail: compose.RedactValues(model.FailureDetail, redactionValues), RetryGuidance: compose.RedactValues(model.RetryGuidance, redactionValues)})
 	}
 	return deployments, nil
 }
@@ -75,7 +75,7 @@ func (b *StoreBackend) ListEvents(appName string) ([]Event, error) {
 		return nil, fmt.Errorf("list events for app %q: %w", appName, err)
 	}
 	if errors.Is(appErr, store.ErrNotFound) && len(models) == 0 {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	}
 
 	var redactionValues map[string]string
@@ -87,7 +87,7 @@ func (b *StoreBackend) ListEvents(appName string) ([]Event, error) {
 	}
 	events := make([]Event, 0, len(models))
 	for _, model := range models {
-		events = append(events, Event{AppName: model.AppID, Type: model.Type, Message: compose.RedactValues(model.Message, redactionValues), CreatedAt: model.CreatedAt})
+		events = append(events, Event{ID: model.ID, AppName: model.AppID, Type: model.Type, Message: compose.RedactValues(model.Message, redactionValues), CreatedAt: model.CreatedAt})
 	}
 	return events, nil
 }

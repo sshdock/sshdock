@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 )
@@ -15,7 +16,7 @@ import (
 func (b *StoreBackend) CheckDomains(appName string) ([]DomainCheck, error) {
 	ctx := context.Background()
 	if _, err := b.store.GetApp(ctx, appName); errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("app %q not found", appName)
+		return nil, appNotFoundError(appName)
 	} else if err != nil {
 		return nil, fmt.Errorf("get app %q: %w", appName, err)
 	}
@@ -26,6 +27,10 @@ func (b *StoreBackend) CheckDomains(appName string) ([]DomainCheck, error) {
 	failures, err := b.store.ListRouteApplyFailuresByApp(ctx, appName)
 	if err != nil {
 		return nil, fmt.Errorf("list route apply failures for app %q: %w", appName, err)
+	}
+	redactionValues, err := b.configRedactionValues(ctx, appName)
+	if err != nil {
+		return nil, err
 	}
 	failuresByDomain := make(map[string]store.RouteApplyFailure, len(failures))
 	for _, failure := range failures {
@@ -115,6 +120,9 @@ func (b *StoreBackend) CheckDomains(appName string) ([]DomainCheck, error) {
 	sort.Slice(checks, func(i, j int) bool {
 		return checks[i].DomainName < checks[j].DomainName
 	})
+	for index := range checks {
+		checks[index].Detail = compose.RedactValues(checks[index].Detail, redactionValues)
+	}
 	return checks, nil
 }
 

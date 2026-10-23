@@ -6,7 +6,7 @@ description: Deploy and operate a trusted owner's SSHDock Compose apps with Git 
 
 # SSHDock operations
 
-Use the OSS Git/SSH/CLI contract; no cloud account or agent service is required. These instructions require v1.1 commands (unreleased until v1.1 publication). Published v1.0.0 lacks structured inspection, preflight and volume-data commands. Confirm server/client capabilities; stop on unsupported commands rather than inventing replacements.
+Use the OSS Git/SSH/CLI contract; no cloud account or agent service is required. These instructions require v1.1.0 commands. v1.0.0 lacks structured inspection, preflight and volume-data commands. Confirm server/client capabilities; stop on unsupported commands rather than inventing replacements.
 
 The owner supplies the intended host, operator identity, trusted local repository and affected app. Examples use `my-app`, service `web` and Git remote `sshdock`; substitute reviewed values, never shell fragments. Keep private connection details outside this skill.
 
@@ -20,7 +20,7 @@ The owner supplies the intended host, operator identity, trusted local repositor
 
 ## Installation readiness
 
-Read the matching version's [installation guide](https://github.com/sshdock/sshdock/blob/main/docs/INSTALL.md) before approved host setup. Check supported Linux architecture, Docker Engine/Compose/Caddy, DNS/firewall, trusted admin SSH and operator/deploy keys. Administrator access is separate from restricted operator commands; inspection does not authorize installation.
+Read the matching version's [installation guide](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md) before approved host setup. Check supported Linux architecture, Docker Engine/Compose/Caddy, DNS/firewall, trusted admin SSH and operator/deploy keys. Administrator access is separate from restricted operator commands; inspection does not authorize installation.
 
 On the workstation, run `sshdock version` and `sshdock check . --json` from the proposed Compose project. Server `ssh -T "$OPERATOR" apps check my-app --json` inspects the current managed worktree, not queued main. `ok:true` means no confirmed blockers; review warnings/unknowns. Preflight does not test image pulls, builds, readiness or public ingress.
 
@@ -42,7 +42,7 @@ sshdock events list my-app --json
 
 Check process exit and separate stderr, then require `schema_version == "1"`, the expected `command` and `error == null`. Ignore additive fields; stop on unknown schema/state. Exit 2 means invalid arguments; exit 1 means query failure or completed diagnostics/preflight with `data.ok:false`. SSH errors may precede JSON. Parse `error.code` (`invalid_arguments`, `not_found`, `unavailable`), not message wording.
 
-Exit 0 completes the query, not deployment or availability. `apps.info.status` is stored lifecycle state. From one health snapshot distinguish `current_main_commit`, latest attempt ID/commit/status and last successful attempt ID/commit. Historical success is not proof of serving containers. Check service health, active routes, public HTTPS and application data independently; route matching alone does not test DNS/TLS. See the [schema/exit contract](https://github.com/sshdock/sshdock/blob/main/docs/JSON_OUTPUT.md).
+Exit 0 completes the query, not deployment or availability. `apps.info.status` is stored lifecycle state. From one health snapshot distinguish `current_main_commit`, latest attempt ID/commit/status and last successful attempt ID/commit. Historical success is not proof of serving containers. Check service health, active routes, public HTTPS and application data independently; route matching alone does not test DNS/TLS. See the [schema/exit contract](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/JSON_OUTPUT.md).
 
 ## Deploy, diagnose and verify
 
@@ -57,7 +57,7 @@ Redeploy is synchronous and prints no queued ID. Compare history before/after; m
 
 ## Manual Git-selected recovery
 
-Read the [recovery procedure](https://github.com/sshdock/sshdock/blob/main/docs/RECOVERY.md) for full confirmation/verification commands. Capture one health snapshot; require the latest attempt terminal. Take `EXPECTED_MAIN` from `current_main_commit`; locally verify the compatible target with `git rev-parse --verify "$TARGET_REF^{commit}"`, `git show` and `git diff`. Review current config/data/migrations: Git cannot reverse data/external changes and recovery can fail after replacing containers.
+Read the [recovery procedure](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/RECOVERY.md) for full confirmation/verification commands. Capture one health snapshot; require the latest attempt terminal. Take `EXPECTED_MAIN` from `current_main_commit`; locally verify the compatible target with `git rev-parse --verify "$TARGET_REF^{commit}"`, `git show` and `git diff`. Review current config/data/migrations: Git cannot reverse data/external changes and recovery can fail after replacing containers.
 
 Present both full commits and obtain explicit human approval for this app/target. The documented interactive workflow also types the full target for confirmation. If target differs from expected main, use only:
 
@@ -70,7 +70,7 @@ Stop on stale/busy rejection; never replace the lease with `--force`. If target 
 
 ## Manual backup and restore
 
-Read the [application-data recovery guide](https://github.com/sshdock/sshdock/blob/main/docs/APPLICATION_DATA_BACKUPS.md). Select exact resources and an owner-controlled writer moratorium. Archives are unencrypted and may contain secrets; host-state archives include the config decryption key. Use private files, owner-managed encryption/storage and verified off-host copies. Trust the source; checksums are not authentication.
+Read the [application-data recovery guide](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/APPLICATION_DATA_BACKUPS.md). Select exact resources and an owner-controlled writer moratorium. Archives are unencrypted and may contain secrets; host-state archives include the config decryption key. Use private files, owner-managed encryption/storage and verified off-host copies. Trust the source; checksums are not authentication.
 
 - **Host state:** idle deployments, paused mutations, stopped daemon; admin `sudo sshdock backup create --output <new-archive>`, then `sudo sshdock backup inspect <archive>`. This copies metadata/key/Git/Caddy files and only inventories volumes; `--include-volumes` remains unsupported. Approved `sudo sshdock backup restore <archive>` needs compatible prerequisites/same layout: `<DataDir>/sshdock.db`, `<DataDir>/config.key`, apps/Git/key state under DataDir. Normalize host-account ownership with matching bootstrap while idle.
 - **File volume:** stop every writer, including other apps/host/external actors. Admin `sudo sshdock backup volume export <exact-volume> --output <new-archive> --quiesced`, then `sudo sshdock backup volume inspect <archive>`. Only ordinary local volumes without driver options and the documented regular-file/directory/basic numeric ownership/mode profile are supported. Observed RW consumers are rejected; the flag cannot prove consistency or detect every writer.

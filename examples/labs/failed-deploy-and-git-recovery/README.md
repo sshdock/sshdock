@@ -4,20 +4,20 @@
 
 This lab reuses the Next.js framework compatibility probe to show the difference between accepting a Git ref and completing a healthy deployment. Its only overlay changes the copied probe's Compose build to name an absent Dockerfile. That creates a controlled build failure without copying or changing the canonical probe, its Dockerfile, or the generated application source.
 
-This failure happens before Compose replaces containers. It does not prove recovery after an unhealthy replacement or a failed recovery attempt; see the [manual recovery guide and Docker test](../../../docs/RECOVERY.md). The structured recovery workflow requires the unreleased v1.1 CLI.
+This failure happens before Compose replaces containers. It does not prove recovery after an unhealthy replacement or a failed recovery attempt; see the [manual recovery guide and Docker test](../../../docs/RECOVERY.md). The structured recovery workflow requires the v1.1.0 CLI.
 
 Replace `example.com` below with the SSHDock base domain.
 
 ## Deploy a known-good commit
 
-Copy the Next.js deployment envelope and this one-file failure overlay from the matching `v1.0.0` release:
+Copy the Next.js deployment envelope and this one-file failure overlay from the matching `v1.1.0` release:
 
 ```bash
 mkdir failed-deploy-and-git-recovery
 cd failed-deploy-and-git-recovery
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/nextjs
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/failed-deploy-and-git-recovery/failure.patch \
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/nextjs
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/examples/labs/failed-deploy-and-git-recovery/failure.patch \
   -o failure.patch
 git init -b main
 git add .

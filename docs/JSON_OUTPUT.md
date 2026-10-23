@@ -1,6 +1,6 @@
 # Structured inspection
 
-This contract is an **unreleased v1.1** addition. Published v1.0.0 binaries do not support it. Default human-readable commands and their exit behavior remain compatible.
+This contract is a **v1.1.0** addition. Published v1.0.0 binaries do not support it. Default human-readable commands and their exit behavior remain compatible.
 
 Append `--json` once, at the end of a supported read-only command:
 

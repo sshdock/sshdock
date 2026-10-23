@@ -27,16 +27,18 @@ You own host administration, app availability, application-data consistency, and
 
 Potential paid hosted operations are future research, not shipped functionality or a restriction on the Apache-2.0 OSS runtime and its manual operations.
 
-## Published Release: v1.0.0
+## Published Release: v1.1.0
 
-Install [v1.0.0](https://github.com/sshdock/sshdock/releases/tag/v1.0.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
+Install [v1.1.0](https://github.com/sshdock/sshdock/releases/tag/v1.1.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v1.0.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v1.1.0 bash bootstrap.sh
 ```
 
-Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/README.md#quick-start) and [v1.0.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
+Follow the [v1.1.0 quick start](https://github.com/sshdock/sshdock/blob/v1.1.0/README.md#quick-start) and [v1.1.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
+
+v1.1 adds structured CLI inspection, read-only preflight, documented Git-selected recovery, manual application-data archives and a portable coding-agent skill. See the [release and upgrade notes](docs/V1_1_RELEASE.md) for availability, installation and operational limits.
 
 ## Quick Start
 
@@ -213,8 +215,8 @@ See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for maintained framework compatibilit
 
 - [`docs/INSTALL.md`](docs/INSTALL.md): install, upgrade, firewall, backup, and restore notes.
 - [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md): complete `sshdock` and `sshdockd` command reference.
-- [`docs/JSON_OUTPUT.md`](docs/JSON_OUTPUT.md): unreleased v1.1 structured inspection and deployment polling contract.
-- [`docs/PREFLIGHT.md`](docs/PREFLIGHT.md): unreleased v1.1 read-only local and server Compose checks.
+- [`docs/JSON_OUTPUT.md`](docs/JSON_OUTPUT.md): v1.1 structured inspection and deployment polling contract.
+- [`docs/PREFLIGHT.md`](docs/PREFLIGHT.md): v1.1 read-only local and server Compose checks.
 - [`docs/AGENT_OPERATIONS.md`](docs/AGENT_OPERATIONS.md): portable Codex/Claude Code skill and approved manual operations.
 - [`docs/EXAMPLES.md`](docs/EXAMPLES.md): runnable user-story examples.
 - Adoption docs: [`docs/COMPARE_DOKKU.md`](docs/COMPARE_DOKKU.md), [`docs/COMPARE_DOKPLOY.md`](docs/COMPARE_DOKPLOY.md), [`docs/MIGRATE_FROM_DOKKU.md`](docs/MIGRATE_FROM_DOKKU.md), [`docs/MIGRATE_FROM_DOKPLOY.md`](docs/MIGRATE_FROM_DOKPLOY.md), and [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).

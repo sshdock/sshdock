@@ -2,7 +2,7 @@
 
 SSHDock ships one portable [sshdock-operations skill](../.agents/skills/sshdock-operations/SKILL.md) for trusted-owner operations. Codex and Claude Code use the same instructions and the same OSS CLI, Git and SSH commands. There is no embedded agent, hosted control plane or separate deploy API.
 
-The skill targets **unreleased v1.1**: published v1.0.0 does not have its JSON, preflight or volume-data commands. Use a reviewed SSHDock checkout matching the server/client release, and read that version's docs. The links in the skill point to development docs on `main`; after installation, prefer the matching checkout/tag when behavior differs.
+The skill targets **v1.1.0**: v1.0.0 does not have its JSON, preflight or volume-data commands. Use a reviewed SSHDock checkout matching the server/client release, and read that version's docs. The skill links to the matching `v1.1.0` documentation; use the skill and docs from the same reviewed tag when upgrading.
 
 ## Install into an application repository
 
@@ -81,4 +81,4 @@ Workflow approval is a rule for the agent, **not enforcement by SSHDock**. A dep
 
 When CLI syntax, JSON/error semantics or recovery/backup behavior changes, update the skill and matching public docs in the same change. Keep one canonical package; installed copies are not automatically synchronized.
 
-`make ci` executes the skill's `sshdock-read` examples against fake-backed shipped CLI handlers and validates JSON/query semantics. Existing preflight, recovery and backup tests cover their command implementations; real agent-driven VPS journeys are the separate release-acceptance gate. A parser/command test does not prove a model discovered the right skill or safely completed a live workflow. See [testing](TESTING.md) and [release acceptance](RELEASE_ACCEPTANCE.md).
+`make ci` executes the skill's `sshdock-read` examples against fake-backed shipped CLI handlers and validates JSON/query semantics. Existing preflight, recovery and backup tests cover their command implementations; real agent-driven VPS journeys are the separate release-acceptance gate. A parser/command test does not prove a model discovered the right skill or safely completed a live workflow. See [testing](TESTING.md) and [v1.1 acceptance](V1_1_ACCEPTANCE.md).

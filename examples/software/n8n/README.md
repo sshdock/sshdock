@@ -29,13 +29,13 @@ This is an exact stable version and multi-platform manifest digest from n8n's of
 
 ## Deploy
 
-Copy this recipe's two public files from the matching `v1.0.0` release:
+Copy this recipe's two public files from the matching `v1.1.0` release:
 
 ```bash
 mkdir n8n
 cd n8n
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/software/n8n
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/software/n8n
 git init -b main
 git add .
 git commit -m "Deploy n8n"

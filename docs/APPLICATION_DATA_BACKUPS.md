@@ -1,6 +1,6 @@
 # Manual application-data backup and restore
 
-The volume commands below are an **unreleased v1.1** addition. They are local host administration, unavailable through restricted operator SSH. Use a normal administrator SSH session and the intended Docker daemon. No hosted service, schedule, storage, encryption, or recovery guarantee is included.
+The volume commands below are a **v1.1.0** addition. They are local host administration, unavailable through restricted operator SSH. Use a normal administrator SSH session and the intended Docker daemon. No hosted service, schedule, storage, encryption, or recovery guarantee is included.
 
 | Backup | Contains | Consistency boundary |
 | --- | --- | --- |

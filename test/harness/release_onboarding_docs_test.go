@@ -16,11 +16,11 @@ func TestPublishedReleaseOnboardingIsVersionMatched(t *testing.T) {
 			}
 			released, current := splitPublishedReleaseDocs(t, string(contents))
 			for _, want := range []string{
-				"https://github.com/sshdock/sshdock/releases/tag/v1.0.0",
-				"https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/scripts/bootstrap.sh",
-				"sudo SSHDOCK_TAG=v1.0.0 bash bootstrap.sh",
-				"https://github.com/sshdock/sshdock/blob/v1.0.0/README.md#quick-start",
-				"https://github.com/sshdock/sshdock/blob/v1.0.0/docs/INSTALL.md",
+				"https://github.com/sshdock/sshdock/releases/tag/v1.1.0",
+				"https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/scripts/bootstrap.sh",
+				"sudo SSHDOCK_TAG=v1.1.0 bash bootstrap.sh",
+				"https://github.com/sshdock/sshdock/blob/v1.1.0/README.md#quick-start",
+				"https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md",
 				"ssh sshdock@sshdock.example.com",
 				"durable deployment logs",
 			} {
@@ -86,8 +86,8 @@ func TestPublicExampleDownloadsUseMatchingRelease(t *testing.T) {
 		}
 		if strings.Contains(text, "https://github.com/sshdock/sshdock/archive/") {
 			for _, want := range []string{
-				"https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz",
-				"--strip-components=4 sshdock-1.0.0/examples/",
+				"https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz",
+				"--strip-components=4 sshdock-1.1.0/examples/",
 			} {
 				if !strings.Contains(text, want) {
 					t.Errorf("%s missing version-matched download %q", path, want)
@@ -100,7 +100,7 @@ func TestPublicExampleDownloadsUseMatchingRelease(t *testing.T) {
 // Keep the install command and linked complete usage docs in one versioned section.
 func splitPublishedReleaseDocs(t *testing.T, text string) (string, string) {
 	t.Helper()
-	const heading = "## Published Release: v1.0.0\n"
+	const heading = "## Published Release: v1.1.0\n"
 	before, after, found := strings.Cut(text, heading)
 	if !found {
 		t.Fatalf("missing explicit published-release heading %q", heading)

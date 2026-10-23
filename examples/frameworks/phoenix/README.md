@@ -40,13 +40,13 @@ The generator and multi-platform image manifests are immutable inputs. Hex, GitH
 
 ## Deploy
 
-Copy this probe's three-file envelope from the matching `v1.0.0` release:
+Copy this probe's three-file envelope from the matching `v1.1.0` release:
 
 ```bash
 mkdir phoenix
 cd phoenix
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/phoenix
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/phoenix
 git init -b main
 git add .
 git commit -m "Deploy Phoenix LiveView"

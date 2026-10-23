@@ -33,7 +33,7 @@ Use Dokploy when you want:
 | Domains | Base-domain defaults plus `sshdock domains attach/list/check` | UI-managed domains for applications and Docker Compose |
 | Logs and deploy history | CLI and SSH dashboard show logs, releases, deployments, events, and failure detail | UI log viewer and deployment history |
 | Multi-server | Not supported | Documented remote-server and cluster-oriented surfaces |
-| Backups | Host-state backup plus separate [manual data backup](APPLICATION_DATA_BACKUPS.md) in unreleased v1.1 | Dokploy has backup and volume-backup features for supported setups |
+| Backups | Host-state backup plus separate [manual data backup](APPLICATION_DATA_BACKUPS.md) in v1.1.0 | Dokploy has backup and volume-backup features for supported setups |
 | Teams/RBAC | Not supported | Team/enterprise surfaces exist in Dokploy docs |
 
 ## What Migrates Well

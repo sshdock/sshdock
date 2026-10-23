@@ -91,7 +91,7 @@ type LocalDockerVolumeLister struct{}
 
 func Create(ctx context.Context, request CreateRequest) (CreateResult, error) {
 	if request.IncludeVolumes {
-		return CreateResult{}, fmt.Errorf("Docker volume content backup is not implemented; SSHDock backup archives include Docker volume inventory only")
+		return CreateResult{}, fmt.Errorf("Docker volume content backup is not implemented in host-state archives; SSHDock backup archives include Docker volume inventory only; use sshdock backup volume export <volume> --output <archive> --quiesced for a separate manual data archive")
 	}
 	if err := request.Config.Validate(); err != nil {
 		return CreateResult{}, err

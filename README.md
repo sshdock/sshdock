@@ -23,7 +23,7 @@ SSHDock is licensed under [Apache-2.0](LICENSE). Third-party components retain t
 
 Manual deployment, diagnosis, Git-selected recovery, and host-state backup/restore are free OSS capabilities. They run on your VPS without an SSHDock Cloud account, API, login, or subscription. They do not depend on an SSHDock-operated service; fetching images, dependencies, DNS, and certificates can still require network access.
 
-You own host administration, app availability, application-data consistency, and recovery decisions. There is no automatic rollback or database migration reversal. Current backups archive SSHDock host state and inventory volumes; **they do not copy Docker volume contents**. Back up application data separately and test your restore procedure. See [host operations](docs/INSTALL.md#host-operations-boundary) and the [security boundary](docs/SECURITY.md).
+You own host administration, app availability, application-data consistency, and recovery decisions. There is no automatic rollback or database migration reversal. Host-state archives inventory volumes without copying their contents. Use the separate [manual volume and PostgreSQL backup workflows](docs/APPLICATION_DATA_BACKUPS.md) for application data, and test restoration. See [host operations](docs/INSTALL.md#host-operations-boundary) and the [security boundary](docs/SECURITY.md).
 
 Potential paid hosted operations are future research, not shipped functionality or a restriction on the Apache-2.0 OSS runtime and its manual operations.
 
@@ -166,6 +166,8 @@ Create and inspect a host-state backup:
 sudo sshdock backup create
 sudo sshdock backup inspect /var/lib/sshdock/backups/<archive>.tar.gz
 ```
+
+For application data, see [manual backups](docs/APPLICATION_DATA_BACKUPS.md): quiesced named-volume export/fresh-volume restore and PostgreSQL-native logical dump/restore. These are separate from host-state archives and are not automatic live snapshots.
 
 ## App Config
 

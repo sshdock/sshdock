@@ -147,7 +147,7 @@ Use an app-specific plan:
 
 Keep both systems from writing to the same data at the same time.
 
-SSHDock app removal preserves Docker volumes. SSHDock backups include volume inventory by default, not volume contents.
+SSHDock app removal preserves Docker volumes. Host-state archives include volume inventory, not contents. Use the separate [manual data backup/restore guide](APPLICATION_DATA_BACKUPS.md) for quiesced file volumes and PostgreSQL logical dumps.
 
 ## 7. Test Rollback And Recovery
 

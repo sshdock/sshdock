@@ -4,6 +4,8 @@
 
 This lab reuses the stateful [WordPress recipe](../../software/wordpress/README.md) without copying its application, Dockerfile, or Compose file. It creates and inspects a supported SSHDock host-state archive, restores it through the safety flow, proves the restored config key decrypts an app value, and confirms that app metadata, route intent, and named volumes remain observable.
 
+It verifies host state and surviving volumes, not application-data recovery from an archive. For separate v1.1 data export/fresh-target restore and PostgreSQL-native dumps, use [manual application-data backups](../../../docs/APPLICATION_DATA_BACKUPS.md).
+
 Replace `example.com` below with the SSHDock base domain. This is a host-state restore: run it only on a compatible single-node SSHDock host whose current state you intentionally want to restore. Keep the resulting archive until your normal backup-retention policy allows deleting it.
 
 ## Deploy the WordPress recipe

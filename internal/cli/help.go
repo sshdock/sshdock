@@ -49,6 +49,9 @@ Operations:
   backup create [--output <archive>]
   backup inspect <archive>
   backup restore <archive>
+  backup volume export <volume> --output <archive> --quiesced
+  backup volume inspect <archive>
+  backup volume restore <archive> --name <new-volume>
   logs <app> [service] [-f] [--tail <lines>]
   releases list <app>
   deployments list <app>
@@ -126,10 +129,13 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sudo sshdock logs my-app web --tail 200 -f",
 		})
 	case "backup":
-		printTopicHelp(stdout, "Backup commands create, inspect, and restore SSHDock state archives.", []string{
+		printTopicHelp(stdout, "Backup commands manage host-state and separate manual volume archives. Archives are unencrypted; protect them as secrets.", []string{
 			"sshdock backup create [--output <archive>]",
 			"sshdock backup inspect <archive>",
 			"sshdock backup restore <archive>",
+			"sshdock backup volume export <volume> --output <archive> --quiesced",
+			"sshdock backup volume inspect <archive>",
+			"sshdock backup volume restore <archive> --name <new-volume>",
 		}, []string{
 			"sudo sshdock backup create",
 			"sudo sshdock backup inspect /var/lib/sshdock/backups/sshdock-backup-20260709T100000Z.tar.gz",

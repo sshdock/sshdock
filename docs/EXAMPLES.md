@@ -39,7 +39,7 @@ Feature labs are executable overlays over a canonical example, not duplicate app
 - [Restricted SSH operations](../examples/labs/restricted-ssh-operations/README.md) — lifecycle, exec, run, route, and removal operations.
 - [Domains and route check](../examples/labs/domains-and-route-check/README.md) — automatic and manual routes plus active Caddy verification.
 - [Health, logs, and history](../examples/labs/health-logs-and-history/README.md) — health, release/deployment history, events, and log follow.
-- [Backup, restore, and volume boundary](../examples/labs/backup-restore-and-volume-boundary/README.md) — encrypted config recovery and the boundary that volume contents are not copied.
+- [Backup, restore, and volume boundary](../examples/labs/backup-restore-and-volume-boundary/README.md) — encrypted config recovery and the host-state archive's volume-inventory boundary. Separate [application-data backups](APPLICATION_DATA_BACKUPS.md) cover quiesced volume export/fresh restore and PostgreSQL logical dumps.
 
 ## Acceptance boundary
 

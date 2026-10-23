@@ -130,7 +130,7 @@ Use one deliberate path:
 
 Keep Dokploy and SSHDock from writing to the same data simultaneously.
 
-SSHDock preserves Docker volumes on app removal. SSHDock backups include SSHDock host state and Docker volume inventory, not volume contents.
+SSHDock preserves Docker volumes on app removal. Host-state archives include Docker volume inventory, not contents. Use the separate [manual data backup/restore guide](APPLICATION_DATA_BACKUPS.md) for quiesced file volumes and PostgreSQL logical dumps.
 
 ## 7. Cut Over
 

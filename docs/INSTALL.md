@@ -454,6 +454,8 @@ No web dashboard port should be opened.
 
 SSHDock coordinates app Git receive, Compose deployment, Caddy routes, encrypted app config, operator commands, and audit history. Normal server tooling remains responsible for operating-system patching, firewall policy, disk monitoring, Docker Engine maintenance, Caddy maintenance, and VPS-provider operations such as instance recovery and provider backups.
 
+These manual OSS operations run without an SSHDock Cloud account, API, or subscription. The VPS owner is responsible for app availability, consistent application-data backups, and choosing, initiating, and verifying recovery. Git-selected recovery does not reverse database migrations or external-resource changes. Current SSHDock backups contain host state and volume inventory, not application volume contents; see [Backup And Restore](#backup-and-restore). Optional paid hosted operations remain future research and do not limit the OSS runtime.
+
 Use SSHDock logs, health, events, diagnostics, and command exit codes as inputs to third-party monitoring. SSHDock does not collect host metrics, deliver alerts, page operators, patch the host, or remediate Docker, Caddy, disk, firewall, or provider failures.
 
 ## Upgrade Notes

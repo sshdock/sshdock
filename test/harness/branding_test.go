@@ -49,6 +49,12 @@ func TestRepositoryFilesReturnsRegularFilesOnly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("sshdock"), 0o600); err != nil {
 		t.Fatalf("write regular file: %v", err)
 	}
+	if err := os.Mkdir(filepath.Join(root, ".local"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".local", "private.log"), []byte("private evidence"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(t.TempDir(), filepath.Join(root, "external")); err != nil {
 		t.Skipf("create directory symlink: %v", err)
 	}
@@ -80,7 +86,7 @@ func repositoryFiles(t *testing.T, root string) []string {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "bin", ".tmp", "_artifacts":
+			case ".git", ".local", "bin", ".tmp", "_artifacts":
 				return filepath.SkipDir
 			}
 			return nil

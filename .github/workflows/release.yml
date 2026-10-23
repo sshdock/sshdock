@@ -42,7 +42,9 @@ jobs:
           mkdir -p dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}
           go build -ldflags "-X github.com/sshdock/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdock ./cmd/sshdock
           go build -ldflags "-X github.com/sshdock/sshdock/internal/version.value=${{ github.ref_name }}" -o dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/sshdockd ./cmd/sshdockd
-          tar -C dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }} -czf dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz sshdock sshdockd
+          cp LICENSE dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/LICENSE
+          bash scripts/release-notices.sh dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}/THIRD_PARTY_NOTICES
+          tar -C dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }} -czf dist/sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz sshdock sshdockd LICENSE THIRD_PARTY_NOTICES
           cd dist
           sha256sum sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz > sshdock_${{ github.ref_name }}_linux_${{ matrix.arch }}.tar.gz.sha256
 

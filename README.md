@@ -17,6 +17,16 @@ SSHDock stays small:
 
 SSHDock is not a Kubernetes platform, hosted cloud product, multi-node scheduler, team/RBAC system, marketplace, or web control panel.
 
+## License and operator responsibility
+
+SSHDock is licensed under [Apache-2.0](LICENSE). Third-party components retain their own licenses; see [licensing and provenance](docs/LICENSING.md).
+
+Manual deployment, diagnosis, Git-selected recovery, and host-state backup/restore are free OSS capabilities. They run on your VPS without an SSHDock Cloud account, API, login, or subscription. They do not depend on an SSHDock-operated service; fetching images, dependencies, DNS, and certificates can still require network access.
+
+You own host administration, app availability, application-data consistency, and recovery decisions. There is no automatic rollback or database migration reversal. Current backups archive SSHDock host state and inventory volumes; **they do not copy Docker volume contents**. Back up application data separately and test your restore procedure. See [host operations](docs/INSTALL.md#host-operations-boundary) and the [security boundary](docs/SECURITY.md).
+
+Potential paid hosted operations are future research, not shipped functionality or a restriction on the Apache-2.0 OSS runtime and its manual operations.
+
 ## Published Release: v1.0.0
 
 Install [v1.0.0](https://github.com/sshdock/sshdock/releases/tag/v1.0.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:

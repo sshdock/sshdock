@@ -8,6 +8,22 @@ import (
 )
 
 func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 2 && args[0] == "check" {
+		report, err := r.appPreflight(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if err := PrintPreflight(stdout, report); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if !report.OK {
+			return 1
+		}
+		return 0
+	}
+
 	if len(args) == 2 && args[0] == "create" {
 		app, remoteURL, err := r.backend.CreateApp(args[1])
 		if err != nil {

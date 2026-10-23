@@ -15,12 +15,14 @@ Usage:
 Core:
   version                              Print CLI version
   diagnostics                          Check runtime readiness
+  check [directory]                    Check Compose inputs without deploying
 
 Apps:
   apps create <name>                   Create an app repo and print Git remote
   apps list                            List apps
   apps info <name>                     Show app details
   apps health <name>                   Summarize app and Compose runtime health
+  apps check <name>                    Check current app inputs without deploying
   apps start <name>                    Start existing Compose containers
   apps stop <name>                     Stop and preserve Compose containers
   apps restart <name> [service]        Restart an app or service
@@ -63,7 +65,7 @@ Server:
   server domain set <domain>
 
 Use "sshdock help <command>" for details.
-Read-only apps list/info/health, releases list, deployments list/info,
+Read-only check, apps list/info/health/check, releases list, deployments list/info,
 domains list/check, events list, and diagnostics accept a trailing --json.
 `)
 }
@@ -76,6 +78,7 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 			"sshdock apps list [--json]",
 			"sshdock apps info <name> [--json]",
 			"sshdock apps health <name> [--json]",
+			"sshdock apps check <name> [--json]",
 			"sshdock apps start <name>",
 			"sshdock apps stop <name>",
 			"sshdock apps restart <name> [service]",
@@ -153,6 +156,8 @@ func printHelpTopic(topic string, stdout io.Writer, stderr io.Writer) int {
 		printTopicHelp(stdout, "Version prints the CLI version.", []string{"sshdock version"}, []string{"sshdock version"})
 	case "diagnostics":
 		printTopicHelp(stdout, "Diagnostics checks SSHDock runtime readiness.", []string{"sshdock diagnostics [--json]"}, []string{"sudo sshdock diagnostics"})
+	case "check":
+		printTopicHelp(stdout, "Check validates local Compose inputs without deploying or changing runtime state.", []string{"sshdock check [directory] [--json]"}, []string{"sshdock check .", "sshdock check ./my-app --json"})
 	default:
 		fmt.Fprintf(stderr, "unknown help topic %q\n", topic)
 		fmt.Fprintln(stderr, `Run "sshdock help" for available commands.`)

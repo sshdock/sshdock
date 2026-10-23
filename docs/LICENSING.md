@@ -2,6 +2,8 @@
 
 SSHDock source is available under the [Apache License, Version 2.0](../LICENSE), SPDX identifier `Apache-2.0`, except for third-party material identified below. The root license is the unchanged [official Apache-2.0 text](https://www.apache.org/licenses/LICENSE-2.0.txt); its appendix is an application template, not an assertion of ownership over third-party work.
 
+The first-party portable [SSHDock operations skill](../.agents/skills/sshdock-operations/SKILL.md) is Apache-2.0 and includes a license copy for standalone installation.
+
 ## Third-party material
 
 - The bundled [Bubble Tea skill](../.agents/skills/bubbletea/SKILL.md) retains MIT licensing. Its five original files match [GGPrompts/TFE revision `cc1ccd95307b73309eed233daeaac2aed54ab5e1`](https://github.com/GGPrompts/TFE/tree/cc1ccd95307b73309eed233daeaac2aed54ab5e1/.claude/skills/bubbletea). The original [MIT license and copyright notice](../.agents/skills/bubbletea/LICENSE) are preserved alongside them.

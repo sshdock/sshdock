@@ -38,12 +38,15 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 
 	root := filepath.Join("..", "..")
 	tmp := t.TempDir()
-	sourceBinDir := filepath.Join(tmp, "source-bin")
-	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll source bin: %v", err)
+	sourceBinDir := os.Getenv("SSHDOCK_E2E_BIN_DIR")
+	if sourceBinDir == "" {
+		sourceBinDir = filepath.Join(tmp, "source-bin")
+		if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll source bin: %v", err)
+		}
+		runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
+		runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 	}
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 
 	fakeBinDir := filepath.Join(tmp, "fake-bin")
 	fakeLogPath := filepath.Join(tmp, "fake-commands.log")

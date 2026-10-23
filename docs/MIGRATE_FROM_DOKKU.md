@@ -156,12 +156,11 @@ Before DNS cutover:
 ```bash
 sudo sshdock releases list my-app
 sudo sshdock apps redeploy my-app
-git push --force sshdock <known-good-commit-or-tag>:main
 sudo sshdock apps health my-app
 sudo sshdock backup create
 ```
 
-For a bad-deploy rehearsal, use the [failed-deploy and Git-recovery lab](../examples/labs/failed-deploy-and-git-recovery/README.md) as the reference pattern.
+Rehearse selecting a previous compatible commit using the [confirmed, lease-protected recovery workflow](RECOVERY.md), then verify its new attempt ID and actual data reads/writes. For a controlled pre-replacement build failure, use the [failed-deploy and Git-recovery lab](../examples/labs/failed-deploy-and-git-recovery/README.md). Neither flow reverses database migrations or external changes.
 
 ## 8. Cut Over DNS
 

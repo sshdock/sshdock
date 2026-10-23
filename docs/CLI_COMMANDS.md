@@ -274,9 +274,11 @@ Only remote `refs/heads/main` is accepted. The local source may be any branch, t
 
 ```bash
 git push sshdock feature:main
-git push --force sshdock v1.2.3:main                    # lightweight tag
-git push --force sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
+git push sshdock v1.2.3:main                    # lightweight tag
+git push sshdock 'v1.2.3^{}:refs/heads/main'   # annotated tag
 ```
+
+History-changing selection requires a reviewed target, explicit confirmation and an expected-main lease. Follow [manual deployment recovery](RECOVERY.md) rather than retrying a rejected non-fast-forward push with an unguarded force update. An unchanged-ref push does not create a deployment; use `apps redeploy` to retry current `main`.
 
 Pre-receive atomically reserves a durable pending deployment before Git changes remote `main`; post-receive marks that reservation accepted and queued only after the ref update. The persistent daemon claims accepted queued deployments one at a time. After acceptance, push output prints `deploy: queued <deployment-id>` and attaches to that attempt's redacted log until it reaches a terminal state or the client disconnects.
 

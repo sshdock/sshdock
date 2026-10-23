@@ -176,17 +176,11 @@ sudo sshdock events list <app>
 sudo sshdock logs <app> --tail 200
 ```
 
-If a previous commit or tag is known-good, select it as remote `main`:
-
-```bash
-git push --force sshdock <known-good-commit-or-lightweight-tag>:main
-git push --force sshdock '<known-good-annotated-tag>^{}:refs/heads/main'
-sudo sshdock apps health <app>
-```
+If a previous commit or tag is known-compatible, follow [manual deployment recovery](RECOVERY.md). Capture the expected remote `main`, resolve and confirm the target's full local commit, then use an explicit `--force-with-lease=refs/heads/main:<expected-commit>`. A stale lease requires fresh inspection, never an automatic force retry. Verify the new exact deployment ID before checking containers and the public route.
 
 This Git push records a normal deployment attempt for the selected commit. Use `apps redeploy` only when you want to retry the commit already at remote `main`, such as after fixing server-side config or a transient runtime failure.
 
-`apps health` reports remote Git `main`, the latest deployment attempt, current-worktree Compose state, active Caddy route state, and the most recent failure independently. A failed latest attempt therefore remains visible even when older containers are still running.
+`apps health` reports remote Git `main`, the latest attempt, the last successful attempt, current-worktree Compose state, active Caddy route state, and the most recent failure independently. A failed latest attempt remains visible even when older containers are still running. A recovery can fail even for a historically successful commit; preserved volumes do not undo database migrations or external changes.
 
 ## Restart Policy Warning After Reboot
 

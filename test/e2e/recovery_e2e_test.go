@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +25,11 @@ import (
 
 func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T) {
 	requireGit(t)
+	operator, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SSHDOCK_OPERATOR_USER", operator.Username)
 
 	root := filepath.Join("..", "..")
 	tmp := t.TempDir()

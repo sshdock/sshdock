@@ -65,7 +65,6 @@ func TestConfigAndRedeployFeatureLab_contract_when_overlaying_nestjs_probe(t *te
 			t.Fatalf("README missing workflow marker %q", want)
 		}
 	}
-
 	guide := readTextFile(t, filepath.Join(root, "docs", "EXAMPLES.md"))
 	if !strings.Contains(guide, "examples/labs/config-and-redeploy") {
 		t.Fatal("public examples guide does not register the config-and-redeploy feature lab")
@@ -168,12 +167,22 @@ func TestFailedDeployAndGitRecoveryFeatureLab_contract_when_overlaying_nextjs_pr
 		"sshdock releases list failed-deploy-and-git-recovery",
 		"sshdock deployments list failed-deploy-and-git-recovery",
 		"sshdock events list failed-deploy-and-git-recovery",
-		"git push --force sshdock \"$GOOD_COMMIT:main\"",
+		"../../../docs/RECOVERY.md",
+		"TARGET_COMMIT=$(git rev-parse --verify \"$GOOD_COMMIT^{commit}\")",
+		"Type target commit %s to confirm: ",
+		"read -r CONFIRM_COMMIT",
+		"if test \"$CONFIRM_COMMIT\" != \"$TARGET_COMMIT\"; then",
+		"git push --force-with-lease=\"refs/heads/main:$EXPECTED_MAIN\" sshdock \"$TARGET_COMMIT:refs/heads/main\"",
+		"RECOVERY_ATTEMPT=dep_replace_with_the_new_queued_id",
+		"deployments info failed-deploy-and-git-recovery \"$RECOVERY_ATTEMPT\" --json",
 		"sshdock apps remove failed-deploy-and-git-recovery --force",
 	} {
 		if !strings.Contains(readme, want) {
 			t.Fatalf("README missing workflow marker %q", want)
 		}
+	}
+	if strings.Contains(readme, "git push --force ") || strings.Contains(readme, "git push -f ") {
+		t.Fatal("recovery lab must not bypass its explicit expected-main lease")
 	}
 
 	guide := readTextFile(t, filepath.Join(root, "docs", "EXAMPLES.md"))

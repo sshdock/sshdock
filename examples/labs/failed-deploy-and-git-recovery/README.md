@@ -4,6 +4,8 @@
 
 This lab reuses the Next.js framework compatibility probe to show the difference between accepting a Git ref and completing a healthy deployment. Its only overlay changes the copied probe's Compose build to name an absent Dockerfile. That creates a controlled build failure without copying or changing the canonical probe, its Dockerfile, or the generated application source.
 
+This failure happens before Compose replaces containers. It does not prove recovery after an unhealthy replacement or a failed recovery attempt; see the [manual recovery guide and Docker test](../../../docs/RECOVERY.md). The structured recovery workflow requires the unreleased v1.1 CLI.
+
 Replace `example.com` below with the SSHDock base domain.
 
 ## Deploy a known-good commit
@@ -57,10 +59,27 @@ sudo sshdock events list failed-deploy-and-git-recovery
 
 ## Recover through remote main
 
-Push the saved good commit to remote `main`, then verify that it is serving again while the failure remains in history:
+Review the saved good commit and require typing its full SHA before changing remote `main`. The expected SHA is the bad commit accepted above; another update causes a stale-lease rejection. Stop and inspect on rejection rather than refreshing the lease automatically:
 
 ```bash
-git push --force sshdock "$GOOD_COMMIT:main"
+EXPECTED_MAIN=$BAD_COMMIT
+TARGET_COMMIT=$(git rev-parse --verify "$GOOD_COMMIT^{commit}")
+git show --no-patch "$TARGET_COMMIT"
+printf 'Expected remote main: %s\nRecovery target: %s\n' "$EXPECTED_MAIN" "$TARGET_COMMIT"
+printf 'Type target commit %s to confirm: ' "$TARGET_COMMIT"
+read -r CONFIRM_COMMIT
+if test "$CONFIRM_COMMIT" != "$TARGET_COMMIT"; then
+  printf 'Recovery cancelled.\n' >&2
+  exit 1
+fi
+git push --force-with-lease="refs/heads/main:$EXPECTED_MAIN" sshdock "$TARGET_COMMIT:refs/heads/main"
+```
+
+Copy the new queued deployment ID from this push (stdout or stderr), then verify that exact attempt, service health and the public response separately:
+
+```bash
+RECOVERY_ATTEMPT=dep_replace_with_the_new_queued_id
+ssh sshdock@sshdock.example.com deployments info failed-deploy-and-git-recovery "$RECOVERY_ATTEMPT" --json
 curl -fsS --retry 15 --retry-all-errors --retry-delay 2 https://failed-deploy-and-git-recovery.example.com
 sudo sshdock apps health failed-deploy-and-git-recovery
 sudo sshdock releases list failed-deploy-and-git-recovery
@@ -68,7 +87,7 @@ sudo sshdock deployments list failed-deploy-and-git-recovery
 sudo sshdock events list failed-deploy-and-git-recovery
 ```
 
-The recovered application serves the official Next.js starter. The deployment list shows the failed `BAD_COMMIT` attempt and the later successful push of `GOOD_COMMIT`; the failure evidence remains available for inspection. Recovery works by selecting a known-good Git commit or tag and pushing it to remote `main`, not through an `apps rollback` command.
+Require the new attempt's commit to equal `GOOD_COMMIT` and its status to be `succeeded`; the earlier successful attempt for that commit is insufficient. The recovered application serves the official Next.js starter. The deployment list retains the failed `BAD_COMMIT` attempt and later recovery attempt. Recovery selects a Git commit or tag as remote `main`; there is no `apps rollback` command. If recovery fails, inspect its new failed ID and correct the prerequisite before explicitly redeploying current `main`.
 
 ## Cleanup
 

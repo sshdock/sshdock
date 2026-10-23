@@ -35,15 +35,19 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	if currentUser.Username == "" {
 		t.Skip("current user name is required for server push e2e")
 	}
+	t.Setenv("SSHDOCK_OPERATOR_USER", currentUser.Username)
 
 	root := filepath.Join("..", "..")
 	tmp := t.TempDir()
-	sourceBinDir := filepath.Join(tmp, "source-bin")
-	if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll source bin: %v", err)
+	sourceBinDir := os.Getenv("SSHDOCK_E2E_BIN_DIR")
+	if sourceBinDir == "" {
+		sourceBinDir = filepath.Join(tmp, "source-bin")
+		if err := os.MkdirAll(sourceBinDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll source bin: %v", err)
+		}
+		runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
+		runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 	}
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdock"), "./cmd/sshdock")
-	runCommand(t, root, nil, "go", "build", "-o", filepath.Join(sourceBinDir, "sshdockd"), "./cmd/sshdockd")
 
 	fakeBinDir := filepath.Join(tmp, "fake-bin")
 	fakeLogPath := filepath.Join(tmp, "fake-commands.log")
@@ -74,12 +78,13 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
 	publicKey := readFile(t, clientKeyPath+".pub")
 
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s %s git-receive",
+	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_OPERATOR_USER=%s %s git-receive",
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
 		composeRunner,
+		currentUser.Username,
 		filepath.Join(installBinDir, "sshdockd"),
 	)
 	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s SSHDOCK_CADDY_MAIN_CONFIG_PATH=%s %s operator",

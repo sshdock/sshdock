@@ -140,12 +140,7 @@ ssh sshdock@sshdock.example.com apps remove my-app --force
 
 `apps stop` preserves the existing Compose containers, networks, and volumes. `apps start` starts those existing containers; if they no longer exist, SSHDock tells you to redeploy current remote `main`. `apps restart` uses Compose restart and does not apply changed Compose or config values. These commands resolve the Compose file in the current app worktree rather than selecting a historical release. `apps exec` attaches to an existing service container; `apps run` starts a removable one-off Compose container. The required `--` keeps container argv separate from SSHDock and Compose flags.
 
-`apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older revision with Git, push it to remote `main`:
-
-```bash
-git push --force sshdock <commit-or-lightweight-tag>:main
-git push --force sshdock '<annotated-tag>^{}:refs/heads/main'
-```
+`apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older commit or tag, follow [manual deployment recovery](docs/RECOVERY.md): review the target, confirm its full commit, and push with an explicit expected-main lease. Then verify the new attempt, service health and public route separately. Preserved volumes do not reverse database migrations.
 
 On startup, `sshdockd` resumes pending push deployments but never silently reruns an attempt interrupted while actively deploying. Docker Compose restart policies own container recovery after Docker or host reboot. `apps health` and `diagnostics` warn when a routed or running service still uses Compose's default non-restarting policy; use `restart: unless-stopped` or `restart: always` when that service should return after reboot.
 

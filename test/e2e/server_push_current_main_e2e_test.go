@@ -19,9 +19,10 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	// Given
 	paths := setupBootstrappedServerPush(t, "fake")
 	appName := "current-main-app"
-	initialCommit, _ := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
+	initialCommit, initialOutput := pushComposeAppThroughSSHWithOutput(t, paths, appName, map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:initial\n",
 	})
+	initialAttempt := recoveryAttemptID(t, initialOutput)
 	sourceDir := filepath.Join(paths.tmp, "source-"+appName)
 	pushEnv := currentMainPushEnv(t, paths)
 	repoPath := filepath.Join(paths.dataDir, "apps", appName, "repo.git")
@@ -70,12 +71,16 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 
 	// When: a peeled annotated tag may explicitly select remote main.
 	runGit(t, sourceDir, nil, "tag", "-a", "issue5-initial", initialCommit, "-m", "Known good")
-	tagOutput, tagErr := runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "--force", "sshdock", "issue5-initial^{}:refs/heads/main")
+	tagOutput, tagErr := runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "--force-with-lease=refs/heads/main:"+featureCommit, "sshdock", "issue5-initial^{}:refs/heads/main")
 	if tagErr != nil {
 		t.Fatalf("annotated-tag-to-main push: %v\n%s", tagErr, tagOutput)
 	}
 	assertRemoteMain(t, repoPath, initialCommit)
-	waitForDeploymentTerminal(t, filepath.Join(paths.dataDir, "sshdock.db"), appName, initialCommit)
+	tagAttempt := recoveryAttemptID(t, tagOutput)
+	if tagAttempt == initialAttempt {
+		t.Fatal("annotated tag recovery reused the historical successful attempt")
+	}
+	waitForRecoveryAttempt(t, dbPath, appName, tagAttempt, initialCommit, app.DeploymentStatusSucceeded)
 	branchOutput, branchErr = runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "sshdock", "feature:main")
 	if branchErr != nil {
 		t.Fatalf("restore feature to main: %v\n%s", branchErr, branchOutput)
@@ -100,7 +105,8 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 		}
 	}
 	assertRemoteMain(t, repoPath, failedCommit)
-	waitForDeploymentTerminal(t, dbPath, appName, failedCommit)
+	failedAttempt := recoveryAttemptID(t, failedOutput)
+	waitForRecoveryAttempt(t, dbPath, appName, failedAttempt, failedCommit, app.DeploymentStatusFailed)
 	failedHealth := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "health", appName)
 	for _, want := range []string{
 		"health: fail",
@@ -115,16 +121,32 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 		}
 	}
 
-	// When: force-pushing an older commit to main performs Git-based rollback.
+	// A stale explicit lease must reject before changing refs or creating an attempt.
+	beforeAttempts := queryString(t, dbPath, `select count(*) from deployments where app_id = ?`, appName)
+	beforeEvents := queryString(t, dbPath, `select count(*) from events where app_id = ?`, appName)
+	staleOutput, staleErr := runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "--force-with-lease=refs/heads/main:"+featureCommit, "sshdock", initialCommit+":refs/heads/main")
+	if staleErr == nil || !strings.Contains(staleOutput, "stale info") || strings.Contains(staleOutput, "deploy: queued") || strings.Contains(staleOutput, "deploy: following") {
+		t.Fatalf("stale lease accepted or queued deployment: %v\n%s", staleErr, staleOutput)
+	}
+	assertRemoteMain(t, repoPath, failedCommit)
+	if queryString(t, dbPath, `select count(*) from deployments where app_id = ?`, appName) != beforeAttempts || queryString(t, dbPath, `select count(*) from events where app_id = ?`, appName) != beforeEvents {
+		t.Fatal("stale lease mutated deployment or event history")
+	}
+
+	// The confirmed current SHA allows a new attempt of the selected older commit.
 	beforeRollback := currentMainAttemptCount(t, dbPath, appName, initialCommit)
-	rollbackOutput, rollbackErr := runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "--force", "sshdock", initialCommit+":main")
+	rollbackOutput, rollbackErr := runCurrentMainGitAttempt(sourceDir, pushEnv, "push", "--force-with-lease=refs/heads/main:"+failedCommit, "sshdock", initialCommit+":refs/heads/main")
 
 	// Then
 	if rollbackErr != nil {
 		t.Fatalf("Git rollback push: %v\n%s", rollbackErr, rollbackOutput)
 	}
 	assertRemoteMain(t, repoPath, initialCommit)
-	waitForDeploymentTerminal(t, dbPath, appName, initialCommit)
+	rollbackAttempt := recoveryAttemptID(t, rollbackOutput)
+	if rollbackAttempt == initialAttempt || rollbackAttempt == tagAttempt || rollbackAttempt == failedAttempt {
+		t.Fatal("recovery did not create a new exact deployment attempt")
+	}
+	waitForRecoveryAttempt(t, dbPath, appName, rollbackAttempt, initialCommit, app.DeploymentStatusSucceeded)
 	if got := currentMainAttemptCount(t, dbPath, appName, initialCommit); got != beforeRollback+1 {
 		t.Fatalf("rollback attempts = %d, want %d", got, beforeRollback+1)
 	}

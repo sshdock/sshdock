@@ -14,7 +14,7 @@ SSHDock remains an Apache-2.0, single-VPS Git/SSH/Compose deployment tool. Its m
 
 Use the matching v1.1.0 bootstrap and assets from the [installation guide](INSTALL.md#published-release-v110). Linux amd64 and arm64 archives each contain the CLI, daemon, Apache license and third-party notices, with a matching checksum sidecar. The skill and its standalone license ship in the versioned source archive under `.agents/skills/sshdock-operations`; follow the documented copy procedure rather than looking for a hosted agent service.
 
-Cross-compilation and archive checks establish build coverage, not live arm64 runtime acceptance. See the [acceptance matrix](V1_1_ACCEPTANCE.md) for exact revisions, published-asset status and retained failures.
+The public v1.1.0-rc.1 gate verified anonymous assets, matching bootstrap/source, checksums, licenses/notices and binary build provenance for both architectures. Actual cleared-runtime RC installation/repeat and populated public-v1-to-RC upgrade/repeat passed on Ubuntu amd64, preserving keys/config, data, running services, routes, history and explicitly resupplied service settings. Cross-compilation and archive checks establish build coverage, not live arm64 runtime acceptance. See the [acceptance matrix](V1_1_ACCEPTANCE.md) for exact revisions, reused backup proof and retained failures; stable-specific publication checks are recorded in the final GitHub release notes.
 
 ## Upgrade from v1.0.0
 

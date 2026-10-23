@@ -1,6 +1,6 @@
 # Manual deployment recovery
 
-This guide uses the **unreleased v1.1** structured commands and `jq` on your workstation. Run it from the app's trusted local Git repository. The Git receive account supports pushes, not fetch or `git ls-remote`.
+This guide uses the **v1.1.0** structured commands and `jq` on your workstation. Run it from the app's trusted local Git repository. The Git receive account supports pushes, not fetch or `git ls-remote`.
 
 Remote Git `main` selects the desired revision. A failed Compose update may already have replaced healthy containers; selecting an earlier revision creates another ordinary deployment attempt. It can also fail. There is no automatic rollback, traffic switch, or zero-downtime guarantee.
 

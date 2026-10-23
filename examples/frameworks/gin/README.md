@@ -39,13 +39,13 @@ The source commit and multi-platform image manifests are immutable inputs. Go mo
 
 ## Deploy
 
-Copy this probe's three-file envelope from the matching `v1.0.0` release:
+Copy this probe's three-file envelope from the matching `v1.1.0` release:
 
 ```bash
 mkdir gin
 cd gin
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/gin
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/gin
 git init -b main
 git add .
 git commit -m "Deploy Gin"

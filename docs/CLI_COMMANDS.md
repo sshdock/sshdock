@@ -1,6 +1,6 @@
 # SSHDock CLI Commands
 
-This is the command reference for the current source. Published v1.0.0 documentation remains available at [its release tag](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/CLI_COMMANDS.md). JSON output, deployment detail, and preflight commands below are additions for unreleased v1.1.
+This is the command reference for the current source. Published v1.0.0 documentation remains available at [its release tag](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/CLI_COMMANDS.md). JSON output, deployment detail, and preflight commands below are additions for v1.1.0.
 
 SSHDock has two command-line entry points:
 
@@ -112,7 +112,7 @@ Run restore as a user that can preserve SSHDock state ownership and modes. SSHDo
 
 ### `sshdock backup volume export <volume> --output <archive> --quiesced`
 
-Export one exact ordinary local named volume during an owner-controlled stopped-writer window. This **unreleased v1.1** host-admin command checks running read/write consumers across all containers; `--quiesced` acknowledges the remaining host/external-writer responsibility. The archive must not exist and is published complete with private permissions.
+Export one exact ordinary local named volume during an owner-controlled stopped-writer window. This **v1.1.0** host-admin command checks running read/write consumers across all containers; `--quiesced` acknowledges the remaining host/external-writer responsibility. The archive must not exist and is published complete with private permissions.
 
 ```bash
 sudo sshdock backup volume export sshdock_my-app_data --output /root/my-app-data.tar.gz --quiesced
@@ -498,7 +498,7 @@ Empty values are printed as `-`. Config values are redacted from failure detail,
 
 ### `sshdock deployments info <app> <deployment-id>`
 
-Inspect one exact app-scoped attempt, including its commit, trigger, state, timing, and redacted failure/retry details. Available in unreleased v1.1, locally and over restricted SSH; add `--json` for the [versioned polling contract](JSON_OUTPUT.md#ci-polling-example). A successful lookup exits `0` even when the recorded attempt is incomplete or failed.
+Inspect one exact app-scoped attempt, including its commit, trigger, state, timing, and redacted failure/retry details. Available in v1.1.0, locally and over restricted SSH; add `--json` for the [versioned polling contract](JSON_OUTPUT.md#ci-polling-example). A successful lookup exits `0` even when the recorded attempt is incomplete or failed.
 
 ```bash
 ssh sshdock@<host> deployments info my-app dep_01H... --json

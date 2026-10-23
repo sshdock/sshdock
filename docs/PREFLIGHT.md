@@ -1,6 +1,6 @@
 # Read-only preflight
 
-Preflight is an **unreleased v1.1** addition. It inspects Compose inputs and observable prerequisites without deploying, fetching images, building, changing Git refs, applying Caddy configuration, starting/stopping containers, or changing stored app config.
+Preflight is a **v1.1.0** addition. It inspects Compose inputs and observable prerequisites without deploying, fetching images, building, changing Git refs, applying Caddy configuration, starting/stopping containers, or changing stored app config.
 
 Check a proposed local project before pushing:
 

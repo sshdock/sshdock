@@ -38,13 +38,13 @@ The skeleton version and multi-platform image manifests are immutable inputs. Co
 
 ## Deploy
 
-Copy this probe's three-file envelope from the matching `v1.0.0` release:
+Copy this probe's three-file envelope from the matching `v1.1.0` release:
 
 ```bash
 mkdir laravel
 cd laravel
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/laravel
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/laravel
 git init -b main
 git add .
 git commit -m "Deploy Laravel"

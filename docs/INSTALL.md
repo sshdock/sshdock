@@ -1,17 +1,19 @@
 # SSHDock Installation
 
-This guide includes published v1.0.0 and a separate local source-build installation path. See the [v1.1 candidate validation](V1_1_ACCEPTANCE.md) for current-source checks and limits; [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains historical.
+This guide includes published v1.1.0 and a separate local source-build installation path. See the [v1.1 candidate validation](V1_1_ACCEPTANCE.md) for current-source checks and limits; [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains historical.
 
-## Published Release: v1.0.0
+## Published Release: v1.1.0
 
-Install [v1.0.0](https://github.com/sshdock/sshdock/releases/tag/v1.0.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
+Install [v1.1.0](https://github.com/sshdock/sshdock/releases/tag/v1.1.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v1.0.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v1.1.0 bash bootstrap.sh
 ```
 
-Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/README.md#quick-start) and [v1.0.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.0.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
+Follow the [v1.1.0 quick start](https://github.com/sshdock/sshdock/blob/v1.1.0/README.md#quick-start) and [v1.1.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
+
+Read the [v1.1 release and upgrade notes](V1_1_RELEASE.md) before upgrading an existing host, particularly the separate host-state/application-data backups and preservation of nondefault bootstrap settings.
 
 ## Setup
 
@@ -137,7 +139,7 @@ By default, `scripts/bootstrap.sh` downloads:
 https://github.com/sshdock/sshdock/releases/download/<tag>/sshdock_<tag>_linux_<arch>.tar.gz
 ```
 
-The v1.0.0 bootstrap also requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
+The bootstrap requires the matching `.tar.gz.sha256` asset and verifies it with `sha256sum` before extraction. It validates that both binaries can run, stages both copies, and only then replaces the installed files with atomic renames. Missing, corrupt, wrong-architecture or uncopyable binaries leave the installed pair unchanged before replacement starts. The two renames are not a transaction across a host crash; after an interrupted install, rerun the same installer and verify both version commands.
 
 Always use the bootstrap script from the same release tag as the assets. Older v0.3.1 assets do not contain checksum sidecars and must use their matching older script. An upgrade from an installed v0.3.1 uses the new target release's script and verified assets. A checksum detects a mismatched/corrupt download; it does not authenticate an attacker-controlled release account independently of HTTPS.
 

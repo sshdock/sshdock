@@ -2,7 +2,7 @@
 
 This lab applies one Compose patch to the [Gin compatibility probe](../../frameworks/gin/README.md). GitHub Actions tests the pinned official source, builds and smoke-tests its image, publishes a full-commit GHCR tag, then pushes that exact commit to SSHDock. There is no application source fork or target-side build.
 
-Read [External builds](../../../docs/EXTERNAL_BUILDS.md) for the provider-neutral contract, credentials and recovery boundary. Install v1.0.0, which provides `SSHDOCK_GIT_SHA`; v0.3.1 is too old for this lab.
+Read [External builds](../../../docs/EXTERNAL_BUILDS.md) for the provider-neutral contract, credentials and recovery boundary. Install v1.1.0 for this lab. `SSHDOCK_GIT_SHA` first shipped in v1.0.0; v0.3.1 is too old.
 
 ## Prepare the application repository
 
@@ -11,11 +11,11 @@ Copy the canonical envelope, apply the overlay, and install the complete workflo
 ```bash
 mkdir gin-external
 cd gin-external
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/gin
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/external-build/external-build.patch \
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/gin
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/examples/labs/external-build/external-build.patch \
   -o external-build.patch
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/external-build/deploy.yml \
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/examples/labs/external-build/deploy.yml \
   -o deploy.yml
 git init -b main
 git apply external-build.patch

@@ -28,13 +28,13 @@ This is the official PostgreSQL 16 Alpine image selected for this point-in-time 
 
 ## Deploy
 
-Copy this example's two public files from the matching `v1.0.0` release:
+Copy this example's two public files from the matching `v1.1.0` release:
 
 ```bash
 mkdir postgres
 cd postgres
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/databases/postgres
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/databases/postgres
 git init -b main
 git add .
 git commit -m "Deploy PostgreSQL"

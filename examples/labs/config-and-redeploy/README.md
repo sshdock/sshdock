@@ -8,14 +8,14 @@ Replace `example.com` below with the SSHDock base domain.
 
 ## Deploy the overlay
 
-Copy the NestJS deployment envelope and this lab's one-file overlay from the matching `v1.0.0` release:
+Copy the NestJS deployment envelope and this lab's one-file overlay from the matching `v1.1.0` release:
 
 ```bash
 mkdir config-and-redeploy
 cd config-and-redeploy
-curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.0.0.tar.gz \
-  | tar -xz --strip-components=4 sshdock-1.0.0/examples/frameworks/nestjs
-curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.0.0/examples/labs/config-and-redeploy/config.patch \
+curl -fsSL https://github.com/sshdock/sshdock/archive/refs/tags/v1.1.0.tar.gz \
+  | tar -xz --strip-components=4 sshdock-1.1.0/examples/frameworks/nestjs
+curl -fsSL https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/examples/labs/config-and-redeploy/config.patch \
   -o config.patch
 git init -b main
 git apply config.patch

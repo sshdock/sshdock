@@ -1,10 +1,10 @@
-# v1.1 candidate validation
+# v1.1 release validation
 
-This report records the verified scope for [issue #59](https://github.com/sshdock/sshdock/issues/59). It does not announce a v1.1 release or an anonymous-installation PASS. The historical [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains a separate report.
+This report records the original source acceptance for [issue #59](https://github.com/sshdock/sshdock/issues/59) and the approved public-release gates for [issue #60](https://github.com/sshdock/sshdock/issues/60). The historical [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains a separate report.
 
 ## Source and environment
 
-The current runtime candidate is [09a8edd](https://github.com/sshdock/sshdock/commit/09a8edde0ffc8ebdd74789064cf333c11ba22287). Its Linux amd64 CLI, daemon and compiled integration-test binary were built from the exact Git archive with full-source-version linker flags; archive provenance, binary architecture, installed versions and artifact integrity were verified.
+The original source acceptance candidate was [09a8edd](https://github.com/sshdock/sshdock/commit/09a8edde0ffc8ebdd74789064cf333c11ba22287). Its Linux amd64 CLI, daemon and compiled integration-test binary were built from the exact Git archive with full-source-version linker flags; archive provenance, binary architecture, installed versions and artifact integrity were verified.
 
 The initial cleared-runtime source installation used [4aeaffb](https://github.com/sshdock/sshdock/commit/4aeaffbed2246603fa62bfd734efa75dd6c49197). The populated v1.0.0 upgrade, repeat install and corrected Caddy retry guidance were exercised on 09a8edd. The distinction is retained rather than claiming a fresh installation of every intermediate candidate.
 
@@ -12,13 +12,13 @@ Live checks used one dedicated Ubuntu 24.04 amd64 VPS after authorized software/
 
 The complete v1.0.0 framework/software/example, browser and long-observation matrix was **not rerun** for this candidate. This report covers focused v1.1 journeys and the explicitly reused unchanged backup paths below. The historical report is evidence of that earlier revision, not a current-candidate full-matrix PASS; the broader release guidance in [TESTING.md](TESTING.md) must not be read as completed by these focused checks.
 
-## Acceptance matrix
+## Original source acceptance
 
 | Area | Status | Verified scope and limits |
 | --- | --- | --- |
 | Exact candidate and local gates | PASS | Linux amd64 artifacts verified. CI and reachable-vulnerability scan passed at 09a8edd; dependency findings outside called code remain recorded. |
 | Install/config/host-backup regression checks | PASS, reused | No-Docker bootstrap/hardening, config and host-state backup tests passed on 4aeaffb. The changed Caddy-guidance regression and existing repeat-attach recovery test passed on 09a8edd. |
-| Anonymous published installer | **KNOWN_BLOCKED** | The repository was private and anonymous published-v1 asset access returned HTTP 404. This is not a public installer PASS. |
+| Anonymous published installer | Initially **BLOCKED**, subsequently resolved | During #59 the repository was private and anonymous published-v1 asset access returned HTTP 404. That source-bin fallback was not a public installer PASS. After explicit visibility approval, actual public downloads and RC installation passed; see the separate public-release gates below. |
 | Cleared-runtime source onboarding | PASS, with friction | Matching source-build bootstrap, a selected workstation public key, fresh operator/Git authentication, push-to-create, public HTTPS and an actual persisted POST were verified on 4aeaffb after correcting Caddy configuration. Retained runtime prerequisites were not freshly installed. |
 | Populated v1.0.0 upgrade and repeat install | PASS | Actual published-v1 binaries/checksums were obtained with authentication and staged for the matching tag bootstrap through its authorized source-bin path. Upgrade to 09a8edd preserved app/history/config/key/auth, containers/data, active routes and service drop-ins/settings; repeated installation and new writes passed. Nondefault bootstrap settings were explicitly supplied again. |
 | Current-main deployment identity | PASS | Explicit same-commit redeploy and next-commit Git push produced new exact attempt IDs with separately verified service, route, public response and saved-data results. |
@@ -31,6 +31,20 @@ The complete v1.0.0 framework/software/example, browser and long-observation mat
 | Native coding-agent journey | PASS | A fresh native Codex CLI 0.163.0 session loaded the copied project skill, deployed healthy A, diagnosed exact failed-image attempt B, then used an explicitly approved expected-B Git lease to recover A. Recovery created a distinct successful attempt; server main/latest/last-success, service, active route and certificate-verified HTTP 200 marker were checked. This fixture was stateless; its journey does not add data-restore proof. |
 | Final cleanup and audit | PASS | Test apps, routes, containers, volumes, staging, temporary service overrides and task SSH sessions were removed; the test operator/Git key was revoked. Diagnostics passed. Preserved off-host v1 baseline and external administrator/Caddy prerequisites remained unchanged. |
 | Other live environments/clients | **UNTESTED** | Arm64 and Debian runtime acceptance, an OS reimage/independent second VPS, and a live Claude journey have not been established by this run. |
+
+## Approved public-release gates
+
+On 2026-10-23 the maintainer approved public repository/history visibility, prerelease publication, and stable promotion conditional on anonymous asset and actual VPS installation/upgrade checks. The repository became public; anonymous v1.0.0 amd64 archive/checksum and matching tagged bootstrap downloads passed. The earlier HTTP 404 observations remain recorded above.
+
+[v1.1.0-rc.1](https://github.com/sshdock/sshdock/releases/tag/v1.1.0-rc.1) was built from [4a10ca5](https://github.com/sshdock/sshdock/commit/4a10ca529e905574b64903a1a9e647848f51a663) by the existing [release workflow](https://github.com/sshdock/sshdock/actions/runs/39949567990). Its CI and reachable-vulnerability gate passed, followed by both Linux architecture builds. Production source, bootstrap, dependencies and workflow match the verified 09a8edd runtime; stable release preparation changes versioned documentation, skill links and the existing onboarding assertions.
+
+Anonymous downloads of all four RC assets, its tagged bootstrap and complete tagged source returned HTTP 200. Both archives passed exact-member, checksum, Apache license and linked-module/toolchain notice checks. All four binaries had the expected ELF architecture, Linux/CGO-disabled settings, RC version, source VCS revision and clean build state. All 388 tagged source payloads and the raw bootstrap matched the exact Git archive. Arm64 was cross-built and inspected, not executed on arm64 hardware.
+
+An actual cleared-runtime RC installation and repeat installation used its public bootstrap and normal checksummed asset download, with no source-bin or authentication fallback. Installed CLI/daemon bytes and versions matched the downloaded release payload. Real Git push-to-create, operator access, public DNS/HTTPS, named-volume POST records and repeat-install container/data/history preservation passed without deployment replay. Existing OS/runtime/admin/DNS prerequisites remained the same explicit boundary as above.
+
+Actual anonymous public v1.0.0 installation then populated two deployment records, required encrypted config, fresh Git/operator authentication, an active route and named-volume HTTPS POST data. Separate quiesced host-state and file-data safety copies were taken off-host. Upgrade to the published RC and its repeat installation preserved logical DB/history/Git refs, config/key bytes, running container and named-volume identity, active routing, external administrator Caddy configuration, service drop-ins and effective settings in all three consumers. Nondefault bootstrap settings were explicitly resupplied. No completed attempt replayed; fresh authentication, a no-op Git push, saved/new records, an explicit same-SHA new attempt and a next-commit push passed.
+
+The public runtime pass retained 16 TLS-alert observations before first success on two new hostnames, eight each; no sampled nonzero result followed a prior success for the same hostname. This locates the observations without proving certificate causation or continuous availability. The populated fixture was retained for stable upgrade/repeat acceptance. Stable-specific asset and installed-version results belong with the [stable release notes](https://github.com/sshdock/sshdock/releases/tag/v1.1.0); stable promotion requires successful public-release gates.
 
 ## Retained friction and interpretation
 

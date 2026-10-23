@@ -71,7 +71,8 @@ func (h *PostReceiveHandler) autoRoute(ctx context.Context, request autoRouteReq
 			Port: model.Port, HTTPS: model.HTTPS, Operation: store.RouteApplyAttach,
 			Detail: err.Error(), UpdatedAt: createdAt.Add(2 * time.Second),
 		})
-		eventErr := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reload_failed"), AppID: appName, Type: "router.reload_failed", Message: deployfailure.Message("caddy reload", err.Error(), "domain was stored, but generated Caddy routes may not be active", "run sudo sshdock diagnostics and inspect Caddy", "sudo sshdock apps redeploy "+appName), CreatedAt: createdAt.Add(2 * time.Second)})
+		retryGuidance := fmt.Sprintf("sudo sshdock domains attach %s %s %s --port %d", appName, target.ServiceName, appHost, target.Port)
+		eventErr := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reload_failed"), AppID: appName, Type: "router.reload_failed", Message: deployfailure.Message("caddy reload", err.Error(), "domain was stored, but generated Caddy routes may not be active", "run sudo sshdock diagnostics and inspect Caddy", retryGuidance), CreatedAt: createdAt.Add(2 * time.Second)})
 		return errors.Join(failureErr, eventErr)
 	}
 	if err := h.store.CreateEvent(ctx, app.Event{ID: EventID(deploymentID, "router_reloaded"), AppID: appName, Type: "router.reloaded", Message: "Reloaded Caddy routes for " + appHost, CreatedAt: createdAt.Add(2 * time.Second)}); err != nil {

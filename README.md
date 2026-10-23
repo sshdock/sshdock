@@ -40,12 +40,19 @@ Follow the [v1.0.0 quick start](https://github.com/sshdock/sshdock/blob/v1.0.0/R
 
 ## Quick Start
 
-After installation, set the base domain and authorize your deploy/operator key:
+After installation, set the base domain on the server:
 
 ```bash
 sudo sshdock server domain set example.com
-cat ~/.ssh/id_ed25519.pub | sudo sshdock ssh-keys add admin
 ```
+
+From your workstation, authorize one selected deploy/operator public key through your existing administrator SSH connection (replace the account, host and key filename):
+
+```bash
+ssh ubuntu@server.example.com 'sudo sshdock ssh-keys add admin' < ~/.ssh/id_ed25519.pub
+```
+
+Keep the private key on your workstation and verify the SSH host key through your trusted setup. See [installation setup](docs/INSTALL.md#setup) for details.
 
 Point DNS at the server before deploying:
 

@@ -16,6 +16,8 @@ import (
 
 type DashboardRefreshFunc func(context.Context) (DashboardSnapshot, error)
 
+type DashboardLogsFunc func(context.Context, string, []ServiceView) (map[string]LogsView, error)
+
 type dashboardFocus int
 
 const (
@@ -58,6 +60,7 @@ const (
 type InteractiveDashboardModel struct {
 	snapshot DashboardSnapshot
 	refresh  DashboardRefreshFunc
+	loadLogs DashboardLogsFunc
 	actions  DashboardActions
 
 	selected  int
@@ -78,13 +81,13 @@ type InteractiveDashboardModel struct {
 	pendingAction dashboardActionKind
 	actionInput   textinput.Model
 	followLogs    bool
+	logsRequestID uint64
 }
 
 type dashboardRefreshMsg struct {
 	snapshot DashboardSnapshot
 	err      error
 	status   string
-	follow   bool
 }
 
 type dashboardActionMsg struct {
@@ -94,6 +97,14 @@ type dashboardActionMsg struct {
 }
 
 type dashboardFollowTickMsg struct{}
+
+type dashboardLogsMsg struct {
+	appID     string
+	requestID uint64
+	logs      map[string]LogsView
+	err       error
+	follow    bool
+}
 
 var dashboardTabs = []string{"Summary", "Services", "Routes", "Releases", "Deploys", "Events", "Logs"}
 
@@ -148,13 +159,18 @@ func NewInteractiveDashboardModelWithActions(snapshot DashboardSnapshot, refresh
 	return model
 }
 
-func RunInteractiveDashboard(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, input io.Reader, output io.Writer) error {
-	return RunInteractiveDashboardWithActions(ctx, snapshot, refresh, nil, input, output)
+func (m InteractiveDashboardModel) WithLogs(loadLogs DashboardLogsFunc) InteractiveDashboardModel {
+	m.loadLogs = loadLogs
+	return m
 }
 
-func RunInteractiveDashboardWithActions(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, actions DashboardActions, input io.Reader, output io.Writer) error {
+func RunInteractiveDashboard(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, input io.Reader, output io.Writer) error {
+	return RunInteractiveDashboardWithActions(ctx, snapshot, refresh, nil, nil, input, output)
+}
+
+func RunInteractiveDashboardWithActions(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, loadLogs DashboardLogsFunc, actions DashboardActions, input io.Reader, output io.Writer) error {
 	program := tea.NewProgram(
-		NewInteractiveDashboardModelWithActions(snapshot, refresh, actions),
+		NewInteractiveDashboardModelWithActions(snapshot, refresh, actions).WithLogs(loadLogs),
 		tea.WithContext(ctx),
 		tea.WithInput(input),
 		tea.WithOutput(output),
@@ -182,8 +198,16 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAction(msg)
 		}
 		if m.filtering {
-			return m.updateFilter(msg)
+			previousID, _ := m.selectedAppID()
+			updated, cmd := m.updateFilter(msg)
+			selectedID, _ := updated.selectedAppID()
+			if selectedID != previousID {
+				cmd = tea.Batch(cmd, updated.loadSelectedLogs(false))
+			}
+			return updated, cmd
 		}
+		previousID, _ := m.selectedAppID()
+		previousTab := m.tab
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
@@ -239,6 +263,11 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = "logs follow off"
 		}
 		m.syncLogViewport()
+		selectedID, _ := m.selectedAppID()
+		if selectedID != previousID || m.tab != previousTab {
+			cmd := m.loadSelectedLogs(false)
+			return m, cmd
+		}
 		return m, nil
 	case dashboardRefreshMsg:
 		if msg.err != nil {
@@ -250,10 +279,8 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.status != "" {
 			m.message = msg.status
 		}
-		if m.followLogs && dashboardTabs[m.tab] == "Logs" {
-			return m, dashboardFollowTickCmd()
-		}
-		return m, nil
+		cmd := m.loadSelectedLogs(false)
+		return m, cmd
 	case dashboardActionMsg:
 		m.mode = dashboardModeNormal
 		m.actionInput.Blur()
@@ -265,15 +292,26 @@ func (m InteractiveDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applySnapshot(msg.snapshot)
 		m.err = nil
 		m.message = msg.status
+		cmd := m.loadSelectedLogs(false)
+		return m, cmd
+	case dashboardLogsMsg:
+		if selected, ok := m.snapshot.AppsByID[msg.appID]; ok && msg.requestID == m.logsRequestID {
+			selected.Logs, selected.LogsError = msg.logs, msg.err
+			m.snapshot.AppsByID[msg.appID] = selected
+			m.syncLogViewport()
+		}
+		if msg.follow && m.followLogs && dashboardTabs[m.tab] == "Logs" {
+			return m, dashboardFollowTickCmd()
+		}
 		return m, nil
 	case dashboardFollowTickMsg:
-		if !m.followLogs || dashboardTabs[m.tab] != "Logs" || m.refresh == nil {
+		if !m.followLogs || dashboardTabs[m.tab] != "Logs" {
 			return m, nil
 		}
-		return m, func() tea.Msg {
-			snapshot, err := m.refresh(context.Background())
-			return dashboardRefreshMsg{snapshot: snapshot, err: err, status: "logs refreshed", follow: true}
+		if cmd := m.loadSelectedLogs(true); cmd != nil {
+			return m, cmd
 		}
+		return m, dashboardFollowTickCmd()
 	default:
 		var cmd tea.Cmd
 		m.logs, cmd = m.logs.Update(msg)
@@ -286,7 +324,7 @@ func (m InteractiveDashboardModel) View() string {
 	return strings.TrimRight(strings.Join(parts, "\n"), "\n")
 }
 
-func (m InteractiveDashboardModel) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m InteractiveDashboardModel) updateFilter(msg tea.KeyMsg) (InteractiveDashboardModel, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -387,6 +425,24 @@ func dashboardFollowTickCmd() tea.Cmd {
 	return tea.Tick(dashboardFollowInterval, func(time.Time) tea.Msg {
 		return dashboardFollowTickMsg{}
 	})
+}
+
+func (m *InteractiveDashboardModel) loadSelectedLogs(follow bool) tea.Cmd {
+	if m.loadLogs == nil || dashboardTabs[m.tab] != "Logs" {
+		return nil
+	}
+	appID, ok := m.selectedAppID()
+	if !ok {
+		return nil
+	}
+	selected, _ := m.selectedApp()
+	m.logsRequestID++
+	requestID := m.logsRequestID
+	loadLogs := m.loadLogs
+	return func() tea.Msg {
+		logs, err := loadLogs(context.Background(), appID, selected.Detail.Services())
+		return dashboardLogsMsg{appID: appID, requestID: requestID, logs: logs, err: err, follow: follow}
+	}
 }
 
 func (m InteractiveDashboardModel) LogOffset() int {
@@ -958,6 +1014,10 @@ func (m *InteractiveDashboardModel) resizeFilter() {
 
 func (m *InteractiveDashboardModel) syncLogViewport() {
 	m.resizeViewport()
+	if selected, ok := m.selectedApp(); ok && selected.LogsError != nil {
+		m.logs.SetContent("Logs unavailable: " + selected.LogsError.Error())
+		return
+	}
 	m.logs.SetContent(logsTableText(m.selectedLogs(), m.logs.Width))
 }
 

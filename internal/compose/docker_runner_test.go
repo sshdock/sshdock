@@ -3,11 +3,11 @@ package compose
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -172,6 +172,33 @@ func TestDockerRunnerDeployWithOutputStreamsLifecycleStages(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerDeployDoesNotBufferStreamedLifecycleOutput(t *testing.T) {
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, "services:\n  web:\n    image: example/web:latest\n")
+	output := strings.Repeat("x", 32*1024*1024)
+	executor := &streamingRecordingExecutor{Outputs: []string{
+		`{"services":{"web":{"image":"example/web:latest"}}}`,
+		output, output, output,
+	}}
+	runner := NewDockerRunner(executor)
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	_, err := runner.DeployWithOutput(context.Background(), DeployRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath}, io.Discard, io.Discard)
+
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatalf("DeployWithOutput: %v", err)
+	}
+	if len(executor.Streamed) != 4 {
+		t.Fatalf("streamed %d commands, want config/pull/build/up", len(executor.Streamed))
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated >= 8*1024*1024 {
+		t.Fatalf("streaming 96 MiB allocated %d bytes; lifecycle output must not be retained", allocated)
+	}
+}
+
 func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
@@ -332,6 +359,7 @@ type recordingExecutor struct {
 type streamingRecordingExecutor struct {
 	Streamed []Command
 	Output   string
+	Outputs  []string
 	Err      error
 }
 
@@ -374,11 +402,16 @@ func (r *streamingRecordingExecutor) Run(_ context.Context, command Command) (st
 }
 
 func (r *streamingRecordingExecutor) Stream(_ context.Context, command Command, stdout io.Writer, _ io.Writer) error {
+	index := len(r.Streamed)
 	r.Streamed = append(r.Streamed, command)
 	if r.Err != nil {
 		return r.Err
 	}
-	_, err := fmt.Fprint(stdout, r.Output)
+	output := r.Output
+	if index < len(r.Outputs) {
+		output = r.Outputs[index]
+	}
+	_, err := io.WriteString(stdout, output)
 	return err
 }
 

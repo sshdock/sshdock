@@ -23,7 +23,8 @@ const (
 )
 
 func OpenSQLite(ctx context.Context, path string) (*SQLiteStore, error) {
-	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(%d)", path, sqliteBusyTimeoutMilliseconds)
+	// Reserve the write lock before reading so concurrent writers cannot block a lock upgrade.
+	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(%d)&_txlock=immediate", path, sqliteBusyTimeoutMilliseconds)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

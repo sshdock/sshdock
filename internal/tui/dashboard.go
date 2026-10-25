@@ -11,6 +11,7 @@ import (
 )
 
 type DashboardStore interface {
+	GetApp(ctx context.Context, appID string) (app.App, error)
 	ListApps(ctx context.Context) ([]app.App, error)
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]app.Domain, error)
@@ -40,8 +41,9 @@ type DashboardSnapshot struct {
 }
 
 type DashboardAppSnapshot struct {
-	Detail AppDetailScreen
-	Logs   map[string]LogsView
+	Detail    AppDetailScreen
+	Logs      map[string]LogsView
+	LogsError error
 }
 
 func NewDashboardHandler(store DashboardStore, runner compose.Runner, healthProvider DashboardHealthProvider) *DashboardHandler {
@@ -60,6 +62,11 @@ func (h *DashboardHandler) Render(ctx context.Context, writer io.Writer) error {
 	snapshot, err := h.Snapshot(ctx)
 	if err != nil {
 		return err
+	}
+	for _, appID := range snapshot.AppOrder {
+		selected := snapshot.AppsByID[appID]
+		selected.Logs, selected.LogsError = h.Logs(ctx, appID, selected.Detail.Services())
+		snapshot.AppsByID[appID] = selected
 	}
 	return RenderDashboardSnapshot(writer, snapshot)
 }
@@ -109,14 +116,9 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		}
 		latestDeployments[model.ID] = report.LatestDeploymentStatus
 		services := serviceStatusesFromHealthReport(report)
-		logsByService, err := h.serviceLogs(ctx, model, services)
-		if err != nil {
-			return DashboardSnapshot{}, err
-		}
 		view := NewAppDetailViewWithHealthReport(model, services, domains, releases, deployments, events, report)
 		appsByID[model.ID] = DashboardAppSnapshot{
 			Detail: NewAppDetailScreen(view),
-			Logs:   logsByService,
 		}
 	}
 
@@ -145,7 +147,7 @@ func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error
 
 	for _, appID := range snapshot.AppOrder {
 		appSnapshot := snapshot.AppsByID[appID]
-		if err := renderAppDetail(writer, appSnapshot.Detail, appSnapshot.Logs); err != nil {
+		if err := renderAppDetail(writer, appSnapshot.Detail, appSnapshot.Logs, appSnapshot.LogsError); err != nil {
 			return err
 		}
 	}
@@ -173,7 +175,7 @@ func renderAppList(writer io.Writer, screen AppListScreen) error {
 	return nil
 }
 
-func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map[string]LogsView) error {
+func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map[string]LogsView, logsError error) error {
 	metadata := screen.Metadata()
 	if _, err := fmt.Fprintf(writer, "\nApp %s\n", metadata.Name); err != nil {
 		return err
@@ -215,6 +217,10 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 		return err
 	}
 	if err := renderEvents(writer, screen.Events()); err != nil {
+		return err
+	}
+	if logsError != nil {
+		_, err := fmt.Fprintf(writer, "Logs unavailable: %v\n", logsError)
 		return err
 	}
 	return renderLogs(writer, logsByService)

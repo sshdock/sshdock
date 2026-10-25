@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,86 @@ import (
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
 )
+
+func TestDashboardSnapshotDoesNotLoadLogs(t *testing.T) {
+	worktree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktree, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeDashboardStore{apps: []app.App{
+		{ID: "selected", Name: "selected", WorktreePath: worktree},
+		{ID: "other", Name: "other", WorktreePath: worktree},
+	}}
+	health := &fakeDashboardHealthProvider{reports: map[string]app.HealthReport{
+		"selected": {Services: []app.ServiceHealth{{Name: "web", State: "running"}}},
+		"other":    {Services: []app.ServiceHealth{{Name: "worker", State: "running"}}},
+	}}
+	runner := &compose.FakeRunner{LogsErr: errors.New("logs unavailable")}
+	handler := NewDashboardHandler(store, runner, health)
+	snapshot, err := handler.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("logs failure blocked dashboard snapshot: %v", err)
+	}
+	if len(snapshot.AppOrder) != 2 || len(runner.LogsRequests) != 0 {
+		t.Fatalf("snapshot apps = %v, log requests = %#v; want both apps and no log requests", snapshot.AppOrder, runner.LogsRequests)
+	}
+	var output bytes.Buffer
+	if err := handler.Render(context.Background(), &output); err != nil {
+		t.Fatalf("logs failure blocked static dashboard: %v", err)
+	}
+	for _, want := range []string{"App selected", "App other", "Error: load logs for selected/web", "Error: load logs for other/worker"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("static dashboard missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestDashboardLogsLoadOnlyRequestedAppAndIsolateRedactedServiceErrors(t *testing.T) {
+	worktree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(worktree, "compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeDashboardStore{apps: []app.App{
+		{ID: "selected", Name: "selected", WorktreePath: worktree},
+		{ID: "other", Name: "other", WorktreePath: worktree},
+	}}
+	runner := &dashboardLogsRunner{FakeRunner: &compose.FakeRunner{LogOutput: "web postgres://secret\n"}}
+	config := &fakeDashboardConfigResolver{
+		env:             map[string]string{"DATABASE_URL": "postgres://secret"},
+		redactionValues: map[string]string{"DATABASE_URL": "postgres://secret"},
+	}
+	handler := NewDashboardHandlerWithConfig(store, runner, config, nil)
+	logs, err := handler.Logs(context.Background(), "selected", []ServiceView{{Name: "worker"}, {Name: "web"}})
+	if err != nil {
+		t.Fatalf("one service error prevented other service logs: %v", err)
+	}
+	if len(runner.LogsRequests) != 2 {
+		t.Fatalf("log requests = %#v", runner.LogsRequests)
+	}
+	for _, request := range runner.LogsRequests {
+		if request.AppName != "selected" || request.Env["DATABASE_URL"] != "postgres://secret" {
+			t.Fatalf("log request = %#v", request)
+		}
+	}
+	if got := strings.Join(logs["worker"].Lines, "\n"); !strings.Contains(got, "Error:") || !strings.Contains(got, "<redacted>") || strings.Contains(got, "postgres://secret") {
+		t.Fatalf("service failure was not displayed and redacted: %q", got)
+	}
+	if got := strings.Join(logs["web"].Lines, "\n"); got != "web <redacted>" {
+		t.Fatalf("healthy service logs = %q", got)
+	}
+}
+
+type dashboardLogsRunner struct {
+	*compose.FakeRunner
+}
+
+func (r *dashboardLogsRunner) Logs(ctx context.Context, request compose.LogsRequest) (string, error) {
+	output, err := r.FakeRunner.Logs(ctx, request)
+	if request.ServiceName == "worker" {
+		return "", errors.New("logs unavailable for postgres://secret")
+	}
+	return output, err
+}
 
 func TestDashboardHandlerRendersAppsDetailsStatusDomainsHistoryAndLogs(t *testing.T) {
 	ctx := context.Background()
@@ -193,8 +274,8 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 	if len(snapshot.AppsByID["my-app"].Detail.Services()) != 1 {
 		t.Fatalf("snapshot detail services = %#v", snapshot.AppsByID["my-app"].Detail.Services())
 	}
-	if got := snapshot.AppsByID["my-app"].Logs["web"].Lines; len(got) != 2 || got[0] != "first log" || got[1] != "second log" {
-		t.Fatalf("snapshot logs = %#v", got)
+	if len(snapshot.AppsByID["my-app"].Logs) != 0 || len(runner.LogsRequests) != 0 {
+		t.Fatalf("snapshot eagerly loaded logs: %#v", runner.LogsRequests)
 	}
 	if got := snapshot.AppsByID["my-app"].Detail.Events(); len(got) != 1 || got[0].Type != "deploy.succeeded" {
 		t.Fatalf("snapshot events = %#v", got)
@@ -340,6 +421,15 @@ func (f *fakeDashboardConfigResolver) RedactionValues(_ context.Context, _ strin
 
 func (f *fakeDashboardStore) ListApps(context.Context) ([]app.App, error) {
 	return append([]app.App(nil), f.apps...), nil
+}
+
+func (f *fakeDashboardStore) GetApp(_ context.Context, appID string) (app.App, error) {
+	for _, model := range f.apps {
+		if model.ID == appID {
+			return model, nil
+		}
+	}
+	return app.App{}, errors.New("app not found")
 }
 
 func (f *fakeDashboardStore) ListReleasesByApp(_ context.Context, appID string) ([]app.Release, error) {

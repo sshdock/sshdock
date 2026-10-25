@@ -516,6 +516,8 @@ ssh sshdock@<host> deployments logs my-app dep_01H... -f
 
 Use the deployment ID printed by an attached push to reconnect to that exact attempt. If the ID is omitted, SSHDock selects the latest deployment log for the app. Ctrl-C stops the follower without canceling the deployment.
 
+Operator queries can run while deployment output is being persisted; brief database write contention waits for the existing writer instead of aborting the output stream.
+
 Deployment output is stored separately from `sshdock logs`, which remains container-log inspection. Stored config values are redacted even when a secret spans output writes. Each log is capped at 10 MiB with a truncation marker, SSHDock retains the newest 20 logs per app, and app removal deletes its deployment logs.
 
 ### `sshdock events list <app>`
@@ -660,9 +662,11 @@ Useful keys:
 - `tab` and `shift+tab` switch detail tabs.
 - `a` opens app lifecycle actions for the selected app.
 - `u`/`d` scrolls logs.
-- `f` toggles Logs-tab follow, implemented as periodic dashboard snapshot refresh.
+- `f` toggles Logs-tab follow, refreshing only the selected app's service logs every two seconds.
 - `r` refreshes the dashboard snapshot.
 - `q` quits.
+
+The interactive dashboard loads service logs when the selected app's Logs tab is opened. A service log error is shown in that pane and does not prevent other services or apps from being inspected.
 
 TUI app actions cover start app, stop app, restart app, restart service, redeploy current main, attach domain, detach a listed domain, and remove app with exact app-name confirmation. Revision selection remains a Git operation: push the desired commit or tag to remote `main`.
 

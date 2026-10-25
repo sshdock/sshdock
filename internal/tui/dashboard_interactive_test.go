@@ -497,10 +497,14 @@ func TestInteractiveDashboardFailedActionPreservesSnapshotAndShowsError(t *testi
 
 func TestInteractiveDashboardLogsFollowRefreshesOnlyWhileEnabled(t *testing.T) {
 	refreshCount := 0
+	logsCount := 0
 	model := NewInteractiveDashboardModelWithActions(testDashboardSnapshot(), func(context.Context) (DashboardSnapshot, error) {
 		refreshCount++
 		return actionRefreshedSnapshot(), nil
-	}, &fakeDashboardActions{})
+	}, &fakeDashboardActions{}).WithLogs(func(context.Context, string, []ServiceView) (map[string]LogsView, error) {
+		logsCount++
+		return nil, nil
+	})
 	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 30})
 	for i := 0; i < len(dashboardTabs)-1; i++ {
 		model = pressDashboardKey(t, model, "tab")
@@ -519,8 +523,8 @@ func TestInteractiveDashboardLogsFollowRefreshesOnlyWhileEnabled(t *testing.T) {
 		t.Fatal("follow tick while enabled returned nil refresh command")
 	}
 	model, cmd = updateDashboardModelWithCmd(t, model, cmd())
-	if refreshCount != 1 {
-		t.Fatalf("refresh count = %d, want 1", refreshCount)
+	if logsCount != 1 || refreshCount != 0 {
+		t.Fatalf("logs count = %d, snapshot refresh count = %d; want 1 and 0", logsCount, refreshCount)
 	}
 	if cmd == nil {
 		t.Fatal("successful follow refresh did not schedule next tick")
@@ -530,6 +534,118 @@ func TestInteractiveDashboardLogsFollowRefreshesOnlyWhileEnabled(t *testing.T) {
 	model, cmd = updateDashboardModelWithCmd(t, model, dashboardFollowTickMsg{})
 	if cmd != nil {
 		t.Fatal("follow tick while disabled returned command")
+	}
+}
+
+func TestInteractiveDashboardLoadsSelectedLogsAndKeepsErrorsInLogsPane(t *testing.T) {
+	var requested []string
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil).WithLogs(func(_ context.Context, appID string, services []ServiceView) (map[string]LogsView, error) {
+		requested = append(requested, appID)
+		if len(services) != 1 {
+			t.Fatalf("requested services = %#v", services)
+		}
+		if appID == "two" {
+			return nil, errors.New("selected logs unavailable")
+		}
+		return map[string]LogsView{"web": NewLogsView(appID, "web", "loaded selected log\n")}, nil
+	})
+	if cmd := model.Init(); cmd != nil || len(requested) != 0 {
+		t.Fatal("initial summary loaded logs")
+	}
+	model = updateDashboardModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 30})
+	for i := 0; i < len(dashboardTabs)-2; i++ {
+		var cmd tea.Cmd
+		model, cmd = pressDashboardKeyWithCmd(t, model, "tab")
+		if cmd != nil {
+			t.Fatal("non-Logs tab requested logs")
+		}
+	}
+	model, cmd := pressDashboardKeyWithCmd(t, model, "tab")
+	if cmd == nil {
+		t.Fatal("entering Logs did not request selected app logs")
+	}
+	oneResult := cmd()
+	model, cmd = pressDashboardKeyWithCmd(t, model, "down")
+	if cmd == nil {
+		t.Fatal("selecting another app in Logs did not request its logs")
+	}
+	model = updateDashboardModel(t, model, oneResult)
+	if selected, _ := model.selectedAppID(); selected != "two" || strings.Contains(model.View(), "loaded selected log") {
+		t.Fatalf("late result changed app selection or displayed another app's logs:\n%s", model.View())
+	}
+	model = updateDashboardModel(t, model, cmd())
+	if got := strings.Join(requested, ","); got != "one,two" {
+		t.Fatalf("log requests = %q", got)
+	}
+	if model.err != nil || !strings.Contains(model.View(), "selected logs unavailable") {
+		t.Fatalf("logs error affected global state or was hidden:\n%s", model.View())
+	}
+	model = pressDashboardKey(t, model, "f")
+	model, cmd = updateDashboardModelWithCmd(t, model, dashboardFollowTickMsg{})
+	if cmd == nil {
+		t.Fatal("follow did not retry selected app logs")
+	}
+	model, cmd = updateDashboardModelWithCmd(t, model, cmd())
+	if cmd == nil {
+		t.Fatal("logs error stopped follow scheduling")
+	}
+	model = pressDashboardKey(t, model, "tab")
+	if model.followLogs || strings.Contains(model.View(), "selected logs unavailable") || !strings.Contains(model.View(), "Summary") {
+		t.Fatalf("logs error escaped the Logs pane or follow survived leaving Logs:\n%s", model.View())
+	}
+}
+
+func TestInteractiveDashboardLogsFollowSurvivesEmptyFilter(t *testing.T) {
+	loads := 0
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil).WithLogs(func(context.Context, string, []ServiceView) (map[string]LogsView, error) {
+		loads++
+		return nil, nil
+	})
+	model.tab = len(dashboardTabs) - 1
+	model = pressDashboardKey(t, model, "f")
+	model = pressDashboardKey(t, model, "/")
+	model = pressDashboardKey(t, model, "absent")
+	model, cmd := updateDashboardModelWithCmd(t, model, dashboardFollowTickMsg{})
+	if cmd == nil || loads != 0 {
+		t.Fatalf("follow lost its timer with no selected app: cmd nil=%t, loads=%d", cmd == nil, loads)
+	}
+	model, cmd = pressDashboardKeyWithCmd(t, model, "esc")
+	if cmd == nil {
+		t.Fatal("clearing filter did not reload restored selection")
+	}
+	model = updateDashboardModel(t, model, cmd())
+	model, cmd = updateDashboardModelWithCmd(t, model, dashboardFollowTickMsg{})
+	if cmd == nil {
+		t.Fatal("follow did not poll after selection was restored")
+	}
+	_, cmd = updateDashboardModelWithCmd(t, model, cmd())
+	if cmd == nil || loads != 2 {
+		t.Fatalf("follow did not continue after restored selection: cmd nil=%t, loads=%d", cmd == nil, loads)
+	}
+}
+
+func TestInteractiveDashboardIgnoresOlderLogsForSameApp(t *testing.T) {
+	loads := 0
+	model := NewInteractiveDashboardModel(testDashboardSnapshot(), nil).WithLogs(func(_ context.Context, appID string, _ []ServiceView) (map[string]LogsView, error) {
+		loads++
+		if loads == 1 {
+			return nil, errors.New("older request error")
+		}
+		return map[string]LogsView{"web": NewLogsView(appID, "web", "fresh logs\n")}, nil
+	})
+	model.tab = len(dashboardTabs) - 1
+	model.followLogs = true
+	model, cmd := updateDashboardModelWithCmd(t, model, dashboardFollowTickMsg{})
+	older := cmd()
+	model = pressDashboardKey(t, model, "down")
+	model, cmd = pressDashboardKeyWithCmd(t, model, "up")
+	model = updateDashboardModel(t, model, cmd())
+	model, cmd = updateDashboardModelWithCmd(t, model, older)
+	if view := model.View(); !strings.Contains(view, "fresh logs") || strings.Contains(view, "older request error") {
+		t.Fatalf("older response overwrote newer logs for the same app:\n%s", view)
+	}
+	if cmd == nil {
+		t.Fatal("ignoring an older follow result stopped the next follow tick")
 	}
 }
 

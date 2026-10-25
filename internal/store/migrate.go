@@ -151,6 +151,24 @@ func migrateLegacyDeployments(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
+	// Opening a current database for a query must not acquire a migration write lock.
+	var needsBackfill bool
+	if err := db.QueryRowContext(ctx, `
+		select exists (
+			select 1 from deployments
+			where trigger = ''
+			   or (commit_sha = '' and exists (
+				select 1 from releases where releases.id = deployments.release_id and releases.commit_sha != ''
+			   ))
+			   or (status = 'failed' and (failure_stage = '' or retry_guidance = ''))
+			   or (failure_detail = '' and error_message != '')
+		)`).Scan(&needsBackfill); err != nil {
+		return fmt.Errorf("inspect deployment backfill: %w", err)
+	}
+	if !needsBackfill {
+		return nil
+	}
+
 	statements := []string{
 		`update deployments set trigger = 'legacy' where trigger = ''`,
 		`update deployments

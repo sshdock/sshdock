@@ -90,24 +90,23 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	handler := tui.NewDashboardHandlerWithConfig(sqlite, composeRunner, configService, backend)
-	snapshot, err := handler.Snapshot(ctx)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-
 	if stdin == nil {
 		stdin = os.Stdin
 	}
 	if dashboardHasInteractiveTerminal(stdin, stdout) {
-		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, newDashboardActions(sqlite, cfg, composeRunner, configService), stdin, stdout); err != nil {
+		snapshot, err := handler.Snapshot(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, handler.Logs, newDashboardActions(sqlite, cfg, composeRunner, configService), stdin, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
 		return 0
 	}
 
-	if err := tui.RenderDashboardSnapshot(stdout, snapshot); err != nil {
+	if err := handler.Render(ctx, stdout); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

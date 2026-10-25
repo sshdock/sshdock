@@ -60,11 +60,11 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 	if _, err := fmt.Fprintln(stdout, "stage: evaluate effective model"); err != nil {
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
 	}
-	effectiveOutput, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--format", "json")), stdout, stderr)
-	if err != nil {
+	var effectiveOutput bytes.Buffer
+	if err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--format", "json")), io.MultiWriter(stdout, &effectiveOutput), stderr); err != nil {
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
 	}
-	result, err := analyzeEffectiveModel(effectiveOutput, projectName)
+	result, err := analyzeEffectiveModel(effectiveOutput.String(), projectName)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
@@ -72,13 +72,13 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 	if _, err := fmt.Fprintln(stdout, "stage: pull images"); err != nil {
 		return result, NewDeployError(DeployStagePullImages, err)
 	}
-	if _, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable")), stdout, stderr); err != nil {
+	if err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "pull", "--ignore-buildable")), stdout, stderr); err != nil {
 		return result, NewDeployError(DeployStagePullImages, err)
 	}
 	if _, err := fmt.Fprintln(stdout, "stage: build services"); err != nil {
 		return result, NewDeployError(DeployStageBuildServices, err)
 	}
-	if _, err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "build")), stdout, stderr); err != nil {
+	if err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "build")), stdout, stderr); err != nil {
 		return result, NewDeployError(DeployStageBuildServices, err)
 	}
 
@@ -89,7 +89,7 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 	if _, err := fmt.Fprintln(stdout, "stage: start services"); err != nil {
 		return result, NewDeployError(DeployStageWaitServices, err)
 	}
-	if _, err := r.runDeploymentCommand(waitCtx, deployCommand(request, upArgs), stdout, stderr); err != nil {
+	if err := r.runDeploymentCommand(waitCtx, deployCommand(request, upArgs), stdout, stderr); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			err = fmt.Errorf("Compose service wait interrupted by deployment context: %w", ctxErr)
 		} else if waitCtx.Err() != nil {
@@ -101,27 +101,23 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 	return result, nil
 }
 
-func (r *DockerRunner) runDeploymentCommand(ctx context.Context, command Command, stdout io.Writer, stderr io.Writer) (string, error) {
+func (r *DockerRunner) runDeploymentCommand(ctx context.Context, command Command, stdout io.Writer, stderr io.Writer) error {
 	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
-		var captured bytes.Buffer
-		if err := streamer.Stream(ctx, command, io.MultiWriter(stdout, &captured), stderr); err != nil {
-			return "", err
-		}
-		return captured.String(), nil
+		return streamer.Stream(ctx, command, stdout, stderr)
 	}
 	output, err := r.executor.Run(ctx, command)
 	if output != "" {
 		if _, writeErr := io.WriteString(stdout, output); writeErr != nil {
-			return "", writeErr
+			return writeErr
 		}
 	}
 	if err != nil {
 		if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
-			return "", errors.Join(err, writeErr)
+			return errors.Join(err, writeErr)
 		}
-		return "", err
+		return err
 	}
-	return output, nil
+	return nil
 }
 
 func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) error {

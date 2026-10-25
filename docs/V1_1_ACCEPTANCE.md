@@ -2,6 +2,14 @@
 
 This report records the original source acceptance for [issue #59](https://github.com/sshdock/sshdock/issues/59) and the approved public-release gates for [issue #60](https://github.com/sshdock/sshdock/issues/60). The historical [v1.0.0 validation](RELEASE_ACCEPTANCE.md) remains a separate report.
 
+## v1.1.1 patch source gate
+
+On 2026-10-25, the exact [53b9fa9 main source](https://github.com/sshdock/sshdock/commit/53b9fa9bd9a7ee93c726fcf42a3ae232d8243144) passed a populated v1.1.0 upgrade on the dedicated Ubuntu amd64 VPS. Separate quiesced host-state and named-volume data copies were retained off-host. The upgrade preserved logical SQLite rows and deployment identities, Git refs, encrypted config and key bytes, SSH authorization, running container and volume identity, active Caddy routing, administrator configuration, service drop-ins and explicitly resupplied installer settings. Completed attempts did not replay; fresh SSH, existing HTTPS records, new writes and app restart persistence passed.
+
+A missing required Compose variable produced an actionable, secret-safe validation failure. A subsequent forward Git commit deployed successfully and retained the saved data. Real SSH PTY checks passed for Summary, both service log panes, fresh Logs-follow output and navigation. Release preparation changes only versioned documentation and its existing onboarding assertions; production Go source, dependencies and bootstrap remain identical to this tested main revision.
+
+This source-build gate is separate from verification of published assets. Anonymous v1.1.1 archive/checksum/source checks and actual public installer upgrade/repeat results are recorded in the [v1.1.1 release notes](https://github.com/sshdock/sshdock/releases/tag/v1.1.1) after publication. The earlier full framework/software/browser/long-observation matrix and arm64/Debian live runtime checks are not claimed by this patch gate.
+
 ## Source and environment
 
 The original source acceptance candidate was [09a8edd](https://github.com/sshdock/sshdock/commit/09a8edde0ffc8ebdd74789064cf333c11ba22287). Its Linux amd64 CLI, daemon and compiled integration-test binary were built from the exact Git archive with full-source-version linker flags; archive provenance, binary architecture, installed versions and artifact integrity were verified.

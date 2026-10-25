@@ -16,11 +16,11 @@ func TestPublishedReleaseOnboardingIsVersionMatched(t *testing.T) {
 			}
 			released, current := splitPublishedReleaseDocs(t, string(contents))
 			for _, want := range []string{
-				"https://github.com/sshdock/sshdock/releases/tag/v1.1.0",
-				"https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/scripts/bootstrap.sh",
-				"sudo SSHDOCK_TAG=v1.1.0 bash bootstrap.sh",
-				"https://github.com/sshdock/sshdock/blob/v1.1.0/README.md#quick-start",
-				"https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md",
+				"https://github.com/sshdock/sshdock/releases/tag/v1.1.1",
+				"https://raw.githubusercontent.com/sshdock/sshdock/v1.1.1/scripts/bootstrap.sh",
+				"sudo SSHDOCK_TAG=v1.1.1 bash bootstrap.sh",
+				"https://github.com/sshdock/sshdock/blob/v1.1.1/README.md#quick-start",
+				"https://github.com/sshdock/sshdock/blob/v1.1.1/docs/INSTALL.md",
 				"ssh sshdock@sshdock.example.com",
 				"durable deployment logs",
 			} {
@@ -100,7 +100,7 @@ func TestPublicExampleDownloadsUseMatchingRelease(t *testing.T) {
 // Keep the install command and linked complete usage docs in one versioned section.
 func splitPublishedReleaseDocs(t *testing.T, text string) (string, string) {
 	t.Helper()
-	const heading = "## Published Release: v1.1.0\n"
+	const heading = "## Published Release: v1.1.1\n"
 	before, after, found := strings.Cut(text, heading)
 	if !found {
 		t.Fatalf("missing explicit published-release heading %q", heading)

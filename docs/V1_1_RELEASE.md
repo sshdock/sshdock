@@ -1,6 +1,15 @@
-# OSS v1.1.0 release notes
+# OSS v1.1 release notes
 
 SSHDock remains an Apache-2.0, single-VPS Git/SSH/Compose deployment tool. Its manual operations run without an SSHDock Cloud account, login or subscription.
+
+## v1.1.1 patch
+
+- Stream deployment command output without retaining a second in-memory copy of the complete output.
+- Query container logs only for the selected app's Logs tab in the interactive SSH dashboard, with per-service errors isolated and redacted.
+- Avoid SQLite lock-upgrade contention while deployment output is persisted and operator queries run concurrently. Current-schema query opens skip unnecessary migration writes; write transactions reserve their lock before reading and retain the existing five-second wait limit.
+- Upgrade the indirect Logrus dependency from v1.9.0 to v1.9.3 for CVE-2025-65637.
+
+This patch adds no commands or product features. Existing deployment-log retention and the trusted-owner, single-node Compose boundary remain unchanged.
 
 ## Included capabilities
 
@@ -12,11 +21,11 @@ SSHDock remains an Apache-2.0, single-VPS Git/SSH/Compose deployment tool. Its m
 
 ## Installation and distribution
 
-Use the matching v1.1.0 bootstrap and assets from the [installation guide](INSTALL.md#published-release-v110). Linux amd64 and arm64 archives each contain the CLI, daemon, Apache license and third-party notices, with a matching checksum sidecar. The skill and its standalone license ship in the versioned source archive under `.agents/skills/sshdock-operations`; follow the documented copy procedure rather than looking for a hosted agent service.
+Use the matching v1.1.1 bootstrap and assets from the [installation guide](INSTALL.md#published-release-v111). Linux amd64 and arm64 archives each contain the CLI, daemon, Apache license and third-party notices, with a matching checksum sidecar. The skill and its standalone license ship in the versioned source archive under `.agents/skills/sshdock-operations`; follow the documented copy procedure rather than looking for a hosted agent service.
 
 The public v1.1.0-rc.1 gate verified anonymous assets, matching bootstrap/source, checksums, licenses/notices and binary build provenance for both architectures. Actual cleared-runtime RC installation/repeat and populated public-v1-to-RC upgrade/repeat passed on Ubuntu amd64, preserving keys/config, data, running services, routes, history and explicitly resupplied service settings. Cross-compilation and archive checks establish build coverage, not live arm64 runtime acceptance. See the [acceptance matrix](V1_1_ACCEPTANCE.md) for exact revisions, reused backup proof and retained failures; stable-specific publication checks are recorded in the final GitHub release notes.
 
-## Upgrade from v1.0.0
+## Upgrade from v1.0.0 or v1.1.0
 
 1. Record the current install layout, reviewed nondefault bootstrap settings, service drop-ins and external Caddy configuration. Pause pushes/operator mutations and wait for deployments to finish. Take the documented host-state backup with the daemon stopped, plus tested application-native or stopped-writer data backups under their own consistency windows. Copy backups off-host and protect them as credentials. v1.0.0 does not provide the new `backup volume` commands; host-state archives do not copy application data.
 2. Run the target release's matching bootstrap/assets, explicitly resupplying the recorded settings. The installer regenerates the daemon unit and Git/operator wrappers from its invocation environment; it does not import old unit settings. Preserve external Caddy credentials/configuration and service drop-ins separately. Caddy admin addresses use bare `host:port`, not URL syntax. See [upgrade notes](INSTALL.md#upgrade-notes).

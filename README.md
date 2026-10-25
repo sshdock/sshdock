@@ -27,16 +27,16 @@ You own host administration, app availability, application-data consistency, and
 
 Potential paid hosted operations are future research, not shipped functionality or a restriction on the Apache-2.0 OSS runtime and its manual operations.
 
-## Published Release: v1.1.0
+## Published Release: v1.1.1
 
-Install [v1.1.0](https://github.com/sshdock/sshdock/releases/tag/v1.1.0) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
+Install [v1.1.1](https://github.com/sshdock/sshdock/releases/tag/v1.1.1) on a single Ubuntu/Debian VPS with its matching bootstrap script and assets:
 
 ```bash
-wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.1.0/scripts/bootstrap.sh
-sudo SSHDOCK_TAG=v1.1.0 bash bootstrap.sh
+wget -O bootstrap.sh https://raw.githubusercontent.com/sshdock/sshdock/v1.1.1/scripts/bootstrap.sh
+sudo SSHDOCK_TAG=v1.1.1 bash bootstrap.sh
 ```
 
-Follow the [v1.1.0 quick start](https://github.com/sshdock/sshdock/blob/v1.1.0/README.md#quick-start) and [v1.1.0 installation guide](https://github.com/sshdock/sshdock/blob/v1.1.0/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
+Follow the [v1.1.1 quick start](https://github.com/sshdock/sshdock/blob/v1.1.1/README.md#quick-start) and [v1.1.1 installation guide](https://github.com/sshdock/sshdock/blob/v1.1.1/docs/INSTALL.md). This release uses `ssh sshdock@sshdock.example.com` and includes durable deployment logs. Always take the bootstrap script and binaries from the same release tag.
 
 v1.1 adds structured CLI inspection, read-only preflight, documented Git-selected recovery, manual application-data archives and a portable coding-agent skill. See the [release and upgrade notes](docs/V1_1_RELEASE.md) for availability, installation and operational limits.
 

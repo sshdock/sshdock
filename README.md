@@ -213,6 +213,7 @@ See [`docs/EXAMPLES.md`](docs/EXAMPLES.md) for maintained framework compatibilit
 
 ## Docs
 
+- [`website/README.md`](website/README.md): landing page and documentation website source, preview and checks.
 - [`docs/INSTALL.md`](docs/INSTALL.md): install, upgrade, firewall, backup, and restore notes.
 - [`docs/CLI_COMMANDS.md`](docs/CLI_COMMANDS.md): complete `sshdock` and `sshdockd` command reference.
 - [`docs/JSON_OUTPUT.md`](docs/JSON_OUTPUT.md): v1.1 structured inspection and deployment polling contract.

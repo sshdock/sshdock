@@ -21,8 +21,9 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		fmt.Fprintf(stdout, "sshdockd %s\n", version.String())
 		return 0
 	}
-	if len(args) == 0 || (len(args) == 1 && args[0] == "serve") {
-		return runServe(stderr)
+	if len(args) == 1 && args[0] == "serve" {
+		fmt.Fprintln(stderr, "sshdockd serve has been removed; use host OpenSSH: ssh sshdock@<server>")
+		return 2
 	}
 	if len(args) == 1 && args[0] == "daemon" {
 		return runDaemon(stderr)
@@ -40,6 +41,6 @@ func runWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 		return runGitReceive(stdin, stdout, stderr)
 	}
 
-	fmt.Fprintln(stderr, "usage: sshdockd [serve] | daemon | operator | version | git-pre-receive --app <name> | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
+	fmt.Fprintln(stderr, "usage: sshdockd daemon | operator | version | git-pre-receive --app <name> | git-hook --app <name> --repo <repo.git> [--worktree <path>] | git-receive")
 	return 2
 }

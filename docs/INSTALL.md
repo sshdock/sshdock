@@ -351,7 +351,9 @@ For an interactive service shell, request a PTY explicitly:
 ssh -tt sshdock@server apps exec my-app web -- sh
 ```
 
-For scripts and one-off jobs, omit the PTY. `apps exec` and `apps run` require `--` before the container command; callers cannot pass arbitrary Compose flags. `sshdockd serve` remains available for local embedded-SSH testing but is not the production install path.
+For scripts and one-off jobs, omit the PTY. `apps exec` and `apps run` require `--` before the container command; callers cannot pass arbitrary Compose flags.
+
+The current unreleased source removes the development SSH listener: bare `sshdockd` and `sshdockd serve` exit `2` with guidance. Use `ssh sshdock@server` for operator access and `sshdockd daemon` for the deployment worker. The published v1.1.1 binaries still include that development listener; the bootstrap-installed OpenSSH access path is unchanged. See the [current-source command reference](CLI_COMMANDS.md#removed-in-current-source-unreleased-sshdockd-or-sshdockd-serve) for removed listener settings.
 
 ## SSH Git Receive User
 

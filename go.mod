@@ -10,7 +10,6 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/danielgatis/go-headless-term v1.0.9
 	github.com/mattn/go-isatty v0.0.20
-	golang.org/x/crypto v0.56.0
 	golang.org/x/image v0.43.0
 	golang.org/x/sys v0.47.0
 	gopkg.in/yaml.v3 v3.0.1

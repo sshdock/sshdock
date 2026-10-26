@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,38 @@ func TestRunVersion(t *testing.T) {
 
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunRequiresExplicitCommandWithoutInitializingState(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "no command", want: "usage: sshdockd daemon | operator | version"},
+		{name: "removed serve", args: []string{"serve"}, want: "sshdockd serve has been removed; use host OpenSSH: ssh sshdock@<server>"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dataDir := filepath.Join(t.TempDir(), "unused-state")
+			t.Setenv("SSHDOCK_DATA_DIR", dataDir)
+			t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
+			t.Setenv("SSHDOCK_COMPOSE_RUNNER", "invalid")
+			var stdout, stderr bytes.Buffer
+
+			if code := runWithInput(tt.args, nil, &stdout, &stderr); code != 2 {
+				t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tt.want) {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tt.want)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+			if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+				t.Fatalf("state directory should not exist: %v", err)
+			}
+		})
 	}
 }
 

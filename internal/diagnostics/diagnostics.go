@@ -53,7 +53,6 @@ func Run(ctx context.Context, cfg config.Config, executor CommandExecutor) Repor
 	report.checkDir("sqlite dir", filepath.Dir(cfg.SQLiteDBPath))
 	report.checkDir("git home dir", cfg.GitHomeDir)
 	report.checkDir("git authorized_keys dir", filepath.Dir(cfg.GitAuthorizedKeysPath))
-	report.checkDir("operator host key dir", filepath.Dir(cfg.OperatorHostKeyPath))
 	report.checkDir("operator authorized_keys dir", filepath.Dir(cfg.OperatorAuthorizedKeysPath))
 	report.checkDir("caddy config dir", filepath.Dir(cfg.CaddyConfigPath))
 

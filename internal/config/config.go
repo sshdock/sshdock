@@ -14,9 +14,7 @@ type Config struct {
 	LocksDir                   string
 	ConfigKeyPath              string
 	NodeID                     string
-	SSHListenAddr              string
 	OperatorUser               string
-	OperatorHostKeyPath        string
 	OperatorAuthorizedKeysPath string
 	OperatorCommand            string
 	GitUser                    string
@@ -39,9 +37,7 @@ func Default() Config {
 		LocksDir:                   filepath.Join(dataDir, "locks"),
 		ConfigKeyPath:              filepath.Join(dataDir, "config.key"),
 		NodeID:                     "local",
-		SSHListenAddr:              ":2222",
 		OperatorUser:               "sshdock",
-		OperatorHostKeyPath:        filepath.Join(dataDir, "ssh_host_rsa_key"),
 		OperatorAuthorizedKeysPath: filepath.Join(dataDir, ".ssh", "authorized_keys"),
 		OperatorCommand:            "/usr/local/bin/sshdock-operator",
 		GitUser:                    "git",
@@ -63,9 +59,7 @@ func LoadFromEnv() Config {
 	cfg.LocksDir = envOrDefault("SSHDOCK_LOCKS_DIR", filepath.Join(cfg.DataDir, "locks"))
 	cfg.ConfigKeyPath = envOrDefault("SSHDOCK_CONFIG_KEY_PATH", filepath.Join(cfg.DataDir, "config.key"))
 	cfg.NodeID = envOrDefault("SSHDOCK_NODE_ID", cfg.NodeID)
-	cfg.SSHListenAddr = envOrDefault("SSHDOCK_SSH_LISTEN_ADDR", cfg.SSHListenAddr)
 	cfg.OperatorUser = envOrDefault("SSHDOCK_OPERATOR_USER", cfg.OperatorUser)
-	cfg.OperatorHostKeyPath = envOrDefault("SSHDOCK_OPERATOR_HOST_KEY_PATH", filepath.Join(cfg.DataDir, "ssh_host_rsa_key"))
 	cfg.OperatorAuthorizedKeysPath = envOrDefault("SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", filepath.Join(cfg.DataDir, ".ssh", "authorized_keys"))
 	cfg.OperatorCommand = envOrDefault("SSHDOCK_OPERATOR_COMMAND", cfg.OperatorCommand)
 	cfg.GitUser = envOrDefault("SSHDOCK_GIT_USER", cfg.GitUser)
@@ -103,9 +97,7 @@ func (c Config) Validate() error {
 		{env: "SSHDOCK_LOCKS_DIR", value: c.LocksDir},
 		{env: "SSHDOCK_CONFIG_KEY_PATH", value: c.ConfigKeyPath},
 		{env: "SSHDOCK_NODE_ID", value: c.NodeID},
-		{env: "SSHDOCK_SSH_LISTEN_ADDR", value: c.SSHListenAddr},
 		{env: "SSHDOCK_OPERATOR_USER", value: c.OperatorUser},
-		{env: "SSHDOCK_OPERATOR_HOST_KEY_PATH", value: c.OperatorHostKeyPath},
 		{env: "SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", value: c.OperatorAuthorizedKeysPath},
 		{env: "SSHDOCK_OPERATOR_COMMAND", value: c.OperatorCommand},
 		{env: "SSHDOCK_GIT_USER", value: c.GitUser},

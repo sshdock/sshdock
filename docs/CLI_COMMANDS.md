@@ -614,15 +614,15 @@ Print the daemon binary version.
 sshdockd version
 ```
 
-### `sshdockd` or `sshdockd serve`
+### Removed in current source (unreleased): `sshdockd` or `sshdockd serve`
 
-Run the direct SSH dashboard server.
+The current unreleased source removes the direct development SSH server. Both invocations exit `2` with guidance, without opening the runtime store or starting a listener. Use the installed OpenSSH operator entry point instead:
 
 ```bash
-sshdockd serve
+ssh sshdock@server
 ```
 
-In the installed path, operator access goes through host OpenSSH with a forced `sshdockd operator` command instead of exposing the direct dashboard listener.
+Run `sshdockd daemon` explicitly for the deployment worker. `SSHDOCK_SSH_LISTEN_ADDR` and `SSHDOCK_OPERATOR_HOST_KEY_PATH` are no longer read; existing host-key files are left in place. The published v1.1.1 binaries still include the development listener. Production installations already use host OpenSSH with a forced `sshdockd operator` command.
 
 ### `sshdockd daemon`
 

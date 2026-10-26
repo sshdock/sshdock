@@ -27,9 +27,6 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.NodeID != "local" {
 		t.Fatalf("NodeID = %q, want local", cfg.NodeID)
 	}
-	if cfg.SSHListenAddr == "" {
-		t.Fatal("SSHListenAddr is empty")
-	}
 	if cfg.OperatorUser != "sshdock" {
 		t.Fatalf("OperatorUser = %q, want sshdock", cfg.OperatorUser)
 	}
@@ -47,9 +44,6 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	}
 	if cfg.GitReceiveCommand != "sudo -n -u sshdock /usr/local/bin/sshdock-git-receive" {
 		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
-	}
-	if cfg.OperatorHostKeyPath != filepath.Join(cfg.DataDir, "ssh_host_rsa_key") {
-		t.Fatalf("OperatorHostKeyPath = %q, want path under operator data dir", cfg.OperatorHostKeyPath)
 	}
 	if cfg.OperatorAuthorizedKeysPath != filepath.Join(cfg.DataDir, ".ssh", "authorized_keys") {
 		t.Fatalf("OperatorAuthorizedKeysPath = %q, want path under operator home", cfg.OperatorAuthorizedKeysPath)
@@ -78,14 +72,12 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	t.Setenv("SSHDOCK_LOCKS_DIR", "/tmp/sshdock-locks")
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", "/tmp/sshdock-config.key")
 	t.Setenv("SSHDOCK_NODE_ID", "node-a")
-	t.Setenv("SSHDOCK_SSH_LISTEN_ADDR", "127.0.0.1:2222")
 	t.Setenv("SSHDOCK_OPERATOR_USER", "remote-operator")
 	t.Setenv("SSHDOCK_GIT_USER", "deploy")
 	t.Setenv("SSHDOCK_GIT_HOME_DIR", "/tmp/sshdock-git")
 	t.Setenv("SSHDOCK_GIT_HOST", "sshdock.example.com")
 	t.Setenv("SSHDOCK_GIT_AUTHORIZED_KEYS_PATH", "/tmp/authorized_keys")
 	t.Setenv("SSHDOCK_GIT_RECEIVE_COMMAND", "/opt/sshdock/bin/sshdockd git-receive")
-	t.Setenv("SSHDOCK_OPERATOR_HOST_KEY_PATH", "/tmp/operator_host_key")
 	t.Setenv("SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH", "/tmp/operator_authorized_keys")
 	t.Setenv("SSHDOCK_OPERATOR_COMMAND", "/opt/sshdock/bin/sshdockd operator")
 	t.Setenv("SSHDOCK_CADDY_CONFIG_PATH", "/tmp/Caddyfile")
@@ -112,9 +104,6 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	if cfg.NodeID != "node-a" {
 		t.Fatalf("NodeID = %q", cfg.NodeID)
 	}
-	if cfg.SSHListenAddr != "127.0.0.1:2222" {
-		t.Fatalf("SSHListenAddr = %q", cfg.SSHListenAddr)
-	}
 	if cfg.OperatorUser != "remote-operator" {
 		t.Fatalf("OperatorUser = %q", cfg.OperatorUser)
 	}
@@ -132,9 +121,6 @@ func TestLoadFromEnvOverridesDefaults(t *testing.T) {
 	}
 	if cfg.GitReceiveCommand != "/opt/sshdock/bin/sshdockd git-receive" {
 		t.Fatalf("GitReceiveCommand = %q", cfg.GitReceiveCommand)
-	}
-	if cfg.OperatorHostKeyPath != "/tmp/operator_host_key" {
-		t.Fatalf("OperatorHostKeyPath = %q", cfg.OperatorHostKeyPath)
 	}
 	if cfg.OperatorAuthorizedKeysPath != "/tmp/operator_authorized_keys" {
 		t.Fatalf("OperatorAuthorizedKeysPath = %q", cfg.OperatorAuthorizedKeysPath)

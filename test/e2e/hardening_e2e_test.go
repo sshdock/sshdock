@@ -75,7 +75,6 @@ func TestHardeningBootstrapUpgradePreservesDataAndDiagnostics(t *testing.T) {
 		"SSHDOCK_APPS_DIR="+filepath.Join(dataDir, "apps"),
 		"SSHDOCK_GIT_HOME_DIR="+filepath.Join(dataDir, "git"),
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, "git/.ssh/authorized_keys"),
-		"SSHDOCK_OPERATOR_HOST_KEY_PATH="+filepath.Join(dataDir, "ssh_host_rsa_key"),
 		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+filepath.Join(dataDir, ".ssh/authorized_keys"),
 		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(installRoot, "etc/caddy/sshdock.caddyfile"),
 		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+diagnosticsCaddyMainPath,

@@ -82,6 +82,9 @@ func TestCreateArchiveIncludesStateCaddyAndVolumeInventory(t *testing.T) {
 	if !manifest.CreatedAt.Equal(now) {
 		t.Fatalf("manifest created_at = %s, want %s", manifest.CreatedAt, now)
 	}
+	if manifest.Source.OperatorHostKey != "" {
+		t.Fatalf("new archive retains an operator host key setting: %q", manifest.Source.OperatorHostKey)
+	}
 	if len(manifest.RestoreGuardrails) == 0 || !strings.Contains(strings.Join(manifest.RestoreGuardrails, "\n"), "Stop sshdockd") {
 		t.Fatalf("restore guardrails = %#v", manifest.RestoreGuardrails)
 	}
@@ -265,6 +268,94 @@ func TestRestoreKeepsConfigKeyUsableForEncryptedConfig(t *testing.T) {
 	}
 }
 
+func TestRestoreAcceptsLegacyOperatorHostKeyMetadata(t *testing.T) {
+	ctx := context.Background()
+	source := backupTestConfig(t)
+	writeBackupFixture(t, source)
+	if err := os.WriteFile(source.SQLiteDBPath, []byte("legacy database bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacyKey := filepath.Join(source.DataDir, "ssh_host_rsa_key")
+	if err := os.WriteFile(legacyKey, []byte("dormant RSA host key bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{source.GitAuthorizedKeysPath, source.OperatorAuthorizedKeysPath} {
+		if err := os.Chmod(path, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"legacy value", `{"operator_host_key_path":"/legacy/unused/ssh_host_rsa_key"}`, "/legacy/unused/ssh_host_rsa_key"},
+		{"new empty value", `{"operator_host_key_path":""}`, ""},
+		{"missing field", `{}`, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "backup.tar.gz")
+			file, err := os.Create(archivePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			gz := gzip.NewWriter(file)
+			defer gz.Close()
+			tw := tar.NewWriter(gz)
+			defer tw.Close()
+			writer := archiveWriter{tar: tw}
+			if err := addTree(&writer, source.DataDir, "data", func(string) bool { return false }); err != nil {
+				t.Fatal(err)
+			}
+			// Raw JSON keeps this compatibility fixture independent of SourcePaths.
+			manifest := []byte(`{"format_version":"sshdock-backup/v1","source":` + test.source + `}`)
+			if err := writer.addBytes("manifest.json", manifest, 0o644, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			for _, close := range []func() error{tw.Close, gz.Close, file.Close} {
+				if err := close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			inspection, err := Inspect(ctx, archivePath)
+			if err != nil || inspection.Manifest.Source.OperatorHostKey != test.want {
+				t.Fatalf("Inspect operator host key = %q, error = %v", inspection.Manifest.Source.OperatorHostKey, err)
+			}
+			target := backupTestConfig(t)
+			if err := Restore(ctx, RestoreRequest{Config: target, ArchivePath: archivePath}); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{source.SQLiteDBPath, source.ConfigKeyPath, source.GitAuthorizedKeysPath, source.OperatorAuthorizedKeysPath, legacyKey} {
+				relative, err := filepath.Rel(source.DataDir, path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expected, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				restoredPath := filepath.Join(target.DataDir, relative)
+				actual, err := os.ReadFile(restoredPath)
+				if err != nil || string(actual) != string(expected) {
+					t.Fatalf("restored %s = %q, error = %v", relative, actual, err)
+				}
+				info, err := os.Stat(restoredPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantMode := os.FileMode(0o600)
+				if path == source.SQLiteDBPath {
+					wantMode = 0o644
+				}
+				if info.Mode().Perm() != wantMode {
+					t.Fatalf("restored %s mode = %04o, want %04o", relative, info.Mode().Perm(), wantMode)
+				}
+			}
+		})
+	}
+}
+
 type fakeVolumeLister struct {
 	volumes []Volume
 	err     error
@@ -286,7 +377,6 @@ func backupTestConfig(t *testing.T) config.Config {
 	cfg.ConfigKeyPath = filepath.Join(dataDir, "config.key")
 	cfg.GitHomeDir = filepath.Join(dataDir, "git")
 	cfg.GitAuthorizedKeysPath = filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
-	cfg.OperatorHostKeyPath = filepath.Join(dataDir, "operator", "ssh_host_rsa_key")
 	cfg.OperatorAuthorizedKeysPath = filepath.Join(dataDir, ".ssh", "authorized_keys")
 	cfg.CaddyConfigPath = filepath.Join(caddyDir, "sshdock.caddyfile")
 	cfg.CaddyMainConfigPath = filepath.Join(caddyDir, "Caddyfile")

@@ -54,10 +54,6 @@ func NewDashboardHandlerWithConfig(store DashboardStore, runner compose.Runner, 
 	return &DashboardHandler{store: store, runner: runner, configResolver: resolver, healthProvider: healthProvider}
 }
 
-func (h *DashboardHandler) HandleSession(ctx context.Context, session Session) error {
-	return h.Render(ctx, session)
-}
-
 func (h *DashboardHandler) Render(ctx context.Context, writer io.Writer) error {
 	snapshot, err := h.Snapshot(ctx)
 	if err != nil {

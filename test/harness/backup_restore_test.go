@@ -123,7 +123,6 @@ func backupHarnessConfig(t *testing.T) config.Config {
 	cfg.ConfigKeyPath = filepath.Join(dataDir, "config.key")
 	cfg.GitHomeDir = filepath.Join(dataDir, "git")
 	cfg.GitAuthorizedKeysPath = filepath.Join(dataDir, "git", ".ssh", "authorized_keys")
-	cfg.OperatorHostKeyPath = filepath.Join(dataDir, "operator", "ssh_host_rsa_key")
 	cfg.OperatorAuthorizedKeysPath = filepath.Join(dataDir, ".ssh", "authorized_keys")
 	cfg.CaddyConfigPath = filepath.Join(caddyDir, "sshdock.caddyfile")
 	cfg.CaddyMainConfigPath = filepath.Join(caddyDir, "Caddyfile")

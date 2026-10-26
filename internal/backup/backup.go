@@ -63,7 +63,7 @@ type SourcePaths struct {
 	SQLiteDBPath        string `json:"sqlite_db_path"`
 	ConfigKeyPath       string `json:"config_key_path"`
 	GitAuthorizedKeys   string `json:"git_authorized_keys_path"`
-	OperatorHostKey     string `json:"operator_host_key_path"`
+	OperatorHostKey     string `json:"operator_host_key_path"` // Legacy provenance only; new archives leave this empty.
 	OperatorKeys        string `json:"operator_authorized_keys_path"`
 	CaddyConfigPath     string `json:"caddy_config_path"`
 	CaddyMainConfigPath string `json:"caddy_main_config_path"`
@@ -662,7 +662,6 @@ func validateRestoreTargetPaths(cfg config.Config) error {
 		filepath.Dir(cfg.ConfigKeyPath),
 		cfg.GitHomeDir,
 		filepath.Dir(cfg.GitAuthorizedKeysPath),
-		filepath.Dir(cfg.OperatorHostKeyPath),
 		filepath.Dir(cfg.OperatorAuthorizedKeysPath),
 		filepath.Dir(cfg.CaddyConfigPath),
 		filepath.Dir(cfg.CaddyMainConfigPath),
@@ -741,7 +740,6 @@ func sourcePaths(cfg config.Config) SourcePaths {
 		SQLiteDBPath:        cfg.SQLiteDBPath,
 		ConfigKeyPath:       cfg.ConfigKeyPath,
 		GitAuthorizedKeys:   cfg.GitAuthorizedKeysPath,
-		OperatorHostKey:     cfg.OperatorHostKeyPath,
 		OperatorKeys:        cfg.OperatorAuthorizedKeysPath,
 		CaddyConfigPath:     cfg.CaddyConfigPath,
 		CaddyMainConfigPath: cfg.CaddyMainConfigPath,

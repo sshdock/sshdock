@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,9 +71,6 @@ func TestNewAppDetailView(t *testing.T) {
 	}
 	if view.Health.RouteStatus != "routed" || view.Health.LatestDeploymentStatus != "succeeded" || view.Health.ServiceStatus != "1 running" {
 		t.Fatalf("health = %#v", view.Health)
-	}
-	if len(view.Actions) == 0 {
-		t.Fatal("expected basic action labels")
 	}
 }
 
@@ -181,12 +177,6 @@ func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
 	got := view.Deployments[0]
 	if got.CommitSHA != deployment.CommitSHA || got.Trigger != string(deployment.Trigger) || got.FailureStage != deployment.FailureStage || got.FailureDetail != deployment.FailureDetail || got.RetryGuidance != deployment.RetryGuidance {
 		t.Fatalf("deployment view = %#v", got)
-	}
-	if !slices.Contains(view.Actions, "redeploy current main") {
-		t.Fatalf("actions = %#v, want current-main redeploy wording", view.Actions)
-	}
-	if slices.Contains(view.Actions, "rollback release") {
-		t.Fatalf("actions = %#v, rollback must use Git push to remote main", view.Actions)
 	}
 }
 

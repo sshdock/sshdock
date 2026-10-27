@@ -30,7 +30,6 @@ type AppDetailView struct {
 	Deployments []DeploymentView
 	Events      []EventView
 	Health      HealthSummary
-	Actions     []string
 }
 
 type AppSummary struct {
@@ -126,7 +125,6 @@ func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains [
 		Deployments: newDeploymentViews(deployments),
 		Events:      newEventViews(events),
 		Health:      newHealthSummary(services, domains, deployments),
-		Actions:     []string{"restart app", "redeploy current main", "attach domain"},
 	}
 }
 

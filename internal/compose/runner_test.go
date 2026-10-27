@@ -15,7 +15,6 @@ func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 		AppName:     "my-app",
 		ProjectDir:  "/data/apps/my-app/worktree",
 		ComposePath: "compose.yml",
-		ReleaseID:   "rel_1",
 		CommitSHA:   "abc123",
 	}
 

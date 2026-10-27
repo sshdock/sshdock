@@ -179,7 +179,7 @@ func (e *Executor) Execute(ctx context.Context, deployment app.Deployment) (exec
 		return fail(stage, deployfailure.New(stage, err, changedState(deployment, stage), deployfailure.FixForStage(stage), retryGuidance))
 	}
 	request := compose.DeployRequest{AppName: deployment.AppID, ProjectDir: model.WorktreePath, ComposePath: composePath,
-		ReleaseID: deployment.ReleaseID, CommitSHA: deployment.CommitSHA, Env: env}
+		CommitSHA: deployment.CommitSHA, Env: env}
 	var result compose.DeployResult
 	if runner, ok := e.runner.(compose.DeploymentOutputRunner); ok {
 		result, err = runner.DeployWithOutput(ctx, request, output, output)

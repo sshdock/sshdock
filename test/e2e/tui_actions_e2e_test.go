@@ -108,7 +108,7 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 	}
 
 	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "enter"})
-	if len(composeRunner.DeployRequests) != 1 || composeRunner.DeployRequests[0].ReleaseID != "rel_new" {
+	if len(composeRunner.DeployRequests) != 1 || composeRunner.DeployRequests[0].CommitSHA != "new" {
 		t.Fatalf("redeploy requests = %#v", composeRunner.DeployRequests)
 	}
 

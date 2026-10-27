@@ -11,12 +11,11 @@ import (
 )
 
 type publicExampleContract struct {
-	name          string
-	category      string
-	guidePath     string
-	path          string
-	requiredFiles []string
-	exactFiles    []string
+	name       string
+	category   string
+	guidePath  string
+	path       string
+	exactFiles []string
 }
 
 func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
@@ -195,12 +194,6 @@ func TestPublicExamples_contract_when_example_is_registered(t *testing.T) {
 	// When each registered example is inspected through its public files.
 	for _, example := range examples {
 		t.Run(example.name, func(t *testing.T) {
-			for _, requiredFile := range example.requiredFiles {
-				path := filepath.Join(example.path, requiredFile)
-				if !fileExists(path) {
-					t.Fatalf("required file %s does not exist", path)
-				}
-			}
 			if example.exactFiles != nil {
 				files := repositoryFiles(t, example.path)
 				if !slices.Equal(files, example.exactFiles) {

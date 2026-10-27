@@ -38,7 +38,7 @@ func (h *DashboardHandler) Logs(ctx context.Context, appID string, services []Se
 		if err != nil {
 			output = fmt.Sprintf("Error: load logs for %s/%s: %v", model.ID, service.Name, err)
 		}
-		logsByService[service.Name] = NewLogsView(model.ID, service.Name, compose.RedactValues(output, redactionValues))
+		logsByService[service.Name] = NewLogsView(compose.RedactValues(output, redactionValues))
 	}
 	return logsByService, nil
 }

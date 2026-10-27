@@ -358,11 +358,10 @@ func renderLogs(writer io.Writer, logsByService map[string]LogsView) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		screen := NewLogsScreen(logsByService[name])
 		if _, err := fmt.Fprintf(writer, "Logs %s\n", name); err != nil {
 			return err
 		}
-		for _, line := range screen.Lines() {
+		for _, line := range logsByService[name].Lines {
 			if _, err := fmt.Fprintln(writer, line); err != nil {
 				return err
 			}

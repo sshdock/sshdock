@@ -159,11 +159,7 @@ func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
 }
 
 func TestNewLogsView(t *testing.T) {
-	view := NewLogsView("app_1", "web", "first\nsecond\n")
-
-	if view.AppID != "app_1" || view.ServiceName != "web" {
-		t.Fatalf("logs view = %#v", view)
-	}
+	view := NewLogsView("first\nsecond\n")
 	if strings.Join(view.Lines, ",") != "first,second" {
 		t.Fatalf("Lines = %#v", view.Lines)
 	}

@@ -83,7 +83,7 @@ func TestRedeployCurrentMainSelectsCommitAndReusesRelease(t *testing.T) {
 				t.Fatalf("checkouts = %d, deploys = %d, config resolutions = %d", checkoutCount, len(runner.DeployRequests), resolver.calls)
 			}
 			for _, request := range runner.DeployRequests {
-				if request.ReleaseID != releaseID || request.CommitSHA != "current" || request.ProjectDir != model.WorktreePath || request.ComposePath != filepath.Join(model.WorktreePath, "compose.yml") || request.Env["DATABASE_URL"] != "postgres://secret" || request.Env[compose.GitSHAEnv] != "current" {
+				if request.CommitSHA != "current" || request.ProjectDir != model.WorktreePath || request.ComposePath != filepath.Join(model.WorktreePath, "compose.yml") || request.Env["DATABASE_URL"] != "postgres://secret" || request.Env[compose.GitSHAEnv] != "current" {
 					t.Fatalf("deploy request = %#v", request)
 				}
 			}

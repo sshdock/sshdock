@@ -93,9 +93,7 @@ type HealthSummary struct {
 }
 
 type LogsView struct {
-	AppID       string
-	ServiceName string
-	Lines       []string
+	Lines []string
 }
 
 func NewAppListView(apps []app.App, latestDeployments map[string]app.DeploymentStatus, domains map[string][]app.Domain) AppListView {
@@ -127,16 +125,14 @@ func NewAppDetailView(model app.App, report app.HealthReport, domains []app.Doma
 	}
 }
 
-func NewLogsView(appID string, serviceName string, output string) LogsView {
+func NewLogsView(output string) LogsView {
 	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
 	if len(lines) == 1 && lines[0] == "" {
 		lines = nil
 	}
 
 	return LogsView{
-		AppID:       appID,
-		ServiceName: serviceName,
-		Lines:       lines,
+		Lines: lines,
 	}
 }
 

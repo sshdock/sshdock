@@ -69,7 +69,7 @@ func TestExecutorCreatesReleaseAndSucceededDeployment(t *testing.T) {
 		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
 	}
 	request := runner.DeployRequests[0]
-	if request.AppName != "my-app" || request.ProjectDir != worktreePath || request.ReleaseID != app.ReleaseID("my-app", "abc123") || request.CommitSHA != "abc123" {
+	if request.AppName != "my-app" || request.ProjectDir != worktreePath || request.CommitSHA != "abc123" {
 		t.Fatalf("DeployRequest = %#v", request)
 	}
 

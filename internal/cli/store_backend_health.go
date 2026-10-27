@@ -212,14 +212,15 @@ func (b *StoreBackend) addServiceStatus(ctx context.Context, model appmodel.App,
 		}
 	}
 	statusRequest := compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, Env: env}
-	nonRestarting, err := compose.NonRestartingServices(composePath, env, candidates)
-	if inspector, ok := b.recoveryRunner.(interface {
+	inspector, hasInspector := b.recoveryRunner.(interface {
 		NonRestartingServices(context.Context, compose.StatusRequest, []string) ([]string, error)
-	}); ok {
-		if effective, effectiveErr := inspector.NonRestartingServices(ctx, statusRequest, candidates); effectiveErr == nil {
-			nonRestarting = effective
-			err = nil
-		}
+	})
+	var nonRestarting []string
+	if hasInspector {
+		nonRestarting, err = inspector.NonRestartingServices(ctx, statusRequest, candidates)
+	}
+	if !hasInspector || err != nil {
+		nonRestarting, err = compose.NonRestartingServices(composePath, env, candidates)
 	}
 	if err != nil {
 		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "restart policy", Detail: "inspection unavailable: " + err.Error()})

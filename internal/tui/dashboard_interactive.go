@@ -1028,12 +1028,12 @@ func logsTableText(logsByService map[string]LogsView, width int) string {
 	var builder strings.Builder
 	rows := make([][]string, 0)
 	for _, name := range names {
-		screen := NewLogsScreen(logsByService[name])
-		if len(screen.Lines()) == 0 {
+		lines := logsByService[name].Lines
+		if len(lines) == 0 {
 			rows = append(rows, []string{name, "- none"})
 			continue
 		}
-		for _, line := range screen.Lines() {
+		for _, line := range lines {
 			rows = append(rows, []string{name, line})
 		}
 	}

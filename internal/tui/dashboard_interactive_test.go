@@ -55,7 +55,7 @@ func TestInteractiveDashboardModelTabsScrollRefreshAndQuit(t *testing.T) {
 			App:      AppSummary{ID: "one", Name: "one", NodeID: "local", Status: "healthy"},
 			Services: []ServiceView{{Name: "web", State: "restarted"}},
 		}),
-		Logs: map[string]LogsView{"web": NewLogsView("one", "web", "refreshed log\n")},
+		Logs: map[string]LogsView{"web": NewLogsView("refreshed log\n")},
 	}
 
 	model := NewInteractiveDashboardModel(testDashboardSnapshot(), func(context.Context) (DashboardSnapshot, error) {
@@ -547,7 +547,7 @@ func TestInteractiveDashboardLoadsSelectedLogsAndKeepsErrorsInLogsPane(t *testin
 		if appID == "two" {
 			return nil, errors.New("selected logs unavailable")
 		}
-		return map[string]LogsView{"web": NewLogsView(appID, "web", "loaded selected log\n")}, nil
+		return map[string]LogsView{"web": NewLogsView("loaded selected log\n")}, nil
 	})
 	if cmd := model.Init(); cmd != nil || len(requested) != 0 {
 		t.Fatal("initial summary loaded logs")
@@ -631,7 +631,7 @@ func TestInteractiveDashboardIgnoresOlderLogsForSameApp(t *testing.T) {
 		if loads == 1 {
 			return nil, errors.New("older request error")
 		}
-		return map[string]LogsView{"web": NewLogsView(appID, "web", "fresh logs\n")}, nil
+		return map[string]LogsView{"web": NewLogsView("fresh logs\n")}, nil
 	})
 	model.tab = len(dashboardTabs) - 1
 	model.followLogs = true
@@ -667,7 +667,7 @@ func testDashboardSnapshot() DashboardSnapshot {
 					Events:      []EventView{{Type: "deploy.succeeded", Message: "Deploy succeeded"}},
 					Health:      HealthSummary{RouteStatus: "routed", LatestDeploymentStatus: "succeeded", ServiceStatus: "1 running"},
 				}),
-				Logs: map[string]LogsView{"web": NewLogsView("one", "web", "first log\nsecond log\nthird log\nfourth log\nfifth log\nsixth log\n")},
+				Logs: map[string]LogsView{"web": NewLogsView("first log\nsecond log\nthird log\nfourth log\nfifth log\nsixth log\n")},
 			},
 			"two": {
 				Detail: NewAppDetailScreen(AppDetailView{
@@ -675,7 +675,7 @@ func testDashboardSnapshot() DashboardSnapshot {
 					Services: []ServiceView{{Name: "worker", State: "running"}},
 					Health:   HealthSummary{RouteStatus: "unrouted", LatestDeploymentStatus: "-", ServiceStatus: "1 running"},
 				}),
-				Logs: map[string]LogsView{"worker": NewLogsView("two", "worker", "worker log\n")},
+				Logs: map[string]LogsView{"worker": NewLogsView("worker log\n")},
 			},
 		},
 	}

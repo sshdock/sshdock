@@ -109,10 +109,3 @@ func modelString(value any) (string, bool) {
 	text, ok := value.(string)
 	return text, ok
 }
-
-func documentNode(document *yaml.Node) *yaml.Node {
-	if document.Kind == yaml.DocumentNode && len(document.Content) == 1 {
-		return document.Content[0]
-	}
-	return document
-}

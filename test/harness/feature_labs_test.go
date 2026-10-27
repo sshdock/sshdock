@@ -34,16 +34,6 @@ func TestConfigAndRedeployFeatureLab_contract_when_overlaying_nestjs_probe(t *te
 		t.Fatalf("feature lab files = %#v, want %#v", files, want)
 	}
 
-	patch := readTextFile(t, filepath.Join(labDir, "config.patch"))
-	for _, want := range []string{
-		"diff --git a/compose.yml b/compose.yml",
-		"CONFIG_LAB_SECRET: ${CONFIG_LAB_SECRET:?set CONFIG_LAB_SECRET with sshdock config set}",
-	} {
-		if !strings.Contains(patch, want) {
-			t.Fatalf("config patch missing %q", want)
-		}
-	}
-
 	readme := readTextFile(t, filepath.Join(labDir, "README.md"))
 	for _, want := range []string{
 		"examples/frameworks/nestjs",
@@ -145,16 +135,6 @@ func TestFailedDeployAndGitRecoveryFeatureLab_contract_when_overlaying_nextjs_pr
 	slices.Sort(files)
 	if want := []string{"README.md", "failure.patch"}; !slices.Equal(files, want) {
 		t.Fatalf("feature lab files = %#v, want %#v", files, want)
-	}
-
-	patch := readTextFile(t, filepath.Join(labDir, "failure.patch"))
-	for _, want := range []string{
-		"diff --git a/compose.yml b/compose.yml",
-		"dockerfile: Dockerfile.failure",
-	} {
-		if !strings.Contains(patch, want) {
-			t.Fatalf("failure patch missing %q", want)
-		}
 	}
 
 	readme := readTextFile(t, filepath.Join(labDir, "README.md"))

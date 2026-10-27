@@ -36,7 +36,6 @@ type DeployRequest struct {
 	AppName     string
 	ProjectDir  string
 	ComposePath string
-	ReleaseID   string
 	CommitSHA   string
 	Env         map[string]string
 }

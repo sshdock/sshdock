@@ -544,3 +544,63 @@ func TestStoreBackendAppsHealthReportsInvalidCurrentComposeWithoutFailing(t *tes
 	}
 	t.Fatalf("checks = %#v, want restart policy warning", report.Checks)
 }
+
+func TestStoreBackendRestartPolicyPrefersNativeBeforeLocalFallback(t *testing.T) {
+	for _, test := range []struct {
+		name, fallback, wantStatus, wantDetail string
+		native                                 []string
+		nativeErr                              error
+	}{
+		{name: "native empty result", wantStatus: "ok", wantDetail: "configured for routed and running services"},
+		{name: "native warning", native: []string{"web"}, wantStatus: "warn", wantDetail: "default non-restarting policy: web"},
+		{name: "local becomes readable during native failure", nativeErr: errors.New("native unavailable"), fallback: "services:\n  web:\n    restart: always\n  worker:\n    restart: unless-stopped\n", wantStatus: "ok", wantDetail: "configured for routed and running services"},
+		{name: "both unavailable", nativeErr: errors.New("native unavailable"), wantStatus: "warn", wantDetail: "inspection unavailable: load Compose restart policies:"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "compose.yml")
+			calls := 0
+			runner := &healthPolicyRunner{
+				FakeRunner: &compose.FakeRunner{Services: []compose.ServiceStatus{
+					{Name: "web", State: "running"}, {Name: "worker", State: "exited"}, {Name: "ignored", State: "exited"},
+				}},
+				inspect: func(request compose.StatusRequest, candidates []string) ([]string, error) {
+					calls++
+					if request.AppName != "my-app" || request.ProjectDir != dir || request.ComposePath != path || strings.Join(candidates, ",") != "worker,web" {
+						t.Fatalf("inspection = %#v, candidates = %v", request, candidates)
+					}
+					if test.fallback != "" {
+						if err := os.WriteFile(path, []byte(test.fallback), 0o600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return test.native, test.nativeErr
+				},
+			}
+			backend := NewStoreBackend(nil, StoreBackendConfig{RecoveryRunner: runner})
+			var report AppHealth
+			err := backend.addServiceStatus(context.Background(), app.App{ID: "my-app"}, dir, path, []app.Domain{{ServiceName: "worker"}}, &report)
+			if err != nil || calls != 1 {
+				t.Fatalf("service status error = %v, inspections = %d", err, calls)
+			}
+			for _, check := range report.Checks {
+				if check.Name == "restart policy" {
+					if check.Status != test.wantStatus || !strings.Contains(check.Detail, test.wantDetail) {
+						t.Fatalf("restart policy = %#v, want %s %q", check, test.wantStatus, test.wantDetail)
+					}
+					return
+				}
+			}
+			t.Fatalf("missing restart policy check: %#v", report.Checks)
+		})
+	}
+}
+
+type healthPolicyRunner struct {
+	*compose.FakeRunner
+	inspect func(compose.StatusRequest, []string) ([]string, error)
+}
+
+func (r *healthPolicyRunner) NonRestartingServices(_ context.Context, request compose.StatusRequest, candidates []string) ([]string, error) {
+	return r.inspect(request, candidates)
+}

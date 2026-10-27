@@ -932,7 +932,7 @@ func TestStoreBackendCurrentRuntimeCommandsUseComposeRunnerAndRecordState(t *tes
 	if len(runner.DeployRequests) != 1 {
 		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
 	}
-	if runner.DeployRequests[0].ReleaseID != "rel_new" || runner.DeployRequests[0].CommitSHA != "new" {
+	if runner.DeployRequests[0].CommitSHA != "new" {
 		t.Fatalf("redeploy request = %#v", runner.DeployRequests[0])
 	}
 

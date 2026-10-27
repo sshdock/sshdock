@@ -16,15 +16,15 @@ type routeCandidate struct {
 	loopback bool
 }
 
-func analyzeEffectiveModel(output string, projectName string) (DeployResult, error) {
+func analyzeEffectiveModel(output string, projectName string) (DeployResult, composeModel, error) {
 	var model composeModel
 	if err := json.Unmarshal([]byte(output), &model); err != nil {
-		return DeployResult{}, fmt.Errorf("decode effective Compose model: %w", err)
+		return DeployResult{}, nil, fmt.Errorf("decode effective Compose model: %w", err)
 	}
 
 	result := inferEffectiveRoute(model)
 	result.Warnings = effectiveModelWarnings(model, projectName)
-	return result, nil
+	return result, model, nil
 }
 
 func inferEffectiveRoute(model composeModel) DeployResult {

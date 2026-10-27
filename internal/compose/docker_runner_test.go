@@ -57,6 +57,30 @@ func TestDockerRunnerClassifiesDeployCommandFailures(t *testing.T) {
 	}
 }
 
+func TestDockerRunnerRejectsUnreadableEffectiveModelBeforePullBuildOrStart(t *testing.T) {
+	projectDir := t.TempDir()
+	composePath := filepath.Join(projectDir, "compose.yml")
+	writeFile(t, composePath, "services:\n  web:\n    image: example/web:latest\n")
+	executor := &recordingExecutor{Outputs: []string{"not JSON"}}
+	var stderr strings.Builder
+
+	_, err := NewDockerRunner(executor).DeployWithOutput(context.Background(), DeployRequest{
+		AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath,
+	}, io.Discard, &stderr)
+
+	var deployErr *DeployError
+	if !errors.As(err, &deployErr) || deployErr.Stage != DeployStageComposeConfig {
+		t.Fatalf("Deploy error = %v, want compose config stage", err)
+	}
+	if !strings.Contains(err.Error(), "decode effective Compose model:") || !strings.Contains(stderr.String(), "decode effective Compose model:") {
+		t.Fatalf("decode error missing: error=%v stderr=%q", err, stderr.String())
+	}
+	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--format", "json"}, Env: map[string]string{GitSHAEnv: ""}}}
+	if !reflect.DeepEqual(executor.Commands, want) {
+		t.Fatalf("commands = %#v, want only native config %#v", executor.Commands, want)
+	}
+}
+
 func TestDockerRunnerReportsParentCancellationWithoutClaimingWaitTimeout(t *testing.T) {
 	// Given
 	projectDir := t.TempDir()

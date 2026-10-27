@@ -62,7 +62,7 @@ func TestEffectiveComposeRouteInference(t *testing.T) {
 			// Given: Docker Compose produced the effective JSON model above.
 
 			// When
-			result, err := analyzeEffectiveModel(test.model, "sshdock_my-app")
+			result, _, err := analyzeEffectiveModel(test.model, "sshdock_my-app")
 
 			// Then
 			if err != nil {

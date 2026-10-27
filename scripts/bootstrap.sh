@@ -288,17 +288,6 @@ ensure_system_user() {
 	run useradd --system --home "$home" --shell "$shell" "$user"
 }
 
-maybe_chown() {
-	local path="$1"
-	if [ "$SKIP_CHOWN" = "1" ]; then
-		return
-	fi
-	if [ "$(id -u)" -ne 0 ]; then
-		die "cannot set ownership for $path without root"
-	fi
-	run chown -R "$DAEMON_USER:$DAEMON_USER" "$path"
-}
-
 ensure_daemon_docker_access() {
 	if [ "$SKIP_USER" = "1" ]; then
 		return

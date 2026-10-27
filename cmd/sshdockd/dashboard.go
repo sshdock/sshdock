@@ -96,7 +96,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, handler.Logs, newDashboardActions(sqlite, cfg, composeRunner, configService), stdin, stdout); err != nil {
+		if err := tui.RunInteractiveDashboardWithActions(ctx, snapshot, handler.Snapshot, handler.Logs, dashboardActionBackend{backend: backend}, stdin, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -155,10 +155,6 @@ func newDashboardBackend(persistentStore store.Store, cfg config.Config, runner 
 		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
 		ConfigManager:       configService,
 	})
-}
-
-func newDashboardActions(persistentStore store.Store, cfg config.Config, runner compose.Runner, configService *appconfig.Service) tui.DashboardActions {
-	return dashboardActionBackend{backend: newDashboardBackend(persistentStore, cfg, runner, configService)}
 }
 
 func (b dashboardActionBackend) StartApp(appName string) error {

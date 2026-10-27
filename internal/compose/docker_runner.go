@@ -67,7 +67,7 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 	if err := r.runDeploymentCommand(ctx, deployCommand(request, commandArgs(baseArgs, "config", "--format", "json")), io.MultiWriter(stdout, &effectiveOutput), stderr); err != nil {
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)
 	}
-	result, err := analyzeEffectiveModel(effectiveOutput.String(), projectName)
+	result, _, err := analyzeEffectiveModel(effectiveOutput.String(), projectName)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return DeployResult{}, NewDeployError(DeployStageComposeConfig, err)

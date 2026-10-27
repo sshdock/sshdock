@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -140,7 +139,7 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 		report.add("native Compose validation", "fail", configErr.Error(), "Run docker compose -f '"+strings.ReplaceAll(path, "'", "'\\''")+"' config on this host and fix the reported configuration.", true)
 		return report, ctx.Err()
 	}
-	result, modelErr := analyzeEffectiveModel(output, projectName)
+	result, model, modelErr := analyzeEffectiveModel(output, projectName)
 	if modelErr != nil {
 		report.add("native Compose validation", "unknown", "Docker Compose returned an unreadable effective model; configuration validity could not be established.", "Check docker compose version and docker compose config --format json.", false)
 		return report, nil
@@ -156,10 +155,6 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 	}
 	for _, warning := range result.Warnings {
 		report.add("Compose configuration", "warn", warning, "Review the trusted Compose configuration and keep routed ports on loopback when appropriate.", false)
-	}
-	var model composeModel
-	if err := json.Unmarshal([]byte(output), &model); err != nil {
-		return report, err
 	}
 	ports := report.preflightPublishedPorts(model)
 	if request.Scope == "server" {

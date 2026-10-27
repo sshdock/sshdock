@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
-	"github.com/sshdock/sshdock/internal/compose"
 )
 
 type AppListView struct {
@@ -116,22 +115,16 @@ func NewAppListView(apps []app.App, latestDeployments map[string]app.DeploymentS
 	return AppListView{Items: items}
 }
 
-func NewAppDetailView(model app.App, services []compose.ServiceStatus, domains []app.Domain, releases []app.Release, deployments []app.Deployment, events []app.Event) AppDetailView {
+func NewAppDetailView(model app.App, report app.HealthReport, domains []app.Domain, releases []app.Release, deployments []app.Deployment, events []app.Event) AppDetailView {
 	return AppDetailView{
 		App:         newAppSummary(model),
-		Services:    newServiceViews(services),
+		Services:    newServiceViews(report.Services),
 		Domains:     newDomainViews(domains),
 		Releases:    newReleaseViews(releases),
 		Deployments: newDeploymentViews(deployments),
 		Events:      newEventViews(events),
-		Health:      newHealthSummary(services, domains, deployments),
+		Health:      newHealthSummaryFromReport(report),
 	}
-}
-
-func NewAppDetailViewWithHealthReport(model app.App, services []compose.ServiceStatus, domains []app.Domain, releases []app.Release, deployments []app.Deployment, events []app.Event, report app.HealthReport) AppDetailView {
-	view := NewAppDetailView(model, services, domains, releases, deployments, events)
-	view.Health = newHealthSummaryFromReport(report)
-	return view
 }
 
 func NewLogsView(appID string, serviceName string, output string) LogsView {
@@ -156,7 +149,7 @@ func newAppSummary(model app.App) AppSummary {
 	}
 }
 
-func newServiceViews(services []compose.ServiceStatus) []ServiceView {
+func newServiceViews(services []app.ServiceHealth) []ServiceView {
 	views := make([]ServiceView, 0, len(services))
 	for _, service := range services {
 		views = append(views, ServiceView{Name: service.Name, State: service.State})
@@ -221,42 +214,6 @@ func newEventViews(events []app.Event) []EventView {
 		})
 	}
 	return views
-}
-
-func newHealthSummary(services []compose.ServiceStatus, domains []app.Domain, deployments []app.Deployment) HealthSummary {
-	summary := HealthSummary{
-		RouteStatus:            "unrouted",
-		LatestDeploymentStatus: "-",
-		ServiceStatus:          "-",
-	}
-	if len(domains) > 0 {
-		summary.RouteStatus = "routed"
-	}
-	if len(deployments) > 0 {
-		latest := deployments[len(deployments)-1]
-		summary.LatestDeploymentStatus = string(latest.Status)
-		for index := len(deployments) - 1; index >= 0; index-- {
-			deployment := deployments[index]
-			if deployment.ErrorMessage != "" {
-				summary.LastFailure = deployment.ErrorMessage
-				break
-			}
-		}
-	}
-	if len(services) > 0 {
-		running := 0
-		for _, service := range services {
-			if service.State == "running" {
-				running++
-			}
-		}
-		if running == len(services) {
-			summary.ServiceStatus = strconv.Itoa(running) + " running"
-		} else {
-			summary.ServiceStatus = strconv.Itoa(running) + " running, " + strconv.Itoa(len(services)-running) + " attention"
-		}
-	}
-	return summary
 }
 
 func newHealthSummaryFromReport(report app.HealthReport) HealthSummary {

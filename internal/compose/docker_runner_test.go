@@ -199,7 +199,7 @@ func TestDockerRunnerDeployDoesNotBufferStreamedLifecycleOutput(t *testing.T) {
 	}
 }
 
-func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
+func TestDockerRunnerRestartStatusAndLogsCommands(t *testing.T) {
 	ctx := context.Background()
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yml")
@@ -210,20 +210,11 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	executor := &recordingExecutor{
 		Outputs: []string{
 			"",
-			"",
 			`[{"Service":"web","State":"running"}]`,
 			"web log line\n",
 		},
 	}
 	runner := NewDockerRunner(executor)
-
-	result, err := runner.Validate(ctx, "my-app", composePath)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-	if len(result.Services) != 1 || result.Services[0] != "web" {
-		t.Fatalf("Validate services = %#v", result.Services)
-	}
 
 	restart := RestartRequest{AppName: "my-app", ProjectDir: projectDir, ComposePath: composePath, ServiceName: "web"}
 	if err := runner.Restart(ctx, restart); err != nil {
@@ -248,7 +239,6 @@ func TestDockerRunnerValidateRestartStatusAndLogsCommands(t *testing.T) {
 	}
 
 	want := []Command{
-		{Name: "docker", Dir: filepath.Dir(composePath), Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "restart", "web"}},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "ps", "--all", "--format", "json"}, Env: inspectEnv},
 		{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "logs", "--follow", "--tail", "50", "web"}, Env: inspectEnv},

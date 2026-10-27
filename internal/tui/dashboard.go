@@ -111,8 +111,7 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 			return DashboardSnapshot{}, fmt.Errorf("load health for %s: %w", model.ID, err)
 		}
 		latestDeployments[model.ID] = report.LatestDeploymentStatus
-		services := serviceStatusesFromHealthReport(report)
-		view := NewAppDetailViewWithHealthReport(model, services, domains, releases, deployments, events, report)
+		view := NewAppDetailView(model, report, domains, releases, deployments, events)
 		appsByID[model.ID] = DashboardAppSnapshot{
 			Detail: NewAppDetailScreen(view),
 		}
@@ -123,14 +122,6 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		AppOrder: appOrder,
 		AppsByID: appsByID,
 	}, nil
-}
-
-func serviceStatusesFromHealthReport(report app.HealthReport) []compose.ServiceStatus {
-	services := make([]compose.ServiceStatus, 0, len(report.Services))
-	for _, service := range report.Services {
-		services = append(services, compose.ServiceStatus{Name: service.Name, State: service.State})
-	}
-	return services
 }
 
 func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error {

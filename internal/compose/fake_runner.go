@@ -9,7 +9,6 @@ import (
 )
 
 type FakeRunner struct {
-	Validation   ValidationResult
 	DeployResult DeployResult
 	DeployDelay  time.Duration
 	DeployOutput string
@@ -18,38 +17,25 @@ type FakeRunner struct {
 	ExecOutput   string
 	RunOutput    string
 
-	ValidateErr error
-	DeployErr   error
-	StartErr    error
-	StopErr     error
-	RestartErr  error
-	ExecErr     error
-	RunErr      error
-	RemoveErr   error
-	StatusErr   error
-	LogsErr     error
+	DeployErr  error
+	StartErr   error
+	StopErr    error
+	RestartErr error
+	ExecErr    error
+	RunErr     error
+	RemoveErr  error
+	StatusErr  error
+	LogsErr    error
 
-	ValidatedPath    string
-	ValidatedAppName string
-	DeployRequests   []DeployRequest
-	StartRequests    []LifecycleRequest
-	StopRequests     []LifecycleRequest
-	RestartRequests  []RestartRequest
-	ExecRequests     []ServiceCommandRequest
-	RunRequests      []ServiceCommandRequest
-	RemoveRequests   []RemoveRequest
-	StatusRequests   []StatusRequest
-	LogsRequests     []LogsRequest
-}
-
-func (f *FakeRunner) Validate(_ context.Context, appName string, composePath string) (ValidationResult, error) {
-	f.ValidatedAppName = appName
-	f.ValidatedPath = composePath
-	if f.ValidateErr != nil {
-		return ValidationResult{}, f.ValidateErr
-	}
-
-	return f.Validation, nil
+	DeployRequests  []DeployRequest
+	StartRequests   []LifecycleRequest
+	StopRequests    []LifecycleRequest
+	RestartRequests []RestartRequest
+	ExecRequests    []ServiceCommandRequest
+	RunRequests     []ServiceCommandRequest
+	RemoveRequests  []RemoveRequest
+	StatusRequests  []StatusRequest
+	LogsRequests    []LogsRequest
 }
 
 func (f *FakeRunner) Deploy(ctx context.Context, request DeployRequest) (DeployResult, error) {

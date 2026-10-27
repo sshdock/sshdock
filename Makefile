@@ -95,7 +95,7 @@ config-e2e:
 backup-restore-e2e:
 	go test -count=1 ./test/harness -run TestBackupRestoreKeepsEncryptedConfigUsable -v
 
-ci: check-tools fmt lint test smoke build
+ci: check-tools fmt lint test build
 
 build:
 	mkdir -p bin

@@ -36,7 +36,6 @@ func TestDockerRunnerRejectsInvalidAppNamesBeforeAnyCommand(t *testing.T) {
 			name string
 			run  func(*DockerRunner) error
 		}{
-			{"validate", func(r *DockerRunner) error { _, err := r.Validate(ctx, name, composePath); return err }},
 			{"deploy", func(r *DockerRunner) error {
 				_, err := r.Deploy(ctx, DeployRequest{AppName: name, ProjectDir: projectDir, ComposePath: composePath})
 				return err

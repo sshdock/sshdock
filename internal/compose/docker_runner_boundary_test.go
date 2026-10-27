@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestDockerRunnerValidatePassesStandardFieldsToDockerCompose(t *testing.T) {
+func TestDockerRunnerDeployPassesStandardFieldsToDockerCompose(t *testing.T) {
 	// Given
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yaml")
@@ -38,40 +38,23 @@ secrets:
 	runner := NewDockerRunner(executor)
 
 	// When
-	_, err := runner.Validate(context.Background(), "my-app", composePath)
+	_, err := runner.Deploy(context.Background(), DeployRequest{
+		AppName:     "my-app",
+		ProjectDir:  projectDir,
+		ComposePath: composePath,
+	})
 
 	// Then
 	if err != nil {
-		t.Fatalf("Validate: %v", err)
+		t.Fatalf("Deploy: %v", err)
 	}
-	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}}}
-	if !reflect.DeepEqual(executor.Commands, want) {
+	want := Command{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config", "--format", "json"}, Env: map[string]string{GitSHAEnv: ""}}
+	if len(executor.Commands) != 4 || !reflect.DeepEqual(executor.Commands[0], want) {
 		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
 	}
 }
 
-func TestDockerRunnerValidateUsesStableSSHDockProjectName(t *testing.T) {
-	// Given
-	projectDir := t.TempDir()
-	composePath := filepath.Join(projectDir, "compose.yml")
-	writeFile(t, composePath, "name: caller-controlled\nservices:\n  web:\n    image: example/web:latest\n")
-	executor := &recordingExecutor{Outputs: []string{`{"services":{"web":{"image":"example/web:latest"}}}`}}
-	runner := NewDockerRunner(executor)
-
-	// When
-	_, err := runner.Validate(context.Background(), "my-app", composePath)
-
-	// Then
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-	want := []Command{{Name: "docker", Dir: projectDir, Args: []string{"compose", "-f", composePath, "-p", "sshdock_my-app", "config"}}}
-	if !reflect.DeepEqual(executor.Commands, want) {
-		t.Fatalf("commands = %#v, want %#v", executor.Commands, want)
-	}
-}
-
-func TestDockerRunnerValidateRejectsExternalFilesBeforeDockerCompose(t *testing.T) {
+func TestDockerRunnerDeployRejectsExternalFilesBeforeDockerCompose(t *testing.T) {
 	// Given
 	composePath := filepath.Join(t.TempDir(), "compose.yml")
 	writeFile(t, composePath, "include: shared.compose.yml\nservices:\n  web:\n    image: example/web:latest\n")
@@ -79,11 +62,15 @@ func TestDockerRunnerValidateRejectsExternalFilesBeforeDockerCompose(t *testing.
 	runner := NewDockerRunner(executor)
 
 	// When
-	_, err := runner.Validate(context.Background(), "my-app", composePath)
+	_, err := runner.Deploy(context.Background(), DeployRequest{
+		AppName:     "my-app",
+		ProjectDir:  filepath.Dir(composePath),
+		ComposePath: composePath,
+	})
 
 	// Then
 	if err == nil || !strings.Contains(err.Error(), "external Compose files are not supported") {
-		t.Fatalf("Validate error = %q, want external file rejection", err)
+		t.Fatalf("Deploy error = %v, want external file rejection", err)
 	}
 	if len(executor.Commands) != 0 {
 		t.Fatalf("commands = %#v, want no Docker Compose execution", executor.Commands)

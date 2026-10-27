@@ -7,34 +7,6 @@ import (
 	"testing"
 )
 
-func TestFakeRunnerValidateSuccessAndFailure(t *testing.T) {
-	ctx := context.Background()
-	failure := errors.New("validation failed")
-	runner := &FakeRunner{
-		Validation: ValidationResult{Services: []string{"web"}},
-	}
-
-	result, err := runner.Validate(ctx, "my-app", "compose.yml")
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-	if len(result.Services) != 1 || result.Services[0] != "web" {
-		t.Fatalf("Validation services = %#v", result.Services)
-	}
-	if runner.ValidatedPath != "compose.yml" {
-		t.Fatalf("ValidatedPath = %q", runner.ValidatedPath)
-	}
-	if runner.ValidatedAppName != "my-app" {
-		t.Fatalf("ValidatedAppName = %q", runner.ValidatedAppName)
-	}
-
-	runner.ValidateErr = failure
-	_, err = runner.Validate(ctx, "my-app", "compose.yml")
-	if !errors.Is(err, failure) {
-		t.Fatalf("Validate error = %v, want %v", err, failure)
-	}
-}
-
 func TestFakeRunnerDeploySuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	failure := errors.New("deploy failed")

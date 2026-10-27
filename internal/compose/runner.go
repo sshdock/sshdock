@@ -17,7 +17,6 @@ type CommandExecutor interface {
 }
 
 type Runner interface {
-	Validate(ctx context.Context, appName string, composePath string) (ValidationResult, error)
 	Deploy(ctx context.Context, request DeployRequest) (DeployResult, error)
 	Start(ctx context.Context, request LifecycleRequest) error
 	Stop(ctx context.Context, request LifecycleRequest) error

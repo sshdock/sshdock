@@ -2,7 +2,9 @@
 
 This guide covers simple migrations from Dokploy to SSHDock. Keep Dokploy running until SSHDock has passed every verification step for the app.
 
-SSHDock is not a Dokploy compatibility layer. It does not provide a web dashboard, provider polling, teams, RBAC, multi-server deployment, Docker Stack, built-in volume backups, scheduled jobs, notifications, or enterprise features. Migrate only apps that can run as Docker Compose on one SSHDock node.
+SSHDock is not a Dokploy compatibility layer. It does not provide a web dashboard, provider polling, teams, RBAC, multi-server deployment, Docker Stack, scheduled jobs, notifications, or enterprise features. Migrate only apps that can run as Docker Compose on one SSHDock node.
+
+SSHDock provides [manual named-volume export and restore](APPLICATION_DATA_BACKUPS.md) through local host administration, with all writers stopped during export. It includes no backup scheduler or storage service.
 
 ## Good First App
 

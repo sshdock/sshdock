@@ -68,7 +68,7 @@ func TestJSONReadCommands(t *testing.T) {
 	backend := NewMemoryBackend("server")
 	backend.apps["app"] = App{Name: "app", Status: "failed", NodeID: "node"}
 	now := time.Date(2026, 10, 23, 1, 2, 3, 4, time.UTC)
-	backend.releases = []Release{{ID: "rel_1", AppName: "app", CommitSHA: "abc", Status: "rolled_back", CreatedAt: now}}
+	backend.releases = []Release{{ID: "rel_1", AppName: "app", CommitSHA: "abc", Status: "failed", CreatedAt: now}}
 	backend.deployments = []Deployment{{ID: "dep_1", AppName: "app", ReleaseID: "rel_1", CommitSHA: "abc", Status: "pending", StartedAt: now}}
 	backend.events = []Event{{ID: "evt_1", AppName: "app", Type: "deploy.queued", Message: "queued\nwith a newline", CreatedAt: now}}
 	backend.domains = []Domain{{AppName: "app", DomainName: "app.example.com", ServiceName: "web", Port: 3000, HTTPS: true}}
@@ -82,7 +82,7 @@ func TestJSONReadCommands(t *testing.T) {
 		{command: "apps list", name: "apps.list", field: "node_id", value: "node", list: true},
 		{command: "apps info app", name: "apps.info", field: "name", value: "app"},
 		{command: "apps health app", name: "apps.health", field: "health", value: "fail"},
-		{command: "releases list app", name: "releases.list", field: "status", value: "rolled_back", list: true},
+		{command: "releases list app", name: "releases.list", field: "status", value: "failed", list: true},
 		{command: "deployments list app", name: "deployments.list", field: "commit_sha", value: "abc", list: true},
 		{command: "deployments info app dep_1", name: "deployments.info", field: "status", value: "pending"},
 		{command: "domains list app", name: "domains.list", field: "domain_name", value: "app.example.com", list: true},

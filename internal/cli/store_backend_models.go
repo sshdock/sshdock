@@ -53,10 +53,6 @@ func latestAppDeployment(deployments []appmodel.Deployment) (appmodel.Deployment
 	return sorted[len(sorted)-1], true
 }
 
-func domainID(appName string, domainName string) string {
-	return "dom_" + sanitizeIDPart(appName) + "_" + sanitizeIDPart(domainName)
-}
-
 func eventID(subjectID string, suffix string) string {
 	return "evt_" + sanitizeIDPart(subjectID) + "_" + sanitizeIDPart(suffix)
 }

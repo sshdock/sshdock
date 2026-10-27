@@ -128,51 +128,55 @@ func (r *Runner) runJSON(args []string, stdout io.Writer, stderr io.Writer) int 
 	var data any
 	var err error
 	exitCode := 0
-	switch command {
-	case "apps.list":
-		var apps []App
-		apps, err = r.backend.ListApps()
-		data = jsonList(apps)
-	case "apps.info":
-		data, err = r.backend.GetApp(args[2])
-	case "apps.health":
-		var report AppHealth
-		report, err = r.backend.AppHealth(args[2])
-		report.Checks = jsonList(report.Checks)
-		report.Services = jsonList(report.Services)
-		data = report
-	case "apps.check":
-		report, checkErr := r.appPreflight(args[2])
-		err = checkErr
-		report.Checks = jsonList(report.Checks)
-		data = report
-		if !report.OK {
-			exitCode = 1
-		}
-	case "releases.list":
-		var releases []Release
-		releases, err = r.backend.ListReleases(args[2])
-		data = jsonList(releases)
-	case "deployments.list":
-		var deployments []Deployment
-		deployments, err = r.backend.ListDeployments(args[2])
-		data = jsonList(deployments)
-	case "deployments.info":
-		data, err = r.deploymentInfo(args[2], args[3])
-	case "domains.list":
-		var domains []Domain
-		domains, err = r.backend.ListDomains(args[2])
-		data = jsonList(domains)
-	case "domains.check":
-		var checks []DomainCheck
-		checks, err = r.backend.CheckDomains(args[2])
-		data = jsonList(checks)
-	case "events.list":
-		var events []Event
-		events, err = r.backend.ListEvents(args[2])
-		data = jsonList(events)
-	default:
+	if command == "check" || command == "diagnostics" {
 		err = JSONError("invalid_arguments", "unsupported structured command")
+	} else if err = r.ensureBackend(); err == nil {
+		switch command {
+		case "apps.list":
+			var apps []App
+			apps, err = r.backend.ListApps()
+			data = jsonList(apps)
+		case "apps.info":
+			data, err = r.backend.GetApp(args[2])
+		case "apps.health":
+			var report AppHealth
+			report, err = r.backend.AppHealth(args[2])
+			report.Checks = jsonList(report.Checks)
+			report.Services = jsonList(report.Services)
+			data = report
+		case "apps.check":
+			report, checkErr := r.appPreflight(args[2])
+			err = checkErr
+			report.Checks = jsonList(report.Checks)
+			data = report
+			if !report.OK {
+				exitCode = 1
+			}
+		case "releases.list":
+			var releases []Release
+			releases, err = r.backend.ListReleases(args[2])
+			data = jsonList(releases)
+		case "deployments.list":
+			var deployments []Deployment
+			deployments, err = r.backend.ListDeployments(args[2])
+			data = jsonList(deployments)
+		case "deployments.info":
+			data, err = r.deploymentInfo(args[2], args[3])
+		case "domains.list":
+			var domains []Domain
+			domains, err = r.backend.ListDomains(args[2])
+			data = jsonList(domains)
+		case "domains.check":
+			var checks []DomainCheck
+			checks, err = r.backend.CheckDomains(args[2])
+			data = jsonList(checks)
+		case "events.list":
+			var events []Event
+			events, err = r.backend.ListEvents(args[2])
+			data = jsonList(events)
+		default:
+			err = JSONError("invalid_arguments", "unsupported structured command")
+		}
 	}
 	if writeErr := WriteJSON(stdout, command, data, err); writeErr != nil {
 		fmt.Fprintln(stderr, writeErr)

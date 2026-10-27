@@ -29,7 +29,7 @@ func (h *DashboardHandler) Logs(ctx context.Context, appID string, services []Se
 	if err != nil {
 		return nil, err
 	}
-	env, err := h.resolveConfigEnv(ctx, model.ID, projectDir)
+	env, err := app.ResolveRuntimeEnv(ctx, model, h.configResolver)
 	if err != nil {
 		return nil, compose.RedactError(fmt.Errorf("resolve config for %s: %w", model.ID, err), redactionValues)
 	}
@@ -43,13 +43,6 @@ func (h *DashboardHandler) Logs(ctx context.Context, appID string, services []Se
 	return logsByService, nil
 }
 
-func (h *DashboardHandler) resolveConfigEnv(ctx context.Context, appID string, projectDir string) (map[string]string, error) {
-	if h.configResolver == nil {
-		return nil, nil
-	}
-	return h.configResolver.ResolveAppConfig(ctx, appID)
-}
-
 func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App) (map[string]string, error) {
 	if h.configResolver == nil {
 		return nil, nil
@@ -61,7 +54,7 @@ func (h *DashboardHandler) redactionEnv(ctx context.Context, model app.App) (map
 		}
 		return values, nil
 	}
-	env, err := h.resolveConfigEnv(ctx, model.ID, model.WorktreePath)
+	env, err := h.configResolver.ResolveEnv(ctx, model.ID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve config for %s: %w", model.ID, err)
 	}

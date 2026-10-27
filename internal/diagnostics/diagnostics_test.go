@@ -93,6 +93,9 @@ func TestRunReportsActionableInstallConfidenceFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := db.CreateApp(context.Background(), app.App{ID: "my-app", Name: "my-app", CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.AttachDomain(context.Background(), app.Domain{ID: "domain_1", AppID: "my-app", ServiceName: "web", DomainName: "app.example.com", Port: 3000, HTTPS: true}); err != nil {
 		t.Fatal(err)
 	}

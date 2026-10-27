@@ -312,8 +312,9 @@ ensure_daemon_docker_access() {
 
 normalize_runtime_ownership() {
 	local data_dir_actual git_home_actual git_ssh_dir_actual git_authorized_keys_actual
-	local operator_home_actual operator_ssh_dir_actual operator_authorized_keys_actual caddy_dir_actual
+	local operator_home_actual operator_ssh_dir_actual operator_authorized_keys_actual caddy_dir_actual locks_dir_actual
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
+ locks_dir_actual="$(prefix_path "$LOCKS_DIR")"
 	git_home_actual="$(prefix_path "$GIT_HOME_DIR")"
 	git_ssh_dir_actual="$(dirname "$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")")"
 	git_authorized_keys_actual="$(prefix_path "$GIT_AUTHORIZED_KEYS_PATH")"
@@ -323,7 +324,7 @@ normalize_runtime_ownership() {
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
 
 	run chmod 0755 "$data_dir_actual" "$(prefix_path "$APPS_DIR")" "$git_home_actual" "$operator_home_actual"
-	run chmod 0700 "$git_ssh_dir_actual" "$operator_ssh_dir_actual"
+	run chmod 0700 "$git_ssh_dir_actual" "$operator_ssh_dir_actual" "$locks_dir_actual"
 
 	if [ "$SKIP_CHOWN" = "1" ]; then
 		return
@@ -333,6 +334,7 @@ normalize_runtime_ownership() {
 	fi
 
 	run chown -R "$DAEMON_USER:$DAEMON_USER" "$data_dir_actual"
+ run chown "$DAEMON_USER:$DAEMON_USER" "$locks_dir_actual"
 	run chown -R "$DAEMON_USER:$DAEMON_USER" "$caddy_dir_actual"
 	run chown -R "$GIT_USER:$GIT_USER" "$git_home_actual"
 	run chmod 0755 "$git_home_actual"
@@ -378,9 +380,10 @@ migrate_legacy_dashboard_keys() {
 
 prepare_directories() {
 	local bin_dir_actual data_dir_actual apps_dir_actual systemd_dir_actual caddy_dir_actual
-	local git_home_actual git_ssh_dir_actual operator_home_actual operator_ssh_dir_actual
+	local git_home_actual git_ssh_dir_actual operator_home_actual operator_ssh_dir_actual locks_dir_actual
 	bin_dir_actual="$(prefix_path "$INSTALL_BIN_DIR")"
 	data_dir_actual="$(prefix_path "$DATA_DIR")"
+ locks_dir_actual="$(prefix_path "$LOCKS_DIR")"
 	apps_dir_actual="$(prefix_path "$APPS_DIR")"
 	systemd_dir_actual="$(prefix_path "$SYSTEMD_DIR")"
 	caddy_dir_actual="$(dirname "$(prefix_path "$CADDY_CONFIG_PATH")")"
@@ -389,7 +392,7 @@ prepare_directories() {
 	operator_home_actual="$(prefix_path "$OPERATOR_HOME_DIR")"
 	operator_ssh_dir_actual="$(dirname "$(prefix_path "$OPERATOR_AUTHORIZED_KEYS_PATH")")"
 
-	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$operator_home_actual" "$operator_ssh_dir_actual"
+	run mkdir -p "$bin_dir_actual" "$data_dir_actual" "$apps_dir_actual" "$systemd_dir_actual" "$caddy_dir_actual" "$git_home_actual" "$git_ssh_dir_actual" "$operator_home_actual" "$operator_ssh_dir_actual" "$locks_dir_actual"
 	migrate_legacy_dashboard_keys
 	normalize_runtime_ownership
 }
@@ -482,11 +485,11 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export SSHDOCK_DATA_DIR=$DATA_DIR
 export SSHDOCK_SQLITE_DB_PATH=$DATA_DIR/sshdock.db
 export SSHDOCK_APPS_DIR=$APPS_DIR
+export SSHDOCK_LOCKS_DIR=$(shell_quote "$LOCKS_DIR")
 export SSHDOCK_GIT_HOST=$GIT_HOST
 export SSHDOCK_GIT_USER=$GIT_USER
 export SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
 export SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
-export SSHDOCK_COMPOSE_RUNNER=docker
 export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
 export SSHDOCK_CADDY_MAIN_CONFIG_PATH=$(shell_quote "$CADDY_MAIN_CONFIG_PATH")
 export SSHDOCK_CADDY_ADMIN_ADDRESS=$(shell_quote "$CADDY_ADMIN_ADDRESS")
@@ -507,8 +510,8 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export SSHDOCK_DATA_DIR=$DATA_DIR
 export SSHDOCK_SQLITE_DB_PATH=$DATA_DIR/sshdock.db
 export SSHDOCK_APPS_DIR=$APPS_DIR
+export SSHDOCK_LOCKS_DIR=$(shell_quote "$LOCKS_DIR")
 export SSHDOCK_GIT_HOST=$GIT_HOST
-export SSHDOCK_COMPOSE_RUNNER=docker
 export SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
 export SSHDOCK_CADDY_MAIN_CONFIG_PATH=$(shell_quote "$CADDY_MAIN_CONFIG_PATH")
 export SSHDOCK_CADDY_ADMIN_ADDRESS=$(shell_quote "$CADDY_ADMIN_ADDRESS")
@@ -564,11 +567,11 @@ Type=simple
 User=$DAEMON_USER
 Group=$DAEMON_USER
 Environment=SSHDOCK_DATA_DIR=$DATA_DIR
+Environment=$(systemd_quote "SSHDOCK_LOCKS_DIR=$LOCKS_DIR")
 Environment=SSHDOCK_GIT_HOST=$GIT_HOST
 Environment=SSHDOCK_GIT_USER=$GIT_USER
 Environment=SSHDOCK_GIT_HOME_DIR=$GIT_HOME_DIR
 Environment=SSHDOCK_GIT_AUTHORIZED_KEYS_PATH=$GIT_AUTHORIZED_KEYS_PATH
-Environment=SSHDOCK_COMPOSE_RUNNER=docker
 Environment=SSHDOCK_CADDY_CONFIG_PATH=$CADDY_CONFIG_PATH
 Environment=$(systemd_quote "SSHDOCK_CADDY_MAIN_CONFIG_PATH=$CADDY_MAIN_CONFIG_PATH")
 Environment=$(systemd_quote "SSHDOCK_CADDY_ADMIN_ADDRESS=$CADDY_ADMIN_ADDRESS")
@@ -642,6 +645,7 @@ SOURCE_BIN_DIR="${SSHDOCK_BOOTSTRAP_SOURCE_BIN_DIR:-}"
 INSTALL_BIN_DIR="${SSHDOCK_INSTALL_BIN_DIR:-/usr/local/bin}"
 DATA_DIR="${SSHDOCK_DATA_DIR:-/var/lib/sshdock}"
 APPS_DIR="${SSHDOCK_APPS_DIR:-$DATA_DIR/apps}"
+LOCKS_DIR="${SSHDOCK_LOCKS_DIR:-$DATA_DIR/locks}"
 SYSTEMD_DIR="${SSHDOCK_SYSTEMD_DIR:-/etc/systemd/system}"
 CADDY_CONFIG_PATH="${SSHDOCK_CADDY_CONFIG_PATH:-/etc/caddy/sshdock/sshdock.caddyfile}"
 CADDY_MAIN_CONFIG_PATH="${SSHDOCK_CADDY_MAIN_CONFIG_PATH:-/etc/caddy/Caddyfile}"

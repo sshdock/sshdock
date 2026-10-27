@@ -42,17 +42,16 @@ func TestRecoverySelectsKnownGoodRevisionThroughRemoteMainEndToEnd(t *testing.T)
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 
 	appName := "recovery-app"
 	dataDir := filepath.Join(tmp, "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 
 	baseEnv := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
 	runCommand(t, root, baseEnv, sshdockPath, "apps", "create", appName)
 
@@ -139,12 +138,14 @@ func TestRecoveryDockerReplacementFailureAndFailedRollbackEndToEnd(t *testing.T)
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	repoPath := filepath.Join(paths.dataDir, "apps", appName, "repo.git")
 	worktree := filepath.Join(paths.dataDir, "apps", appName, "worktree")
-	project := compose.ProjectName(appName)
+	project, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	cliPath := filepath.Join(paths.installBinDir, "sshdock")
 	cliEnv := append(os.Environ(),
 		"PATH="+filepath.Join(paths.tmp, "fake-bin")+string(os.PathListSeparator)+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=docker",
 	)
 	t.Cleanup(func() {
 		runCommandNoFail("", cliEnv, "docker", "compose", "-f", filepath.Join(worktree, "compose.yml"), "-p", project, "down", "--remove-orphans")

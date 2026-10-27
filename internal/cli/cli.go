@@ -1,14 +1,12 @@
 package cli
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,7 +86,6 @@ type ConfigEntry struct {
 	Name          string
 	Status        string
 	RedactedValue string
-	Value         string
 	UpdatedAt     time.Time
 	MutatedBy     string
 }
@@ -100,389 +97,8 @@ type LogRequest struct {
 	Lines       int
 }
 
-type MemoryBackend struct {
-	gitHost        string
-	baseDomain     string
-	apps           map[string]App
-	releases       []Release
-	deployments    []Deployment
-	events         []Event
-	domains        []Domain
-	keys           map[string]SSHKey
-	config         map[string]map[string]string
-	logOutput      string
-	logRequests    []LogRequest
-	deploymentLogs map[string]string
-}
-
-func NewMemoryBackend(gitHost string) *MemoryBackend {
-	if gitHost == "" {
-		gitHost = "server"
-	}
-
-	return &MemoryBackend{
-		gitHost:        gitHost,
-		apps:           map[string]App{},
-		keys:           map[string]SSHKey{},
-		config:         map[string]map[string]string{},
-		deploymentLogs: map[string]string{},
-	}
-}
-
-func (b *MemoryBackend) ListApps() ([]App, error) {
-	names := make([]string, 0, len(b.apps))
-	for name := range b.apps {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	apps := make([]App, 0, len(names))
-	for _, name := range names {
-		apps = append(apps, b.apps[name])
-	}
-
-	return apps, nil
-}
-
-func (b *MemoryBackend) GetApp(name string) (App, error) {
-	model, ok := b.apps[name]
-	if !ok {
-		return App{}, appNotFoundError(name)
-	}
-
-	return model, nil
-}
-
-func (b *MemoryBackend) AttachDomain(domain Domain) error {
-	if _, ok := b.apps[domain.AppName]; !ok {
-		return fmt.Errorf("app %q not found", domain.AppName)
-	}
-	domain.HTTPS = true
-
-	b.domains = append(b.domains, domain)
-	return nil
-}
-
-func (b *MemoryBackend) DetachDomain(appName string, domainName string) error {
-	if _, ok := b.apps[appName]; !ok {
-		return fmt.Errorf("app %q not found", appName)
-	}
-	for i, domain := range b.domains {
-		if domain.AppName == appName && domain.DomainName == domainName {
-			b.domains = append(b.domains[:i], b.domains[i+1:]...)
-			return nil
-		}
-	}
-	return fmt.Errorf("domain %q not found for app %q", domainName, appName)
-}
-
-func (b *MemoryBackend) RestartApp(name string) error {
-	if _, ok := b.apps[name]; !ok {
-		return fmt.Errorf("app %q not found", name)
-	}
-	return nil
-}
-
-func (b *MemoryBackend) RestartService(appName string, serviceName string) error {
-	if _, ok := b.apps[appName]; !ok {
-		return fmt.Errorf("app %q not found", appName)
-	}
-	if strings.TrimSpace(serviceName) == "" {
-		return fmt.Errorf("service name is required")
-	}
-	return nil
-}
-
-func (b *MemoryBackend) RedeployApp(name string) error {
-	if _, ok := b.apps[name]; !ok {
-		return fmt.Errorf("app %q not found", name)
-	}
-	return nil
-}
-
-func (b *MemoryBackend) RemoveApp(name string) error {
-	if _, ok := b.apps[name]; !ok {
-		return fmt.Errorf("app %q not found", name)
-	}
-	delete(b.apps, name)
-	b.releases = filterReleases(b.releases, name)
-	b.deployments = filterDeployments(b.deployments, name)
-	b.domains = filterDomains(b.domains, name)
-	return nil
-}
-
-func (b *MemoryBackend) AppHealth(name string) (AppHealth, error) {
-	model, ok := b.apps[name]
-	if !ok {
-		return AppHealth{}, appNotFoundError(name)
-	}
-	report := AppHealth{
-		AppName:     model.Name,
-		Status:      appmodel.AppStatus(model.Status),
-		NodeID:      model.NodeID,
-		DomainCount: len(memoryDomainsForApp(b.domains, name)),
-	}
-	report.Checks = append(report.Checks, healthCheckForAppStatus(model.Status))
-	if release, ok := latestCLIRelease(memoryReleasesForApp(b.releases, name)); ok {
-		report.AttemptReleaseID = release.ID
-		report.AttemptReleaseStatus = appmodel.ReleaseStatus(release.Status)
-		report.Checks = append(report.Checks, healthCheckForRelease(release.ID, release.Status))
-		if release.Failure != "" {
-			report.LastFailure = release.Failure
-		}
-	} else {
-		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "release", Detail: "no releases"})
-	}
-	report.Checks = append(report.Checks, healthCheckForDomains(report.DomainCount))
-	report.Health = overallHealth(report.Checks)
-	return report, nil
-}
-
-func (b *MemoryBackend) Logs(request LogRequest, stdout io.Writer, _ io.Writer) error {
-	if _, ok := b.apps[request.AppName]; !ok {
-		return fmt.Errorf("app %q not found", request.AppName)
-	}
-	b.logRequests = append(b.logRequests, request)
-	_, err := fmt.Fprint(stdout, b.logOutput)
-	return err
-}
-
-func (b *MemoryBackend) DeploymentLogs(request DeploymentLogRequest, stdout io.Writer) error {
-	if _, ok := b.apps[request.AppName]; !ok {
-		return fmt.Errorf("app %q not found", request.AppName)
-	}
-	deploymentID := request.DeploymentID
-	if deploymentID == "" {
-		deployments, err := b.ListDeployments(request.AppName)
-		if err != nil {
-			return err
-		}
-		if len(deployments) == 0 {
-			return fmt.Errorf("no deployments for app %q", request.AppName)
-		}
-		deploymentID = deployments[len(deployments)-1].ID
-	}
-	content, ok := b.deploymentLogs[deploymentID]
-	if !ok {
-		return fmt.Errorf("deployment %q has no stored deployment log", deploymentID)
-	}
-	_, err := fmt.Fprint(stdout, content)
-	return err
-}
-
-func (b *MemoryBackend) ListReleases(appName string) ([]Release, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, appNotFoundError(appName)
-	}
-	var releases []Release
-	for _, release := range b.releases {
-		if release.AppName == appName {
-			releases = append(releases, release)
-		}
-	}
-	sort.Slice(releases, func(i, j int) bool {
-		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
-			return releases[i].ID < releases[j].ID
-		}
-		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
-	})
-	return releases, nil
-}
-
-func (b *MemoryBackend) ListDeployments(appName string) ([]Deployment, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, appNotFoundError(appName)
-	}
-	var deployments []Deployment
-	for _, deployment := range b.deployments {
-		if deployment.AppName == appName {
-			deployments = append(deployments, deployment)
-		}
-	}
-	sort.Slice(deployments, func(i, j int) bool {
-		if deployments[i].StartedAt.Equal(deployments[j].StartedAt) {
-			return deployments[i].ID < deployments[j].ID
-		}
-		return deployments[i].StartedAt.Before(deployments[j].StartedAt)
-	})
-	return deployments, nil
-}
-
-func (b *MemoryBackend) ListEvents(appName string) ([]Event, error) {
-	var events []Event
-	for _, event := range b.events {
-		if event.AppName == appName {
-			events = append(events, event)
-		}
-	}
-	if _, ok := b.apps[appName]; !ok && len(events) == 0 {
-		return nil, appNotFoundError(appName)
-	}
-	sort.Slice(events, func(i, j int) bool {
-		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
-			return events[i].Type < events[j].Type
-		}
-		return events[i].CreatedAt.Before(events[j].CreatedAt)
-	})
-	return events, nil
-}
-
-func (b *MemoryBackend) ListDomains(appName string) ([]Domain, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, appNotFoundError(appName)
-	}
-	var domains []Domain
-	for _, domain := range b.domains {
-		if domain.AppName == appName {
-			domains = append(domains, domain)
-		}
-	}
-	sort.Slice(domains, func(i, j int) bool {
-		return domains[i].DomainName < domains[j].DomainName
-	})
-	return domains, nil
-}
-
-func (b *MemoryBackend) CheckDomains(appName string) ([]DomainCheck, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, appNotFoundError(appName)
-	}
-	domains := memoryDomainsForApp(b.domains, appName)
-	checks := make([]DomainCheck, 0, len(domains))
-	for _, domain := range domains {
-		checks = append(checks, DomainCheck{
-			DomainName:  domain.DomainName,
-			ServiceName: domain.ServiceName,
-			Port:        domain.Port,
-			HTTPS:       domain.HTTPS,
-			Status:      "stored",
-			Detail:      "router check unavailable",
-		})
-	}
-	return checks, nil
-}
-
-func (b *MemoryBackend) SetServerGitHost(host string) error {
-	baseDomain, err := domaincfg.NormalizeBaseDomain(host)
-	if err != nil {
-		return err
-	}
-	b.baseDomain = baseDomain
-	b.gitHost = domaincfg.ControlHost(baseDomain)
-	return nil
-}
-
-func (b *MemoryBackend) AddSSHKey(name string, publicKey string) error {
-	name = strings.TrimSpace(name)
-	publicKey = strings.TrimSpace(publicKey)
-	if name == "" {
-		return fmt.Errorf("SSH key name is required")
-	}
-	if err := validatePublicKey(publicKey); err != nil {
-		return err
-	}
-
-	b.keys[name] = SSHKey{Name: name, PublicKey: publicKey, CreatedAt: time.Now().UTC()}
-	return nil
-}
-
-func (b *MemoryBackend) ListSSHKeys() ([]SSHKey, error) {
-	names := make([]string, 0, len(b.keys))
-	for name := range b.keys {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	keys := make([]SSHKey, 0, len(names))
-	for _, name := range names {
-		keys = append(keys, b.keys[name])
-	}
-	return keys, nil
-}
-
-func (b *MemoryBackend) RemoveSSHKey(name string) error {
-	if _, ok := b.keys[name]; !ok {
-		return fmt.Errorf("SSH key %q not found", name)
-	}
-	delete(b.keys, name)
-	return nil
-}
-
-func (b *MemoryBackend) SetConfig(appName string, name string, value []byte) error {
-	if _, ok := b.apps[appName]; !ok {
-		return fmt.Errorf("app %q not found", appName)
-	}
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("config key name is required")
-	}
-	if b.config[appName] == nil {
-		b.config[appName] = map[string]string{}
-	}
-	b.config[appName][name] = string(value)
-	return nil
-}
-
-func (b *MemoryBackend) ImportConfig(appName string, input io.Reader) (int, error) {
-	if input == nil {
-		input = strings.NewReader("")
-	}
-	scanner := bufio.NewScanner(input)
-	count := 0
-	lineNumber := 0
-	for scanner.Scan() {
-		lineNumber++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		name, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return count, fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
-		}
-		if err := b.SetConfig(appName, strings.TrimSpace(name), []byte(value)); err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, scanner.Err()
-}
-
-func (b *MemoryBackend) ListConfig(appName string) ([]ConfigEntry, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return nil, fmt.Errorf("app %q not found", appName)
-	}
-	values := b.config[appName]
-	entries := make([]ConfigEntry, 0, len(values))
-	for name := range values {
-		entries = append(entries, ConfigEntry{Name: name, Status: "set", RedactedValue: "<redacted>"})
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-	return entries, nil
-}
-
-func (b *MemoryBackend) GetConfig(appName string, name string) (string, error) {
-	if _, ok := b.apps[appName]; !ok {
-		return "", fmt.Errorf("app %q not found", appName)
-	}
-	value, ok := b.config[appName][name]
-	if !ok {
-		return "", fmt.Errorf("config %q not found for app %q", name, appName)
-	}
-	return value, nil
-}
-
-func (b *MemoryBackend) UnsetConfig(appName string, name string) error {
-	if _, ok := b.apps[appName]; !ok {
-		return fmt.Errorf("app %q not found", appName)
-	}
-	if _, ok := b.config[appName][name]; !ok {
-		return fmt.Errorf("config %q not found for app %q", name, appName)
-	}
-	delete(b.config[appName], name)
-	return nil
-}
-
 type Runner struct {
+	newBackend          func() (Backend, error)
 	backend             Backend
 	version             string
 	interactiveTerminal bool
@@ -495,6 +111,32 @@ func (r *Runner) WithInteractiveTerminal(interactive bool) *Runner {
 
 func NewRunner(backend Backend, version string) *Runner {
 	return &Runner{backend: backend, version: version}
+}
+
+func NewRunnerWithBackendFactory(newBackend func() (Backend, error), version string) *Runner {
+	return &Runner{newBackend: newBackend, version: version}
+}
+
+func (r *Runner) ensureBackend() error {
+	if r.backend == nil && r.newBackend != nil {
+		backend, err := r.newBackend()
+		if err != nil {
+			return err
+		}
+		r.backend = backend
+	}
+	if r.backend == nil {
+		return fmt.Errorf("command backend is not configured")
+	}
+	return nil
+}
+
+func (r *Runner) requireBackend(stderr io.Writer) bool {
+	if err := r.ensureBackend(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return false
+	}
+	return true
 }
 
 func (r *Runner) Run(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -570,6 +212,9 @@ func (r *Runner) RunWithInput(args []string, stdin io.Reader, stdout io.Writer, 
 
 func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 3 && args[0] == "set" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if stdin == nil {
 			stdin = strings.NewReader("")
 		}
@@ -589,6 +234,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	}
 
 	if len(args) == 2 && args[0] == "import" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		count, err := r.backend.ImportConfig(args[1], stdin)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -602,6 +250,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	}
 
 	if len(args) == 2 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		entries, err := r.backend.ListConfig(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -618,6 +269,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	}
 
 	if len(args) == 2 && args[0] == "keys" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		entries, err := r.backend.ListConfig(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -630,6 +284,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	}
 
 	if len(args) == 3 && args[0] == "get" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		value, err := r.backend.GetConfig(args[1], args[2])
 		if err != nil {
 			if isConfigKeyPermissionDenied(err) {
@@ -644,6 +301,9 @@ func (r *Runner) runConfig(args []string, stdin io.Reader, stdout io.Writer, std
 	}
 
 	if len(args) == 3 && args[0] == "unset" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.UnsetConfig(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -677,6 +337,9 @@ func printConfigGetAccessGuidance(stderr io.Writer, appName string, keyName stri
 
 func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		domains, err := r.backend.ListDomains(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -693,6 +356,9 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 	}
 
 	if len(args) == 2 && args[0] == "check" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		checks, err := r.backend.CheckDomains(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -709,6 +375,9 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 	}
 
 	if len(args) == 3 && args[0] == "detach" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.DetachDomain(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -724,6 +393,9 @@ func (r *Runner) runDomains(args []string, stdout io.Writer, stderr io.Writer) i
 			return 2
 		}
 
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		domain := Domain{
 			AppName:     args[1],
 			ServiceName: args[2],
@@ -792,6 +464,9 @@ func printAppHealth(stdout io.Writer, report AppHealth) {
 
 func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		events, err := r.backend.ListEvents(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -813,6 +488,9 @@ func (r *Runner) runEvents(args []string, stdout io.Writer, stderr io.Writer) in
 
 func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 3 && args[0] == "info" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		deployment, err := r.deploymentInfo(args[1], args[2])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -831,6 +509,9 @@ func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Write
 			printInvalidUsage(stderr, "deployments")
 			return 2
 		}
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.DeploymentLogs(request, stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -838,6 +519,9 @@ func (r *Runner) runDeployments(args []string, stdout io.Writer, stderr io.Write
 		return 0
 	}
 	if len(args) == 2 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		deployments, err := r.backend.ListDeployments(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -894,6 +578,9 @@ func (r *Runner) runLogs(args []string, stdout io.Writer, stderr io.Writer) int 
 		printInvalidUsage(stderr, "logs")
 		return 2
 	}
+	if !r.requireBackend(stderr) {
+		return 1
+	}
 	if err := r.backend.Logs(request, stdout, stderr); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -903,6 +590,9 @@ func (r *Runner) runLogs(args []string, stdout io.Writer, stderr io.Writer) int 
 
 func (r *Runner) runReleases(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		releases, err := r.backend.ListReleases(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -933,6 +623,9 @@ func (r *Runner) runServer(args []string, stdout io.Writer, stderr io.Writer) in
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.SetServerGitHost(baseDomain); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -949,6 +642,9 @@ func (r *Runner) runServer(args []string, stdout io.Writer, stderr io.Writer) in
 
 func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		keys, err := r.backend.ListSSHKeys()
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -965,6 +661,9 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 	}
 
 	if len(args) == 2 && args[0] == "add" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if stdin == nil {
 			stdin = strings.NewReader("")
 		}
@@ -982,6 +681,9 @@ func (r *Runner) runSSHKeys(args []string, stdin io.Reader, stdout io.Writer, st
 	}
 
 	if len(args) == 2 && args[0] == "remove" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.RemoveSSHKey(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -1070,39 +772,6 @@ func sshKeyFingerprint(publicKey string) string {
 	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:])
 }
 
-func latestCLIRelease(releases []Release) (Release, bool) {
-	if len(releases) == 0 {
-		return Release{}, false
-	}
-	sort.Slice(releases, func(i, j int) bool {
-		if releases[i].CreatedAt.Equal(releases[j].CreatedAt) {
-			return releases[i].ID < releases[j].ID
-		}
-		return releases[i].CreatedAt.Before(releases[j].CreatedAt)
-	})
-	return releases[len(releases)-1], true
-}
-
-func memoryReleasesForApp(releases []Release, appName string) []Release {
-	filtered := make([]Release, 0, len(releases))
-	for _, release := range releases {
-		if release.AppName == appName {
-			filtered = append(filtered, release)
-		}
-	}
-	return filtered
-}
-
-func memoryDomainsForApp(domains []Domain, appName string) []Domain {
-	filtered := make([]Domain, 0, len(domains))
-	for _, domain := range domains {
-		if domain.AppName == appName {
-			filtered = append(filtered, domain)
-		}
-	}
-	return filtered
-}
-
 func healthCheckForAppStatus(status string) HealthCheck {
 	switch status {
 	case "healthy":
@@ -1186,44 +855,4 @@ func cliField(value string) string {
 		}
 		return char
 	}, value)
-}
-
-func filterReleases(releases []Release, appName string) []Release {
-	filtered := releases[:0]
-	for _, release := range releases {
-		if release.AppName != appName {
-			filtered = append(filtered, release)
-		}
-	}
-	return filtered
-}
-
-func filterDeployments(deployments []Deployment, appName string) []Deployment {
-	filtered := deployments[:0]
-	for _, deployment := range deployments {
-		if deployment.AppName != appName {
-			filtered = append(filtered, deployment)
-		}
-	}
-	return filtered
-}
-
-func filterEvents(events []Event, appName string) []Event {
-	filtered := events[:0]
-	for _, event := range events {
-		if event.AppName != appName {
-			filtered = append(filtered, event)
-		}
-	}
-	return filtered
-}
-
-func filterDomains(domains []Domain, appName string) []Domain {
-	filtered := domains[:0]
-	for _, domain := range domains {
-		if domain.AppName != appName {
-			filtered = append(filtered, domain)
-		}
-	}
-	return filtered
 }

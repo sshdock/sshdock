@@ -274,7 +274,7 @@ If the user does not exist, `scripts/bootstrap.sh` creates it with:
 useradd --system --home /var/lib/sshdock --shell /usr/sbin/nologin sshdock
 ```
 
-The script creates `/var/lib/sshdock` and `/var/lib/sshdock/apps`, then assigns ownership to the daemon user during a real root install.
+The script creates `/var/lib/sshdock` and `/var/lib/sshdock/apps`, then assigns ownership to the daemon user during a real root install. It also provisions the configured `SSHDOCK_LOCKS_DIR` (default `/var/lib/sshdock/locks`) for the daemon user and passes the same location to the daemon, operator, and Git wrappers. Use the matching bootstrap script when upgrading so administrative and SSH routing operations share writable coordination paths.
 
 ## SSH Operator Account
 
@@ -428,7 +428,7 @@ Expected service behavior:
 - run `sshdockd daemon`
 - restart on failure
 - use the configured data directory
-- use `SSHDOCK_COMPOSE_RUNNER=docker`
+- operate through Docker Engine and the Docker Compose plugin
 - use `SSHDOCK_GIT_HOST=server` unless overridden at install time
 - use `/var/lib/sshdock/git/.ssh/authorized_keys` as the Git receive key file unless overridden
 - use `/etc/caddy/sshdock/sshdock.caddyfile` as the generated Caddy config path unless overridden

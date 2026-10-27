@@ -1,7 +1,6 @@
-package gitrecv
+package deployment
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -18,98 +17,20 @@ import (
 	"github.com/sshdock/sshdock/internal/store"
 )
 
-func TestPostReceiveHandlerReportsGitUpdateAndDeploySuccessSeparately(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	var output bytes.Buffer
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
-			return nil
-		}),
-		NewDeploymentID: func() (string, error) { return "dep_output", nil },
-		Output:          &output,
-	})
-
-	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("old abc123 refs/heads/main\n"))
-
-	// Then
-	if err != nil {
-		t.Fatalf("Handle: %v", err)
-	}
-	gitLine := "git: remote main updated to abc123"
-	deployLine := "deploy: current main abc123 succeeded"
-	if !strings.Contains(output.String(), gitLine) || !strings.Contains(output.String(), deployLine) {
-		t.Fatalf("output = %q, want separate %q and %q", output.String(), gitLine, deployLine)
-	}
-	events, listErr := sqlite.ListEventsByApp(ctx, "my-app")
-	if listErr != nil {
-		t.Fatalf("ListEventsByApp: %v", listErr)
-	}
-	if len(events) == 0 || events[0].Type != "git.ref_accepted" || !strings.Contains(events[0].Message, "abc123") {
-		t.Fatalf("events = %#v, want accepted-ref audit event", events)
-	}
-}
-
-func TestPostReceiveHandlerReportsOutputFailureAfterSuccessfulDeploy(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	outputFailure := errors.New("remote output closed")
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
-			return nil
-		}),
-		NewDeploymentID: func() (string, error) { return "dep_output_failure", nil },
-		Output:          failingWriter{err: outputFailure},
-	})
-
-	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("old abc123 refs/heads/main\n"))
-
-	// Then
-	if !errors.Is(err, outputFailure) {
-		t.Fatalf("Handle error = %v, want output failure", err)
-	}
-	var statusOutputErr *StatusOutputError
-	if !errors.As(err, &statusOutputErr) {
-		t.Fatalf("Handle error type = %T, want *StatusOutputError", err)
-	}
-	deployments, listErr := sqlite.ListDeploymentsByApp(ctx, "my-app")
-	if listErr != nil {
-		t.Fatalf("ListDeploymentsByApp: %v", listErr)
-	}
-	if len(deployments) != 1 || deployments[0].Status != app.DeploymentStatusSucceeded {
-		t.Fatalf("deployments = %#v, want successful deploy despite output failure", deployments)
-	}
-}
-
-func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
+func TestExecutorCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
+	worktreePath := filepath.Join(filepath.Dir(dbPath), "worktree")
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	runner := &compose.FakeRunner{DeployResult: compose.DeployResult{
 		RouteFound:  true,
 		RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
 	}}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: runner,
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, repoPath string, gotWorktreePath string, commitSHA string) error {
+		Checkout: executorCheckoutFunc(func(_ context.Context, repoPath string, gotWorktreePath string, commitSHA string) error {
 			if repoPath != "/apps/my-app/repo.git" {
 				t.Fatalf("repoPath = %q", repoPath)
 			}
@@ -119,15 +40,15 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 			if commitSHA != "abc123" {
 				t.Fatalf("commitSHA = %q", commitSHA)
 			}
-			writeHookComposeFixture(t, gotWorktreePath)
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 		Now: func() time.Time { return now },
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if err != nil {
-		t.Fatalf("Handle: %v", err)
+		t.Fatalf("Execute: %v", err)
 	}
 
 	releases, err := sqlite.ListReleasesByApp(ctx, "my-app")
@@ -173,43 +94,35 @@ func TestPostReceiveHandlerCreatesReleaseAndSucceededDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 }
 
-func TestPostReceiveHandlerCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) {
+func TestExecutorCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) {
 	// Given
 	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	ids := []string{"dep_00000000000000000000000000000001", "dep_00000000000000000000000000000002"}
-	nextID := 0
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
 		}},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
-		NewDeploymentID: func() (string, error) {
-			id := ids[nextID]
-			nextID++
-			return id, nil
-		},
 	})
-	input := "oldsha abc123 refs/heads/main\n"
 
 	// When
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input)); err != nil {
-		t.Fatalf("Handle first: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", ids[0]); err != nil {
+		t.Fatalf("Execute first: %v", err)
 	}
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input)); err != nil {
-		t.Fatalf("Handle second: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", ids[1]); err != nil {
+		t.Fatalf("Execute second: %v", err)
 	}
 
 	// Then
@@ -228,7 +141,7 @@ func TestPostReceiveHandlerCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) 
 		t.Fatalf("deployments = %#v, want two attempts", deployments)
 	}
 	for index, deployment := range deployments {
-		if deployment.ID != ids[index] || deployment.ReleaseID != releases[0].ID || deployment.CommitSHA != "abc123" || deployment.Trigger != app.DeploymentTriggerPush {
+		if deployment.ID != ids[index] || deployment.ReleaseID != releases[0].ID || deployment.CommitSHA != "abc123" || deployment.Trigger != app.DeploymentTriggerRedeploy {
 			t.Fatalf("deployment[%d] = %#v", index, deployment)
 		}
 	}
@@ -237,40 +150,34 @@ func TestPostReceiveHandlerCreatesUniqueAttemptsForRepeatedCommit(t *testing.T) 
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
 	if len(events) != 6 {
-		t.Fatalf("events = %#v, want three events per attempt", events)
+		t.Fatalf("events = %#v, want queued, started, and succeeded events per attempt", events)
 	}
 }
 
-func TestPostReceiveHandlerScopesSameCommitReleaseAcrossApps(t *testing.T) {
+func TestExecutorScopesSameCommitReleaseAcrossApps(t *testing.T) {
 	// Given
 	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	sqlite := newExecutorTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
-	if err := sqlite.CreateApp(ctx, app.App{ID: "other-app", Name: "other-app", NodeID: "local", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := sqlite.CreateApp(ctx, app.App{ID: "other-app", Name: "other-app", NodeID: "local", RepoPath: "/apps/other-app/repo.git", WorktreePath: t.TempDir(), Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateApp other-app: %v", err)
 	}
 	ids := []string{"dep_10000000000000000000000000000001", "dep_20000000000000000000000000000002"}
-	nextID := 0
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: &compose.FakeRunner{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
-		NewDeploymentID: func() (string, error) {
-			id := ids[nextID]
-			nextID++
-			return id, nil
-		},
 	})
 
 	// When
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", filepath.Join(t.TempDir(), "first"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle my-app: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", ids[0]); err != nil {
+		t.Fatalf("Execute my-app: %v", err)
 	}
-	if err := handler.Handle(ctx, "other-app", "/apps/other-app/repo.git", filepath.Join(t.TempDir(), "second"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle other-app: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "other-app", "abc123", ids[1]); err != nil {
+		t.Fatalf("Execute other-app: %v", err)
 	}
 
 	// Then
@@ -287,10 +194,10 @@ func TestPostReceiveHandlerScopesSameCommitReleaseAcrossApps(t *testing.T) {
 	}
 }
 
-func TestPostReceiveHandlerAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
+func TestExecutorAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
@@ -299,17 +206,16 @@ func TestPostReceiveHandlerAutoRoutesAfterSuccessfulDeploy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	routeSyncer := &fakeHookRouteSyncer{}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	routeSyncer := &fakeExecutorRouteSyncer{}
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
 		}},
-		Router: routeSyncer,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+		Routing: testRouting(t, sqlite, routeSyncer, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   web:
     image: example/web:latest
@@ -321,26 +227,16 @@ services:
 		Now: func() time.Time { return now },
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 
 	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ListDomainsByApp: %v", err)
 	}
-	wantDomain := app.Domain{
-		ID:          "dom_my_app_my_app_example_com",
-		AppID:       "my-app",
-		ServiceName: "web",
-		DomainName:  "my-app.example.com",
-		Port:        3100,
-		HTTPS:       true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-	if len(domains) != 1 || domains[0] != wantDomain {
-		t.Fatalf("domains = %#v, want [%#v]", domains, wantDomain)
+	if len(domains) != 1 {
+		t.Fatalf("domains = %#v, want one initial route", domains)
 	}
 	if len(routeSyncer.Syncs) != 1 {
 		t.Fatalf("router syncs = %#v, want one sync", routeSyncer.Syncs)
@@ -354,16 +250,16 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reloaded"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reloaded"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 }
 
-func TestPostReceiveHandlerDoesNotAutoRouteFailedDeploy(t *testing.T) {
+func TestExecutorDoesNotAutoRouteFailedDeploy(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
@@ -372,15 +268,14 @@ func TestPostReceiveHandlerDoesNotAutoRouteFailedDeploy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	routeSyncer := &fakeHookRouteSyncer{}
-	clock := newHookClock(now)
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{DeployErr: errors.New("compose failed")},
-		Router: routeSyncer,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+	routeSyncer := &fakeExecutorRouteSyncer{}
+	clock := newExecutorClock(now)
+	handler := newTestExecutor(t, Config{
+		Store:   sqlite,
+		Runner:  &compose.FakeRunner{DeployErr: errors.New("compose failed")},
+		Routing: testRouting(t, sqlite, routeSyncer, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   web:
     image: example/web:latest
@@ -392,8 +287,8 @@ services:
 		Now: clock.Now,
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err == nil {
-		t.Fatal("Handle error = nil, want deploy failure")
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err == nil {
+		t.Fatal("Execute error = nil, want deploy failure")
 	}
 	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
 	if err != nil {
@@ -409,25 +304,24 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.failed"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 }
 
-func TestPostReceiveHandlerPassesResolvedConfigEnvironment(t *testing.T) {
+func TestExecutorPassesResolvedConfigEnvironment(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	runner := &compose.FakeRunner{}
-	resolver := &fakeHookConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret", "ROOT_COMPOSE": "compose.yml"}}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	resolver := &fakeExecutorConfigResolver{env: map[string]string{"DATABASE_URL": "postgres://secret", "ROOT_COMPOSE": "compose.yml"}}
+	handler := newTestExecutor(t, Config{
 		Store:          sqlite,
 		Runner:         runner,
 		ConfigResolver: resolver,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   base:
     image: example/base:latest
@@ -440,10 +334,10 @@ services:
 		}),
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
-	if len(resolver.requests) != 1 || resolver.requests[0] != (hookConfigResolveRequest{appID: "my-app"}) {
+	if len(resolver.requests) != 1 || resolver.requests[0] != (executorConfigResolveRequest{appID: "my-app"}) {
 		t.Fatalf("resolver requests = %#v", resolver.requests)
 	}
 	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].Env["DATABASE_URL"] != "postgres://secret" {
@@ -451,21 +345,17 @@ services:
 	}
 }
 
-func TestPostReceiveHandlerRecordsValidationFailureBeforeFakeDeploy(t *testing.T) {
+func TestExecutorRecordsValidationFailureBeforeFakeDeploy(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	runner := &compose.FakeRunner{}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:          sqlite,
 		Runner:         runner,
-		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"ROOT_COMPOSE": "shared.compose.yml"}},
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+		ConfigResolver: &fakeExecutorConfigResolver{env: map[string]string{"ROOT_COMPOSE": "shared.compose.yml"}},
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   web:
     extends:
@@ -476,12 +366,12 @@ services:
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if err == nil || !strings.Contains(err.Error(), "external Compose file") {
-		t.Fatalf("Handle error = %v, want external Compose validation failure", err)
+		t.Fatalf("Execute error = %v, want external Compose validation failure", err)
 	}
 	if strings.Contains(err.Error(), "shared.compose.yml") {
-		t.Fatalf("Handle error disclosed resolved config value: %v", err)
+		t.Fatalf("Execute error disclosed resolved config value: %v", err)
 	}
 	if len(runner.DeployRequests) != 0 {
 		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
@@ -493,35 +383,31 @@ services:
 	if listErr != nil {
 		t.Fatalf("ListEventsByApp: %v", listErr)
 	}
-	if got, want := eventTypes(events), []string{"git.ref_accepted", "deploy.started", "deploy.failed"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventTypes(events), []string{"deploy.queued", "deploy.started", "deploy.failed"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
 }
 
-func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
+func TestExecutorConfigFailureStopsBeforeCompose(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	runner := &compose.FakeRunner{}
 	missingConfig := errors.New("missing required config for my-app: SECRET\nssh sshdock@<host> config set my-app SECRET")
-	resolver := &fakeHookConfigResolver{err: missingConfig}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	resolver := &fakeExecutorConfigResolver{err: missingConfig}
+	handler := newTestExecutor(t, Config{
 		Store:          sqlite,
 		Runner:         runner,
 		ConfigResolver: resolver,
-		NewDeploymentID: func() (string, error) {
-			return "dep_config_attempt", nil
-		},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_config_attempt")
 	if !errors.Is(err, missingConfig) {
-		t.Fatalf("Handle error = %v, want wrapped %v", err, missingConfig)
+		t.Fatalf("Execute error = %v, want wrapped %v", err, missingConfig)
 	}
 	assertFailureDetail(t, err.Error(),
 		"stage=config",
@@ -532,7 +418,7 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 		"retry=sudo sshdock apps redeploy my-app",
 	)
 	if strings.Contains(err.Error(), "secret-value") {
-		t.Fatalf("Handle error leaked config value: %v", err)
+		t.Fatalf("Execute error leaked config value: %v", err)
 	}
 	if len(runner.DeployRequests) != 0 {
 		t.Fatalf("deploy requests = %#v, want none", runner.DeployRequests)
@@ -558,10 +444,10 @@ func TestPostReceiveHandlerConfigFailureStopsBeforeCompose(t *testing.T) {
 	}
 }
 
-func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.T) {
+func TestExecutorRecordsAutoRouteSkippedForUnsafeInference(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
@@ -570,14 +456,13 @@ func TestPostReceiveHandlerRecordsAutoRouteSkippedForUnsafeInference(t *testing.
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	routeSyncer := &fakeHookRouteSyncer{}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model route is ambiguous"}},
-		Router: routeSyncer,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+	routeSyncer := &fakeExecutorRouteSyncer{}
+	handler := newTestExecutor(t, Config{
+		Store:   sqlite,
+		Runner:  &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model route is ambiguous"}},
+		Routing: testRouting(t, sqlite, routeSyncer, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   api:
     image: example/api:latest
@@ -593,8 +478,8 @@ services:
 		Now: func() time.Time { return now },
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 
 	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
@@ -611,36 +496,35 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 	assertFailureDetail(t, events[3].Message, "stage=route inference", "ambiguous", "changed=containers deployed, routes unchanged", "domains attach")
 }
 
-func TestPostReceiveHandlerPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) {
+func TestExecutorPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	var output strings.Builder
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model has no route candidate"}},
 		Output: &output,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
 	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 
 	// Then
 	if err != nil {
-		t.Fatalf("Handle: %v", err)
+		t.Fatalf("Execute: %v", err)
 	}
 	if !strings.Contains(output.String(), "sudo sshdock domains attach my-app <service> <domain> --port <port>") {
 		t.Fatalf("output = %q, want manual route guidance", output.String())
@@ -649,16 +533,16 @@ func TestPostReceiveHandlerPrintsNoRouteGuidanceWithoutBaseDomain(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 }
 
-func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *testing.T) {
+func TestExecutorRecordsCaddyReloadFailureWithRecoveryGuidance(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
@@ -667,20 +551,16 @@ func TestPostReceiveHandlerRecordsCaddyReloadFailureWithRecoveryGuidance(t *test
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	routeSyncer := &fakeHookRouteSyncer{Err: errors.New("caddy reload failed")}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	routeSyncer := &fakeExecutorRouteSyncer{Err: errors.New("caddy reload failed")}
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
 		}},
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
-		Router: routeSyncer,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+		Routing: testRouting(t, sqlite, routeSyncer, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   web:
     image: example/web:latest
@@ -692,14 +572,14 @@ services:
 		Now: func() time.Time { return now },
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 	events, err := sqlite.ListEventsByApp(ctx, "my-app")
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reload_failed"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_attached", "router.reload_failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -712,10 +592,10 @@ services:
 	)
 }
 
-func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing.T) {
+func TestExecutorRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStoreForApp(t, ctx, dbPath, "bad_app")
+	sqlite := newExecutorTestStoreForApp(t, ctx, dbPath, "bad_app")
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{
 		BaseDomain: "example.com",
@@ -724,16 +604,15 @@ func TestPostReceiveHandlerRecordsAutoRouteSkippedForDNSUnsafeAppName(t *testing
 	}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3100},
 		}},
-		Router: &fakeHookRouteSyncer{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookCompose(t, gotWorktreePath, `
+		Routing: testRouting(t, sqlite, &fakeExecutorRouteSyncer{}, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorCompose(t, gotWorktreePath, `
 services:
   web:
     image: example/web:latest
@@ -745,8 +624,8 @@ services:
 		Now: func() time.Time { return now },
 	})
 
-	if err := handler.Handle(ctx, "bad_app", "/apps/bad_app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "bad_app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 
 	domains, err := sqlite.ListDomainsByApp(ctx, "bad_app")
@@ -760,7 +639,7 @@ services:
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.succeeded", "route.auto_skipped"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -769,11 +648,10 @@ services:
 	}
 }
 
-func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) {
+func TestExecutorPrintsAndRecordsTrustedComposeWarnings(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	warning := "service web uses privileged mode; trusted Compose pushes have host-level impact; SSHDock does not sandbox this configuration"
 	runner := &compose.FakeRunner{DeployResult: compose.DeployResult{
 		RouteFound:  true,
@@ -781,22 +659,19 @@ func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) 
 		Warnings:    []string{warning},
 	}}
 	var output strings.Builder
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: runner,
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
 		Output: &output,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if err != nil {
-		t.Fatalf("Handle: %v", err)
+		t.Fatalf("Execute: %v", err)
 	}
 	if !strings.Contains(output.String(), "warning: "+warning) {
 		t.Fatalf("output = %q, want trusted Compose warning", output.String())
@@ -805,7 +680,7 @@ func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.warning", "deploy.succeeded"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.warning", "deploy.succeeded"}
 	if got := eventTypes(events); !reflect.DeepEqual(got, wantTypes) {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
@@ -814,27 +689,26 @@ func TestPostReceiveHandlerPrintsAndRecordsTrustedComposeWarnings(t *testing.T) 
 	}
 }
 
-func TestPostReceiveHandlerRedactsConfigValuesFromTrustedComposeWarnings(t *testing.T) {
+func TestExecutorRedactsConfigValuesFromTrustedComposeWarnings(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	secretPath := "/srv/private/customer-secret"
 	warning := "service web uses host bind mount " + secretPath + "; trusted Compose pushes have host-level impact; SSHDock does not sandbox this configuration"
 	var output strings.Builder
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:          sqlite,
 		Runner:         &compose.FakeRunner{DeployResult: compose.DeployResult{Warnings: []string{warning}}},
-		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"PRIVATE_PATH": secretPath}},
+		ConfigResolver: &fakeExecutorConfigResolver{env: map[string]string{"PRIVATE_PATH": secretPath}},
 		Output:         &output,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 	if strings.Contains(output.String(), secretPath) || !strings.Contains(output.String(), "<redacted>") {
 		t.Fatalf("output = %q, want redacted warning", output.String())
@@ -848,64 +722,63 @@ func TestPostReceiveHandlerRedactsConfigValuesFromTrustedComposeWarnings(t *test
 	}
 }
 
-func TestPostReceiveHandlerFinishesSuccessfulDeployWhenWarningOutputFails(t *testing.T) {
+func TestExecutorFinishesSuccessfulDeployWhenWarningOutputFails(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000},
 			Warnings:    []string{"trusted Compose warning"},
 		}},
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
 		Output: failingWriter{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
 	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 
 	// Then
-	if err == nil || !strings.Contains(err.Error(), "output unavailable") {
-		t.Fatalf("Handle error = %v, want output failure after deployment", err)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events, err := sqlite.ListEventsByApp(ctx, "my-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(events[len(events)-1].Message, "output unavailable") {
+		t.Fatalf("success event = %#v, want warning output failure recorded", events[len(events)-1])
 	}
 	if status := queryDeploymentStatus(t, dbPath, "dep_abc123"); status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q, want succeeded", status)
 	}
 }
 
-func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
+func TestExecutorMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	deployFailure := errors.New("pull access denied")
 	failure := compose.NewDeployError(compose.DeployStagePullImages, deployFailure)
 	runner := &compose.FakeRunner{DeployErr: failure}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: runner,
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if !errors.Is(err, deployFailure) {
-		t.Fatalf("Handle error = %v, want wrapped %v", err, deployFailure)
+		t.Fatalf("Execute error = %v, want wrapped %v", err, deployFailure)
 	}
 	if len(runner.DeployRequests) != 1 {
 		t.Fatalf("DeployRequests = %#v, want one attempt and no automatic rollback", runner.DeployRequests)
@@ -944,37 +817,33 @@ func TestPostReceiveHandlerMarksDeploymentFailedWhenDeployFails(t *testing.T) {
 	if listEventsErr != nil {
 		t.Fatalf("ListEventsByApp: %v", listEventsErr)
 	}
-	wantTypes := []string{"git.ref_accepted", "deploy.started", "deploy.failed"}
+	wantTypes := []string{"deploy.queued", "deploy.started", "deploy.failed"}
 	if got := eventTypes(events); strings.Join(got, ",") != strings.Join(wantTypes, ",") {
 		t.Fatalf("event types = %#v, want %#v", got, wantTypes)
 	}
 }
 
-func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
+func TestExecutorRedactsConfigValuesFromDeployFailure(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	failure := errors.New("docker output included api-secret")
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:          sqlite,
 		Runner:         &compose.FakeRunner{DeployErr: failure},
-		ConfigResolver: &fakeHookConfigResolver{env: map[string]string{"API_TOKEN": "api-secret"}},
-		NewDeploymentID: func() (string, error) {
-			return "dep_abc123", nil
-		},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		ConfigResolver: &fakeExecutorConfigResolver{env: map[string]string{"API_TOKEN": "api-secret"}},
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if !errors.Is(err, failure) {
-		t.Fatalf("Handle error = %v, want wrapped failure", err)
+		t.Fatalf("Execute error = %v, want wrapped failure", err)
 	}
 	if strings.Contains(err.Error(), "api-secret") {
-		t.Fatalf("Handle error leaked secret: %v", err)
+		t.Fatalf("Execute error leaked secret: %v", err)
 	}
 	errorMessage := queryDeploymentError(t, dbPath, "dep_abc123")
 	assertFailureDetail(t, errorMessage,
@@ -995,11 +864,10 @@ func TestPostReceiveHandlerRedactsConfigValuesFromDeployFailure(t *testing.T) {
 	}
 }
 
-func TestPostReceiveHandlerKeepsExistingRouteAfterSuccessfulReplacement(t *testing.T) {
+func TestExecutorKeepsExistingRouteAfterSuccessfulReplacement(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	if err := sqlite.SetServerConfig(ctx, store.ServerConfig{BaseDomain: "example.com", GitHost: "sshdock.example.com"}); err != nil {
 		t.Fatalf("SetServerConfig: %v", err)
 	}
@@ -1016,23 +884,23 @@ func TestPostReceiveHandlerKeepsExistingRouteAfterSuccessfulReplacement(t *testi
 	}); err != nil {
 		t.Fatalf("AttachDomain: %v", err)
 	}
-	routeSyncer := &fakeHookRouteSyncer{}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	routeSyncer := &fakeExecutorRouteSyncer{}
+	handler := newTestExecutor(t, Config{
 		Store: sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{
 			RouteFound:  true,
 			RouteTarget: compose.RouteTarget{ServiceName: "replacement", Port: 4100},
 		}},
-		Router: routeSyncer,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Routing: testRouting(t, sqlite, routeSyncer, nil),
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123")
 	if err != nil {
-		t.Fatalf("Handle: %v", err)
+		t.Fatalf("Execute: %v", err)
 	}
 
 	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
@@ -1047,11 +915,10 @@ func TestPostReceiveHandlerKeepsExistingRouteAfterSuccessfulReplacement(t *testi
 	}
 }
 
-func TestPostReceiveHandlerDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *testing.T) {
+func TestExecutorDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "sshdock.db")
-	sqlite := newHookTestStore(t, ctx, dbPath)
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, dbPath)
 	createdAt := time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC)
 	if err := sqlite.AttachDomain(ctx, app.Domain{
 		ID:          "dom_existing",
@@ -1066,18 +933,18 @@ func TestPostReceiveHandlerDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *test
 		t.Fatalf("AttachDomain: %v", err)
 	}
 	var output strings.Builder
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: &compose.FakeRunner{DeployResult: compose.DeployResult{RouteReason: "effective Compose model has no route candidate"}},
 		Output: &output,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("oldsha abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_abc123"); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 	if strings.Contains(output.String(), "stage=route inference") {
 		t.Fatalf("output = %q, want no initial-route guidance for an already-routed app", output.String())
@@ -1086,16 +953,16 @@ func TestPostReceiveHandlerDoesNotSuggestInitialRouteForAlreadyRoutedApp(t *test
 	if err != nil {
 		t.Fatalf("ListEventsByApp: %v", err)
 	}
-	if got, want := eventTypes(events), []string{"git.ref_accepted", "deploy.started", "deploy.succeeded"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventTypes(events), []string{"deploy.queued", "deploy.started", "deploy.succeeded"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("event types = %#v, want %#v", got, want)
 	}
 }
 
-func newHookTestStore(t *testing.T, ctx context.Context, dbPath string) *store.SQLiteStore {
-	return newHookTestStoreForApp(t, ctx, dbPath, "my-app")
+func newExecutorTestStore(t *testing.T, ctx context.Context, dbPath string) *store.SQLiteStore {
+	return newExecutorTestStoreForApp(t, ctx, dbPath, "my-app")
 }
 
-func newHookTestStoreForApp(t *testing.T, ctx context.Context, dbPath string, appName string) *store.SQLiteStore {
+func newExecutorTestStoreForApp(t *testing.T, ctx context.Context, dbPath string, appName string) *store.SQLiteStore {
 	t.Helper()
 
 	sqlite, err := store.OpenSQLite(ctx, dbPath)
@@ -1107,7 +974,7 @@ func newHookTestStoreForApp(t *testing.T, ctx context.Context, dbPath string, ap
 		Name:         appName,
 		NodeID:       "local",
 		RepoPath:     "/apps/" + appName + "/repo.git",
-		WorktreePath: "/apps/" + appName + "/worktree",
+		WorktreePath: filepath.Join(filepath.Dir(dbPath), "worktree"),
 		Status:       app.AppStatusCreated,
 		CreatedAt:    time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC),
 		UpdatedAt:    time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC),
@@ -1123,17 +990,17 @@ func newHookTestStoreForApp(t *testing.T, ctx context.Context, dbPath string, ap
 	return sqlite
 }
 
-func writeHookComposeFixture(t *testing.T, worktreePath string) {
+func writeExecutorComposeFixture(t *testing.T, worktreePath string) {
 	t.Helper()
 
-	writeHookCompose(t, worktreePath, `
+	writeExecutorCompose(t, worktreePath, `
 services:
   web:
     image: example/web:latest
 `)
 }
 
-func writeHookCompose(t *testing.T, worktreePath string, content string) {
+func writeExecutorCompose(t *testing.T, worktreePath string, content string) {
 	t.Helper()
 
 	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
@@ -1144,7 +1011,7 @@ func writeHookCompose(t *testing.T, worktreePath string, content string) {
 	}
 }
 
-type fakeHookRouteSyncer struct {
+type fakeExecutorRouteSyncer struct {
 	Syncs [][]router.Route
 	Err   error
 }
@@ -1160,36 +1027,36 @@ func (w failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("output unavailable")
 }
 
-type hookConfigResolveRequest struct {
+type executorConfigResolveRequest struct {
 	appID string
 }
 
-type fakeHookConfigResolver struct {
+type fakeExecutorConfigResolver struct {
 	env      map[string]string
 	err      error
-	requests []hookConfigResolveRequest
+	requests []executorConfigResolveRequest
 }
 
-func (f *fakeHookConfigResolver) ResolveAppConfig(_ context.Context, appID string) (map[string]string, error) {
-	f.requests = append(f.requests, hookConfigResolveRequest{appID: appID})
+func (f *fakeExecutorConfigResolver) ResolveEnv(_ context.Context, appID string) (map[string]string, error) {
+	f.requests = append(f.requests, executorConfigResolveRequest{appID: appID})
 	return f.env, f.err
 }
 
-func (f *fakeHookRouteSyncer) SyncRoutes(_ context.Context, routes []router.Route) error {
+func (f *fakeExecutorRouteSyncer) SyncRoutes(_ context.Context, routes []router.Route) error {
 	copied := append([]router.Route(nil), routes...)
 	f.Syncs = append(f.Syncs, copied)
 	return f.Err
 }
 
-type hookClock struct {
+type executorClock struct {
 	next time.Time
 }
 
-func newHookClock(start time.Time) *hookClock {
-	return &hookClock{next: start}
+func newExecutorClock(start time.Time) *executorClock {
+	return &executorClock{next: start}
 }
 
-func (c *hookClock) Now() time.Time {
+func (c *executorClock) Now() time.Time {
 	value := c.next
 	c.next = c.next.Add(time.Second)
 	return value
@@ -1242,4 +1109,23 @@ func eventTypes(events []app.Event) []string {
 		types = append(types, event.Type)
 	}
 	return types
+}
+
+type executorCheckoutFunc func(context.Context, string, string, string) error
+
+func (f executorCheckoutFunc) Checkout(ctx context.Context, repoPath, worktreePath, commitSHA string) error {
+	return f(ctx, repoPath, worktreePath, commitSHA)
+}
+
+func executeAttempt(t *testing.T, ctx context.Context, sqlite *store.SQLiteStore, executor *Executor, appID, commitSHA, deploymentID string) error {
+	t.Helper()
+	attempt := app.Deployment{ID: deploymentID, AppID: appID, ReleaseID: app.ReleaseID(appID, commitSHA), CommitSHA: commitSHA, Trigger: app.DeploymentTriggerRedeploy, Status: app.DeploymentStatusPending, StartedAt: executor.now()}
+	if err := sqlite.QueueRedeployment(ctx, attempt); err != nil {
+		t.Fatalf("QueueRedeployment: %v", err)
+	}
+	claimed, found, err := sqlite.ClaimNextPendingDeployment(ctx)
+	if err != nil || !found || claimed.ID != attempt.ID {
+		t.Fatalf("ClaimNextPendingDeployment = %#v, %v, %v; want %s", claimed, found, err, attempt.ID)
+	}
+	return executor.Execute(ctx, claimed)
 }

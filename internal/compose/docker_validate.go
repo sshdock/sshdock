@@ -6,6 +6,10 @@ import (
 )
 
 func (r *DockerRunner) Validate(ctx context.Context, appName string, composePath string) (ValidationResult, error) {
+	projectName, err := ProjectName(appName)
+	if err != nil {
+		return ValidationResult{}, err
+	}
 	result, err := ValidateFile(composePath)
 	if err != nil {
 		return ValidationResult{}, err
@@ -13,7 +17,7 @@ func (r *DockerRunner) Validate(ctx context.Context, appName string, composePath
 	command := Command{
 		Name: "docker",
 		Dir:  filepath.Dir(composePath),
-		Args: commandArgs(composeArgs([]string{composePath}, ProjectName(appName)), "config"),
+		Args: commandArgs(composeArgs([]string{composePath}, projectName), "config"),
 	}
 	if _, err := r.executor.Run(ctx, command); err != nil {
 		return ValidationResult{}, err

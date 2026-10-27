@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployment"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 	"github.com/sshdock/sshdock/internal/tui"
@@ -64,84 +66,57 @@ func TestSmokeFakeAppLifecycle(t *testing.T) {
 		}
 	})
 
-	service := app.NewService(sqlite, app.WithClock(func() time.Time { return now }))
-	model, err := service.CreateApp(ctx, app.App{
-		ID:     "app_1",
-		Name:   "my-app",
-		NodeID: "local",
-		Status: app.AppStatusHealthy,
-	})
-	if err != nil {
+	projectDir := filepath.Join("..", "fixtures", "compose", "valid")
+	model := app.App{
+		ID: "my-app", Name: "my-app", NodeID: "local", WorktreePath: projectDir,
+		Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := sqlite.CreateApp(ctx, model); err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
 
-	projectDir := filepath.Join("..", "fixtures", "compose", "valid")
-	composePath, err := compose.DetectFile(projectDir)
-	if err != nil {
-		t.Fatalf("DetectFile: %v", err)
-	}
-	validation, err := compose.ValidateFile(composePath)
-	if err != nil {
-		t.Fatalf("ValidateFile: %v", err)
-	}
-	if len(validation.Services) == 0 {
-		t.Fatal("expected at least one service")
-	}
-
-	release, err := service.CreateRelease(ctx, app.Release{
-		ID:          "rel_1",
-		AppID:       model.ID,
-		CommitSHA:   "abc123",
-		ComposePath: composePath,
-	})
-	if err != nil {
-		t.Fatalf("CreateRelease: %v", err)
-	}
-
-	deployment, err := service.StartDeployment(ctx, app.Deployment{
-		ID:        "dep_1",
-		AppID:     model.ID,
-		ReleaseID: release.ID,
-	})
-	if err != nil {
-		t.Fatalf("StartDeployment: %v", err)
-	}
-
-	runner := &compose.FakeRunner{}
-	if _, err := runner.Deploy(ctx, compose.DeployRequest{AppName: model.Name, ReleaseID: release.ID, CommitSHA: release.CommitSHA, ComposePath: release.ComposePath}); err != nil {
-		t.Fatalf("Deploy: %v", err)
-	}
-	if err := service.MarkDeploymentSucceeded(ctx, deployment.ID); err != nil {
-		t.Fatalf("MarkDeploymentSucceeded: %v", err)
-	}
-
-	domain, err := service.AttachDomain(ctx, app.Domain{
-		ID:          "dom_1",
-		AppID:       model.ID,
-		ServiceName: "web",
-		DomainName:  "example.com",
-		Port:        3000,
-		HTTPS:       true,
-	})
-	if err != nil {
-		t.Fatalf("AttachDomain: %v", err)
-	}
 	fakeRouter := router.NewFakeRouter()
-	if err := fakeRouter.AttachDomain(ctx, router.Route{
-		AppID:       domain.AppID,
-		ServiceName: domain.ServiceName,
-		DomainName:  domain.DomainName,
-		Port:        domain.Port,
-		HTTPS:       domain.HTTPS,
-	}); err != nil {
-		t.Fatalf("router AttachDomain: %v", err)
+	routing := router.NewService(router.ServiceConfig{Store: sqlite, Router: fakeRouter, LocksDir: t.TempDir(), Now: func() time.Time { return now }})
+	runner := &compose.FakeRunner{}
+	executor := deployment.NewExecutor(deployment.Config{
+		Store: sqlite, Runner: runner, Routing: routing, Now: func() time.Time { return now },
+		Checkout: smokeWorktreeCheckout{},
+	})
+	runAttempt := func(id string) error {
+		attempt := app.Deployment{ID: id, AppID: model.ID, ReleaseID: app.ReleaseID(model.ID, "abc123"), CommitSHA: "abc123", Trigger: app.DeploymentTriggerRedeploy, Status: app.DeploymentStatusPending, StartedAt: now}
+		if err := sqlite.QueueRedeployment(ctx, attempt); err != nil {
+			return err
+		}
+		claimed, found, err := sqlite.ClaimNextPendingDeployment(ctx)
+		if err != nil || !found {
+			t.Fatalf("claim queued deployment: found=%t, error=%v", found, err)
+		}
+		return executor.Execute(ctx, claimed)
+	}
+	if err := runAttempt("dep_1"); err != nil {
+		t.Fatalf("RedeployCurrentMain: %v", err)
+	}
+	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].CommitSHA != "abc123" {
+		t.Fatalf("deploy requests = %#v", runner.DeployRequests)
 	}
 
-	apps, err := service.ListApps(ctx)
+	if err := routing.Attach(ctx, router.AttachRequest{AppID: model.ID, ServiceName: "web", DomainName: "example.com", Port: 3000}); err != nil {
+		t.Fatal(err)
+	}
+
+	apps, err := sqlite.ListApps(ctx)
 	if err != nil {
 		t.Fatalf("ListApps: %v", err)
 	}
-	view := tui.NewAppListView(apps, map[string]app.DeploymentStatus{model.ID: app.DeploymentStatusSucceeded}, map[string][]app.Domain{model.ID: {domain}})
+	attempts, err := sqlite.ListDeploymentsByApp(ctx, model.ID)
+	if err != nil || len(attempts) != 1 || attempts[0].Status != app.DeploymentStatusSucceeded {
+		t.Fatalf("successful attempts = %#v, error = %v", attempts, err)
+	}
+	domains, err := sqlite.ListDomainsByApp(ctx, model.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := tui.NewAppListView(apps, map[string]app.DeploymentStatus{model.ID: attempts[0].Status}, map[string][]app.Domain{model.ID: domains})
 	screen := tui.NewAppListScreen(view)
 	rows := screen.Rows()
 	if len(rows) != 1 {
@@ -150,4 +125,31 @@ func TestSmokeFakeAppLifecycle(t *testing.T) {
 	if rows[0].Name != "my-app" || rows[0].Status != "healthy" || rows[0].DomainCount != 1 {
 		t.Fatalf("app list row = %#v", rows[0])
 	}
+
+	failure := errors.New("fake build failed")
+	runner.DeployErr = compose.NewDeployError(compose.DeployStageBuildServices, failure)
+	if err := runAttempt("dep_failed"); !errors.Is(err, failure) {
+		t.Fatalf("failed RedeployCurrentMain error = %v", err)
+	}
+	attempts, err = sqlite.ListDeploymentsByApp(ctx, model.ID)
+	if err != nil || len(attempts) != 2 {
+		t.Fatalf("attempts after failure = %#v, error = %v", attempts, err)
+	}
+	var failed app.Deployment
+	for _, attempt := range attempts {
+		if attempt.ID == "dep_failed" {
+			failed = attempt
+		}
+	}
+	if failed.Status != app.DeploymentStatusFailed || failed.FailureStage != "build services" {
+		t.Fatalf("failed attempt = %#v", failed)
+	}
+	release, err := sqlite.GetReleaseByAppCommit(ctx, model.ID, "abc123")
+	if err != nil || release.Status != app.ReleaseStatusSucceeded {
+		t.Fatalf("successful release after retry failure = %#v, error = %v", release, err)
+	}
 }
+
+type smokeWorktreeCheckout struct{}
+
+func (smokeWorktreeCheckout) Checkout(context.Context, string, string, string) error { return nil }

@@ -88,6 +88,7 @@ func TestOpenSSHGitReceivePushToCreateEndToEnd(t *testing.T) {
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 
 	clientKeyPath := filepath.Join(tmp, "client_ed25519")
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
@@ -98,7 +99,7 @@ func TestOpenSSHGitReceivePushToCreateEndToEnd(t *testing.T) {
 
 	dataDir := filepath.Join(tmp, "data")
 	authorizedKeysPath := filepath.Join(tmp, "authorized_keys")
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=fake %s git-receive",
+	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s %s git-receive",
 		binDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
@@ -110,7 +111,6 @@ func TestOpenSSHGitReceivePushToCreateEndToEnd(t *testing.T) {
 		"SSHDOCK_DATA_DIR="+dataDir,
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
 		"SSHDOCK_GIT_RECEIVE_COMMAND="+receiveCommand,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
 	runCommandInput(t, root, env, publicKey, sshdockPath, "ssh-keys", "add", "admin")
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,8 +17,6 @@ func TestRunDaemonContextDoesNotDeployAppsOnStartup(t *testing.T) {
 	dbPath := filepath.Join(dataDir, "sshdock.db")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR", "startup must not deploy")
 	now := time.Date(2026, 7, 16, 9, 0, 0, 0, time.UTC)
 	db, err := store.OpenSQLite(context.Background(), dbPath)
 	if err != nil {
@@ -72,11 +71,18 @@ func TestRunDaemonContextMarksInterruptedDeploymentFailedOnStartup(t *testing.T)
 	if err := db.CreateRelease(context.Background(), appmodel.Release{ID: "rel_1", AppID: "app_1", CommitSHA: "abc123", ComposePath: "/apps/app_1/worktree/compose.yml", Status: appmodel.ReleaseStatusDeploying, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateRelease: %v", err)
 	}
-	if err := db.CreateDeployment(context.Background(), appmodel.Deployment{ID: "dep_1", AppID: "app_1", ReleaseID: "rel_1", CommitSHA: "abc123", Trigger: appmodel.DeploymentTriggerPush, Status: appmodel.DeploymentStatusDeploying, StartedAt: now}); err != nil {
-		t.Fatalf("CreateDeployment: %v", err)
+	if err := db.QueueDeployment(context.Background(), appmodel.Deployment{ID: "dep_1", AppID: "app_1", ReleaseID: "rel_1", CommitSHA: "abc123", Trigger: appmodel.DeploymentTriggerPush, Status: appmodel.DeploymentStatusDeploying, StartedAt: now}, ""); err != nil {
+		t.Fatalf("QueueDeployment: %v", err)
 	}
-	if err := db.CreateDeployment(context.Background(), appmodel.Deployment{ID: "dep_redeploy", AppID: "app_1", ReleaseID: "rel_1", CommitSHA: "abc123", Trigger: appmodel.DeploymentTriggerRedeploy, Status: appmodel.DeploymentStatusDeploying, StartedAt: now}); err != nil {
-		t.Fatalf("CreateDeployment redeploy: %v", err)
+	if err := db.CreateApp(context.Background(), appmodel.App{ID: "app_retry", Name: "app_retry", Status: appmodel.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	retry := appmodel.Deployment{ID: "dep_redeploy", AppID: "app_retry", ReleaseID: appmodel.ReleaseID("app_retry", "abc123"), CommitSHA: "abc123", Trigger: appmodel.DeploymentTriggerRedeploy, Status: appmodel.DeploymentStatusPending, StartedAt: now}
+	if err := db.QueueRedeployment(context.Background(), retry); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := db.ClaimNextPendingDeployment(context.Background()); err != nil || !found {
+		t.Fatalf("claim redeploy: %v, %v", found, err)
 	}
 	if err := db.CreateApp(context.Background(), appmodel.App{ID: "app_pending", Name: "app_pending", Status: appmodel.AppStatusDeploying, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateApp pending: %v", err)
@@ -113,11 +119,16 @@ func TestRunDaemonContextMarksInterruptedDeploymentFailedOnStartup(t *testing.T)
 	if err != nil {
 		t.Fatalf("ListDeploymentsByApp: %v", err)
 	}
-	if len(deployments) != 2 || deployments[0].Status != appmodel.DeploymentStatusFailed || deployments[0].FailureStage != "daemon restart" || deployments[0].RetryGuidance == "" {
-		t.Fatalf("deployments = %#v, want interrupted push deployment marked failed", deployments)
+	if len(deployments) != 1 || deployments[0].Status != appmodel.DeploymentStatusFailed || deployments[0].FailureStage != "daemon restart" || deployments[0].RetryGuidance == "" {
+		t.Fatalf("deployments = %#v, want interrupted push marked failed", deployments)
 	}
-	if deployments[1].ID != "dep_redeploy" || deployments[1].Status != appmodel.DeploymentStatusDeploying {
-		t.Fatalf("deployments = %#v, want independent redeploy attempt untouched", deployments)
+	retries, err := db.ListDeploymentsByApp(context.Background(), "app_retry")
+	if err != nil || len(retries) != 1 || retries[0].Status != appmodel.DeploymentStatusFailed || retries[0].FailureStage != "daemon restart" {
+		t.Fatalf("redeploys = %#v, %v; want interrupted daemon-owned redeploy failed", retries, err)
+	}
+	log, err := db.DeploymentLog(context.Background(), "app_retry", "dep_redeploy")
+	if err != nil || !strings.Contains(log.Content, "failed stage=daemon restart") {
+		t.Fatalf("redeploy log = %#v, %v", log, err)
 	}
 	pendingDeployments, err := db.ListDeploymentsByApp(context.Background(), "app_pending")
 	if err != nil {

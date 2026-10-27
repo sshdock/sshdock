@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
+func TestCaddyRouterSyncRoutesRendersConfigAndReloads(t *testing.T) {
 	ctx := context.Background()
 	configPath := filepath.Join(t.TempDir(), "Caddyfile")
 	executor := &recordingCaddyExecutor{}
@@ -20,8 +20,8 @@ func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
 	})
 
 	route := Route{AppID: "app_1", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true}
-	if err := router.AttachDomain(ctx, route); err != nil {
-		t.Fatalf("AttachDomain: %v", err)
+	if err := router.SyncRoutes(ctx, []Route{route}); err != nil {
+		t.Fatalf("SyncRoutes: %v", err)
 	}
 
 	config := readText(t, configPath)
@@ -53,7 +53,7 @@ func TestCaddyRouterAttachDomainRendersConfigAndReloads(t *testing.T) {
 	}
 }
 
-func TestCaddyRouterReloadsMainConfigAcrossAttachAndFinalDetach(t *testing.T) {
+func TestCaddyRouterReloadsMainConfigAcrossPopulatedAndEmptySnapshots(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		separate bool
@@ -91,13 +91,11 @@ func TestCaddyRouterReloadsMainConfigAcrossAttachAndFinalDetach(t *testing.T) {
 			executor := &recordingCaddyExecutor{}
 			router := NewCaddyRouter(CaddyRouterConfig{ConfigPath: generated, MainConfigPath: mainPath, AdminAddress: test.admin, Executor: executor})
 			for _, attach := range []bool{true, false} {
-				var err error
+				var routes []Route
 				if attach {
-					err = router.AttachDomain(ctx, Route{DomainName: "managed.example.com", Port: 3000})
-				} else {
-					err = router.DetachDomain(ctx, "managed.example.com")
+					routes = []Route{{DomainName: "managed.example.com", Port: 3000}}
 				}
-				if err != nil {
+				if err := router.SyncRoutes(ctx, routes); err != nil {
 					t.Fatal(err)
 				}
 				fragment := readText(t, generated)
@@ -127,32 +125,12 @@ func TestCaddyRouterReloadsMainConfigAcrossAttachAndFinalDetach(t *testing.T) {
 	}
 }
 
-func TestCaddyRouterPreservesExistingRoutesWhenAddingDomain(t *testing.T) {
-	ctx := context.Background()
-	configPath := filepath.Join(t.TempDir(), "Caddyfile")
-	router := NewCaddyRouter(CaddyRouterConfig{
-		ConfigPath: configPath,
-		Executor:   &recordingCaddyExecutor{},
-	})
-
-	if err := router.AttachDomain(ctx, Route{AppID: "app_1", ServiceName: "web", DomainName: "one.example.com", Port: 3000, HTTPS: true}); err != nil {
-		t.Fatalf("AttachDomain one: %v", err)
-	}
-	if err := router.AttachDomain(ctx, Route{AppID: "app_2", ServiceName: "api", DomainName: "two.example.com", Port: 4000, HTTPS: true}); err != nil {
-		t.Fatalf("AttachDomain two: %v", err)
-	}
-
-	config := readText(t, configPath)
-	for _, want := range []string{"one.example.com {", "reverse_proxy 127.0.0.1:3000", "two.example.com {", "reverse_proxy 127.0.0.1:4000"} {
-		if !strings.Contains(config, want) {
-			t.Fatalf("config missing %q:\n%s", want, config)
-		}
-	}
-}
-
 func TestCaddyRouterSyncRoutesReplacesConfigWithRoutes(t *testing.T) {
 	ctx := context.Background()
 	configPath := filepath.Join(t.TempDir(), "Caddyfile")
+	if err := os.WriteFile(configPath, []byte("old.example.com {\n\treverse_proxy 127.0.0.1:3100\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	router := NewCaddyRouter(CaddyRouterConfig{
 		ConfigPath: configPath,
 		Executor:   &recordingCaddyExecutor{},
@@ -176,6 +154,9 @@ func TestCaddyRouterSyncRoutesReplacesConfigWithRoutes(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Fatalf("config missing %q:\n%s", want, config)
 		}
+	}
+	if strings.Contains(config, "old.example.com") {
+		t.Fatalf("previous route survived snapshot replacement:\n%s", config)
 	}
 	if strings.Contains(config, "api:4000") || strings.Contains(config, "web:3000") {
 		t.Fatalf("config should use host loopback upstreams, not Compose service DNS:\n%s", config)
@@ -240,33 +221,6 @@ func TestCaddyRouterValidationFailureDoesNotReplaceExistingConfigOrReload(t *tes
 	}
 }
 
-func TestCaddyRouterDetachDomainRendersRemainingRoutes(t *testing.T) {
-	ctx := context.Background()
-	configPath := filepath.Join(t.TempDir(), "Caddyfile")
-	router := NewCaddyRouter(CaddyRouterConfig{
-		ConfigPath: configPath,
-		Executor:   &recordingCaddyExecutor{},
-	})
-
-	if err := router.AttachDomain(ctx, Route{AppID: "app_1", ServiceName: "web", DomainName: "one.example.com", Port: 3000, HTTPS: true}); err != nil {
-		t.Fatalf("AttachDomain one: %v", err)
-	}
-	if err := router.AttachDomain(ctx, Route{AppID: "app_2", ServiceName: "api", DomainName: "two.example.com", Port: 4000, HTTPS: true}); err != nil {
-		t.Fatalf("AttachDomain two: %v", err)
-	}
-	if err := router.DetachDomain(ctx, "one.example.com"); err != nil {
-		t.Fatalf("DetachDomain: %v", err)
-	}
-
-	config := readText(t, configPath)
-	if strings.Contains(config, "one.example.com") {
-		t.Fatalf("detached route remains in config:\n%s", config)
-	}
-	if !strings.Contains(config, "two.example.com") {
-		t.Fatalf("remaining route missing from config:\n%s", config)
-	}
-}
-
 func TestCaddyRouterReloadErrorIsReturned(t *testing.T) {
 	ctx := context.Background()
 	failure := errors.New("reload failed")
@@ -275,9 +229,9 @@ func TestCaddyRouterReloadErrorIsReturned(t *testing.T) {
 		Executor:   &recordingCaddyExecutor{ErrByCommand: map[string]error{"reload": failure}},
 	})
 
-	err := router.AttachDomain(ctx, Route{DomainName: "example.com", ServiceName: "web", Port: 3000})
+	err := router.SyncRoutes(ctx, []Route{{DomainName: "example.com", ServiceName: "web", Port: 3000}})
 	if !errors.Is(err, failure) {
-		t.Fatalf("AttachDomain error = %v, want %v", err, failure)
+		t.Fatalf("SyncRoutes error = %v, want %v", err, failure)
 	}
 }
 

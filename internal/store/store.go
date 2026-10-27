@@ -70,8 +70,11 @@ type Store interface {
 	GetReleaseByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Release, error)
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
+	MarkReleaseDeployingUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
+	MarkReleaseFailedUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
 	CreateDeployment(ctx context.Context, model app.Deployment) error
 	QueueDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) error
+	QueueRedeployment(ctx context.Context, model app.Deployment) error
 	FindDeploymentByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Deployment, error)
 	ClaimNextPendingDeployment(ctx context.Context) (app.Deployment, bool, error)
 	RecordDeploymentQueued(ctx context.Context, accepted app.Event, queued app.Event) error
@@ -96,10 +99,10 @@ type Store interface {
 	UpsertSSHKey(ctx context.Context, key SSHKey) error
 	ListSSHKeys(ctx context.Context) ([]SSHKey, error)
 	DeleteSSHKey(ctx context.Context, name string) error
-	UpsertAppConfigValue(ctx context.Context, value AppConfigValue) error
+	SetAppConfigValue(ctx context.Context, value AppConfigValue, event app.Event) error
 	GetAppConfigValue(ctx context.Context, ref AppConfigRef) (AppConfigValue, error)
 	ListAppConfigValues(ctx context.Context, appID string) ([]AppConfigValue, error)
-	DeleteAppConfigValue(ctx context.Context, ref AppConfigRef) error
+	DeleteAppConfigValue(ctx context.Context, ref AppConfigRef, event app.Event) error
 	DeleteApp(ctx context.Context, appID string) error
 }
 

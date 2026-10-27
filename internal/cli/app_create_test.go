@@ -3,67 +3,118 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	appmodel "github.com/sshdock/sshdock/internal/app"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
-func TestStoreBackendRejectsInvalidAppNameWithRemoteUpdateCommand(t *testing.T) {
-	// Given
+func TestAppCreationRejectsInvalidNamesWithoutSideEffects(t *testing.T) {
+	for _, test := range []struct{ name, suggestion string }{
+		{"", "app"},
+		{"My_App", "my-app"},
+		{"App", "app"},
+		{"my_app", "my-app"},
+		{"my.app", "my-app"},
+		{"my app", "my-app"},
+		{"-app", "app"},
+		{"app-", "app"},
+		{strings.Repeat("a", 64), strings.Repeat("a", 63)},
+		{"應用", "app"},
+		{"../app", "app"},
+		{`one\app`, "one-app"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := newStoreBackendTestStore(t, ctx)
+			if err := db.SetServerConfig(ctx, store.ServerConfig{GitHost: "configured.example.com", UpdatedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			spy := &appCreationStore{Store: db}
+			root := t.TempDir()
+			setupper := &fakeReceiveRepoSetupper{}
+			persistent := NewStoreBackend(spy, StoreBackendConfig{AppsDir: filepath.Join(root, "apps"), GitHost: "fallback.example.com", RepoSetupper: setupper})
+			memory := NewMemoryBackend("configured.example.com")
+			for _, backend := range []interface {
+				CreateApp(string) (App, string, error)
+			}{memory, persistent} {
+				model, remote, err := backend.CreateApp(test.name)
+				want := fmt.Sprintf("app name %q is not a normalized DNS label; use %q\nrun: git remote set-url sshdock git@configured.example.com:%s.git", test.name, test.suggestion, test.suggestion)
+				var invalid *domaincfg.InvalidAppNameError
+				if model != (App{}) || remote != "" || err == nil || err.Error() != want || !errors.As(err, &invalid) {
+					t.Fatalf("CreateApp(%q) = %#v, %q, %v; want %q", test.name, model, remote, err, want)
+				}
+			}
+			if spy.getCalls != 0 || spy.createCalls != 0 || spy.listCalls != 0 || len(setupper.apps) != 0 || len(memory.apps) != 0 {
+				t.Fatalf("invalid name reached registry/repo: gets=%d creates=%d lists=%d setup=%#v memory=%#v", spy.getCalls, spy.createCalls, spy.listCalls, setupper.apps, memory.apps)
+			}
+			if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+				t.Fatalf("invalid name created files: %v, %v", entries, err)
+			}
+			if models, err := db.ListApps(ctx); err != nil || len(models) != 0 {
+				t.Fatalf("invalid name changed registry: %#v, %v", models, err)
+			}
+		})
+	}
+}
+
+func TestAppCreationUsesExactValidNamesWithoutRegistryScan(t *testing.T) {
 	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
+	db := newStoreBackendTestStore(t, ctx)
+	if err := db.CreateApp(ctx, appmodel.App{ID: "foo.bar", Name: "foo.bar"}); err != nil {
+		t.Fatal(err)
+	}
+	spy := &appCreationStore{Store: db}
 	setupper := &fakeReceiveRepoSetupper{}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		AppsDir:      filepath.Join(t.TempDir(), "apps"),
-		GitHost:      "sshdock.example.com",
-		RepoSetupper: setupper,
-	})
-
-	// When
-	_, _, err := backend.CreateApp("My_App")
-
-	// Then
-	want := "app name \"My_App\" is not a normalized DNS label; use \"my-app\"\nrun: git remote set-url sshdock git@sshdock.example.com:my-app.git"
-	if err == nil || err.Error() != want {
-		t.Fatalf("CreateApp error = %q, want %q", err, want)
+	persistent := NewStoreBackend(spy, StoreBackendConfig{AppsDir: filepath.Join(t.TempDir(), "apps"), GitHost: "server", RepoSetupper: setupper})
+	memory := NewMemoryBackend("server")
+	memory.apps["foo.bar"] = App{Name: "foo.bar"}
+	names := []string{"a", strings.Repeat("a", 63), "foo-bar", "foo--bar"}
+	for _, backend := range []interface {
+		CreateApp(string) (App, string, error)
+	}{memory, persistent} {
+		for _, name := range names {
+			model, _, err := backend.CreateApp(name)
+			if err != nil || model.Name != name {
+				t.Fatalf("CreateApp(%q) = %#v, %v", name, model, err)
+			}
+		}
+		if _, _, err := backend.CreateApp("foo-bar"); err == nil || err.Error() != `app "foo-bar" already exists` {
+			t.Fatalf("ordinary duplicate check = %v", err)
+		}
 	}
-	if len(setupper.apps) != 0 {
-		t.Fatalf("receive repo setup apps = %#v, want none", setupper.apps)
+	if spy.listCalls != 0 || spy.createCalls != len(names) || len(setupper.apps) != len(names) {
+		t.Fatalf("creation scan/writes/setup = %d/%d/%#v", spy.listCalls, spy.createCalls, setupper.apps)
 	}
-	if _, getErr := sqlite.GetApp(ctx, "My_App"); !errors.Is(getErr, store.ErrNotFound) {
-		t.Fatalf("GetApp error = %v, want ErrNotFound", getErr)
-	}
-}
-
-func TestMemoryBackendMatchesInvalidAppNameBoundary(t *testing.T) {
-	// Given
-	backend := NewMemoryBackend("sshdock.example.com")
-
-	// When
-	_, _, err := backend.CreateApp("My_App")
-
-	// Then
-	want := "app name \"My_App\" is not a normalized DNS label; use \"my-app\"\nrun: git remote set-url sshdock git@sshdock.example.com:my-app.git"
-	if err == nil || err.Error() != want {
-		t.Fatalf("CreateApp error = %q, want %q", err, want)
+	if _, err := db.GetApp(ctx, "foo.bar"); err != nil {
+		t.Fatalf("existing registry data was changed: %v", err)
 	}
 }
 
-func TestMemoryBackendRejectsRuntimeIdentityCollisionWithLegacyApp(t *testing.T) {
-	// Given
-	backend := NewMemoryBackend("sshdock.example.com")
-	backend.apps["foo.bar"] = App{Name: "foo.bar", Status: "created", NodeID: "local"}
+type appCreationStore struct {
+	store.Store
+	getCalls    int
+	createCalls int
+	listCalls   int
+}
 
-	// When
-	_, _, err := backend.CreateApp("foo-bar")
+func (s *appCreationStore) GetApp(ctx context.Context, id string) (appmodel.App, error) {
+	s.getCalls++
+	return s.Store.GetApp(ctx, id)
+}
 
-	// Then
-	want := `app name "foo-bar" conflicts with existing app "foo.bar" because both use runtime identity "sshdock_foo-bar"; choose another app name`
-	if err == nil || err.Error() != want {
-		t.Fatalf("CreateApp error = %q, want %q", err, want)
-	}
-	if _, found := backend.apps["foo-bar"]; found {
-		t.Fatal("foo-bar was created despite runtime identity collision")
-	}
+func (s *appCreationStore) CreateApp(ctx context.Context, model appmodel.App) error {
+	s.createCalls++
+	return s.Store.CreateApp(ctx, model)
+}
+
+func (s *appCreationStore) ListApps(context.Context) ([]appmodel.App, error) {
+	s.listCalls++
+	return nil, errors.New("creation must not scan the app registry")
 }

@@ -1,10 +1,9 @@
-package gitrecv
+package deployment
 
 import (
 	"context"
 	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/sshdock/sshdock/internal/app"
@@ -12,39 +11,31 @@ import (
 	storepkg "github.com/sshdock/sshdock/internal/store"
 )
 
-func TestPostReceiveHandlerFailedRetryPreservesSuccessfulRelease(t *testing.T) {
+func TestExecutorFailedRetryPreservesSuccessfulRelease(t *testing.T) {
 	// Given
 	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	sqlite := newExecutorTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	runner := &compose.FakeRunner{}
 	ids := []string{"dep_success", "dep_retry"}
-	nextID := 0
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  sqlite,
 		Runner: runner,
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
-		NewDeploymentID: func() (string, error) {
-			id := ids[nextID]
-			nextID++
-			return id, nil
-		},
 	})
-	input := "old abc123 refs/heads/main\n"
-	if err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input)); err != nil {
-		t.Fatalf("Handle first: %v", err)
+	if err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", ids[0]); err != nil {
+		t.Fatalf("Execute first: %v", err)
 	}
 	runner.DeployErr = errors.New("retry failed")
 
 	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader(input))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", ids[1])
 
 	// Then
 	if err == nil {
-		t.Fatal("Handle retry error = nil")
+		t.Fatal("Execute retry error = nil")
 	}
 	releases, listErr := sqlite.ListReleasesByApp(ctx, "my-app")
 	if listErr != nil {
@@ -62,25 +53,23 @@ func TestPostReceiveHandlerFailedRetryPreservesSuccessfulRelease(t *testing.T) {
 	}
 }
 
-func TestPostReceiveHandlerRecoversWhenConcurrentPushCreatesReleaseFirst(t *testing.T) {
+func TestExecutorRecoversWhenConcurrentPushCreatesReleaseFirst(t *testing.T) {
 	ctx := context.Background()
-	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
+	sqlite := newExecutorTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	racingStore := &concurrentReleaseWinnerStore{SQLiteStore: sqlite}
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
+	handler := newTestExecutor(t, Config{
 		Store:  racingStore,
 		Runner: &compose.FakeRunner{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
-			writeHookComposeFixture(t, gotWorktreePath)
+		Checkout: executorCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+			writeExecutorComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
-		NewDeploymentID: func() (string, error) { return "dep_racing_push", nil },
 	})
 
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", worktreePath, strings.NewReader("old abc123 refs/heads/main\n"))
+	err := executeAttempt(t, ctx, sqlite, handler, "my-app", "abc123", "dep_racing_push")
 
 	if err != nil {
-		t.Fatalf("Handle: %v", err)
+		t.Fatalf("Execute: %v", err)
 	}
 	releases, err := sqlite.ListReleasesByApp(ctx, "my-app")
 	if err != nil {

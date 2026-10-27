@@ -125,6 +125,7 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 	appsDir := filepath.Join(t.TempDir(), "apps")
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir: t.TempDir(), Router: &fakeRoutePublisher{},
 		NodeID:  "node-a",
 		AppsDir: appsDir,
 		GitHost: "git.example.com",
@@ -189,7 +190,7 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 		t.Fatalf("domains len = %d, want 1", len(domains))
 	}
 	wantDomain := app.Domain{
-		ID:          "dom_my_app_example_com",
+		ID:          domains[0].ID,
 		AppID:       "my-app",
 		ServiceName: "web",
 		DomainName:  "example.com",
@@ -198,76 +199,20 @@ func TestStoreBackendPersistsAppsAndDomains(t *testing.T) {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if domains[0] != wantDomain {
+	if domains[0].ID == "" || domains[0] != wantDomain {
 		t.Fatalf("stored domain = %#v, want %#v", domains[0], wantDomain)
 	}
-}
-
-func TestStoreBackendDomainAttachRebuildsRouterFromPersistedDomainsAndRecordsEvents(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
-	routePublisher := &fakeRoutePublisher{}
-	currentTime := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:  "node-a",
-		AppsDir: filepath.Join(t.TempDir(), "apps"),
-		Router:  routePublisher,
-		Now: func() time.Time {
-			value := currentTime
-			currentTime = currentTime.Add(time.Minute)
-			return value
-		},
-	})
-	runner := NewRunner(backend, "dev")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	for _, appName := range []string{"my-app", "api-app"} {
-		stdout.Reset()
-		stderr.Reset()
-		if code := runner.Run([]string{"apps", "create", appName}, &stdout, &stderr); code != 0 {
-			t.Fatalf("apps create %s exit code = %d, stderr = %q", appName, code, stderr.String())
-		}
-	}
-
 	stdout.Reset()
 	stderr.Reset()
-	if code := runner.Run([]string{"domains", "attach", "my-app", "web", "www.example.com", "--port", "3000"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("domains attach first exit code = %d, stderr = %q", code, stderr.String())
+	if code := runner.Run([]string{"domains", "detach", "my-app", "example.com"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("domains detach exit code = %d, stderr = %q", code, stderr.String())
 	}
-	stdout.Reset()
-	stderr.Reset()
-	if code := runner.Run([]string{"domains", "attach", "api-app", "api", "api.example.com", "--port", "4000"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("domains attach second exit code = %d, stderr = %q", code, stderr.String())
+	if !strings.Contains(stdout.String(), "detached example.com from my-app") {
+		t.Fatalf("domains detach stdout = %q", stdout.String())
 	}
-
-	if len(routePublisher.Syncs) != 2 {
-		t.Fatalf("router sync count = %d, want 2: %#v", len(routePublisher.Syncs), routePublisher.Syncs)
-	}
-	wantLastSync := []router.Route{
-		{AppID: "my-app", ServiceName: "web", DomainName: "www.example.com", Port: 3000, HTTPS: true},
-		{AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true},
-	}
-	gotLastSync := routePublisher.Syncs[len(routePublisher.Syncs)-1]
-	if len(gotLastSync) != len(wantLastSync) {
-		t.Fatalf("last router sync len = %d, want %d: %#v", len(gotLastSync), len(wantLastSync), gotLastSync)
-	}
-	for i := range wantLastSync {
-		if gotLastSync[i] != wantLastSync[i] {
-			t.Fatalf("last router sync[%d] = %#v, want %#v", i, gotLastSync[i], wantLastSync[i])
-		}
-	}
-
-	events, err := sqlite.ListEventsByApp(ctx, "api-app")
-	if err != nil {
-		t.Fatalf("ListEventsByApp: %v", err)
-	}
-	gotTypes := make([]string, 0, len(events))
-	for _, event := range events {
-		gotTypes = append(gotTypes, event.Type)
-	}
-	if strings.Join(gotTypes, ",") != "domain.attached,router.reloaded" {
-		t.Fatalf("event types = %#v, want domain.attached and router.reloaded", gotTypes)
+	domains, err = sqlite.ListDomainsByApp(ctx, "my-app")
+	if err != nil || len(domains) != 0 {
+		t.Fatalf("domains after detach = %#v, %v", domains, err)
 	}
 }
 
@@ -712,73 +657,6 @@ func TestStoreBackendDeploymentsListRedactsStoredConfigValues(t *testing.T) {
 	}
 }
 
-func TestStoreBackendDomainDetachDeletesDomainRebuildsRoutesAndRecordsEvents(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
-	routePublisher := &fakeRoutePublisher{}
-	now := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:  "node-a",
-		AppsDir: filepath.Join(t.TempDir(), "apps"),
-		Router:  routePublisher,
-		Now:     func() time.Time { return now },
-	})
-	cliRunner := NewRunner(backend, "dev")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	for _, model := range []app.App{
-		{ID: "my-app", Name: "my-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now},
-		{ID: "api-app", Name: "api-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now},
-	} {
-		model.RepoPath = filepath.Join(t.TempDir(), model.ID, "repo.git")
-		model.WorktreePath = filepath.Join(t.TempDir(), model.ID, "worktree")
-		if err := sqlite.CreateApp(ctx, model); err != nil {
-			t.Fatalf("CreateApp %s: %v", model.ID, err)
-		}
-	}
-	for _, domain := range []app.Domain{
-		{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now},
-		{ID: "dom_api_app_api_example_com", AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true, CreatedAt: now, UpdatedAt: now},
-	} {
-		if err := sqlite.AttachDomain(ctx, domain); err != nil {
-			t.Fatalf("AttachDomain %s: %v", domain.DomainName, err)
-		}
-	}
-
-	if code := cliRunner.Run([]string{"domains", "detach", "my-app", "example.com"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("domains detach exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "detached example.com from my-app") {
-		t.Fatalf("domains detach stdout = %q", stdout.String())
-	}
-	domains, err := sqlite.ListDomainsByApp(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("ListDomainsByApp: %v", err)
-	}
-	if len(domains) != 0 {
-		t.Fatalf("my-app domains after detach = %#v", domains)
-	}
-	if len(routePublisher.Syncs) != 1 {
-		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
-	}
-	wantRoutes := []router.Route{{AppID: "api-app", ServiceName: "api", DomainName: "api.example.com", Port: 4000, HTTPS: true}}
-	if len(routePublisher.Syncs[0]) != len(wantRoutes) || routePublisher.Syncs[0][0] != wantRoutes[0] {
-		t.Fatalf("router sync = %#v, want %#v", routePublisher.Syncs[0], wantRoutes)
-	}
-	events, err := sqlite.ListEventsByApp(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("ListEventsByApp: %v", err)
-	}
-	gotTypes := make([]string, 0, len(events))
-	for _, event := range events {
-		gotTypes = append(gotTypes, event.Type)
-	}
-	if strings.Join(gotTypes, ",") != "domain.detached,router.reloaded" {
-		t.Fatalf("event types = %#v, want domain.detached and router.reloaded", gotTypes)
-	}
-}
-
 func TestStoreBackendSSHKeyRemoveRevokesKeyAndRendersAuthorizedKeys(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
@@ -844,6 +722,7 @@ func TestStoreBackendAppRemoveCleansRuntimeStateAndPreservesOtherRoutes(t *testi
 	runner := &compose.FakeRunner{}
 	routePublisher := &fakeRoutePublisher{}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir:       t.TempDir(),
 		NodeID:         "node-a",
 		AppsDir:        appsDir,
 		RecoveryRunner: runner,
@@ -942,6 +821,7 @@ func TestStoreBackendAppRemoveSyncsEmptyRoutesWhenRemovingFinalRoutedApp(t *test
 	runner := &compose.FakeRunner{}
 	routePublisher := &fakeRoutePublisher{}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir:       t.TempDir(),
 		NodeID:         "node-a",
 		AppsDir:        appsDir,
 		RecoveryRunner: runner,
@@ -987,40 +867,6 @@ func TestStoreBackendAppRemoveSyncsEmptyRoutesWhenRemovingFinalRoutedApp(t *test
 	}
 }
 
-func TestStoreBackendDetachDomainSyncsEmptyRoutesWhenDetachingFinalDomain(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
-	now := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
-	routePublisher := &fakeRoutePublisher{}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		NodeID:  "node-a",
-		AppsDir: filepath.Join(t.TempDir(), "apps"),
-		Router:  routePublisher,
-		Now:     func() time.Time { return now },
-	})
-	cliRunner := NewRunner(backend, "dev")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	model := app.App{ID: "my-app", Name: "my-app", NodeID: "node-a", Status: app.AppStatusHealthy, CreatedAt: now, UpdatedAt: now}
-	if err := sqlite.CreateApp(ctx, model); err != nil {
-		t.Fatalf("CreateApp my-app: %v", err)
-	}
-	if err := sqlite.AttachDomain(ctx, app.Domain{ID: "dom_my_app_example_com", AppID: "my-app", ServiceName: "web", DomainName: "example.com", Port: 3000, HTTPS: true, CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatalf("AttachDomain my-app: %v", err)
-	}
-
-	if code := cliRunner.Run([]string{"domains", "detach", "my-app", "example.com"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("domains detach exit code = %d, stderr = %q", code, stderr.String())
-	}
-	if len(routePublisher.Syncs) != 1 {
-		t.Fatalf("router syncs = %#v", routePublisher.Syncs)
-	}
-	if len(routePublisher.Syncs[0]) != 0 {
-		t.Fatalf("router sync routes = %#v, want empty", routePublisher.Syncs[0])
-	}
-}
-
 func TestStoreBackendCurrentRuntimeCommandsUseComposeRunnerAndRecordState(t *testing.T) {
 	ctx := context.Background()
 	sqlite := newStoreBackendTestStore(t, ctx)
@@ -1044,6 +890,7 @@ func TestStoreBackendCurrentRuntimeCommandsUseComposeRunnerAndRecordState(t *tes
 	var stderr bytes.Buffer
 
 	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
+	startTestDeploymentWorker(t, sqlite, backend)
 
 	if code := cliRunner.Run([]string{"apps", "restart", "my-app"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("apps restart exit code = %d, stderr = %q", code, stderr.String())
@@ -1123,7 +970,7 @@ func TestStoreBackendCurrentRuntimeCommandsUseComposeRunnerAndRecordState(t *tes
 	for _, event := range events {
 		gotTypes = append(gotTypes, event.Type)
 	}
-	wantTypes := "restart.started,restart.succeeded,service.restart.started,service.restart.succeeded,redeploy.started,redeploy.succeeded"
+	wantTypes := "restart.started,restart.succeeded,service.restart.started,service.restart.succeeded,deploy.queued,deploy.started,deploy.succeeded,route.auto_skipped"
 	if strings.Join(gotTypes, ",") != wantTypes {
 		t.Fatalf("event types = %#v, want %s", gotTypes, wantTypes)
 	}

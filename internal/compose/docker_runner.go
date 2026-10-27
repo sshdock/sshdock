@@ -46,8 +46,11 @@ func (r *DockerRunner) DeployWithOutput(ctx context.Context, request DeployReque
 }
 
 func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout io.Writer, stderr io.Writer) (DeployResult, error) {
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return DeployResult{}, NewDeployError(DeployStageValidateCompose, err)
+	}
 	request.Env = WithGitSHA(request.Env, request.CommitSHA)
-	projectName := request.projectName()
 	baseArgs := composeArgs([]string{request.ComposePath}, projectName)
 
 	if _, err := fmt.Fprintln(stdout, "stage: validate compose"); err != nil {
@@ -121,23 +124,35 @@ func (r *DockerRunner) runDeploymentCommand(ctx context.Context, command Command
 }
 
 func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) error {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "restart")
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return err
+	}
+	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "restart")
 	if request.ServiceName != "" {
 		args = append(args, request.ServiceName)
 	}
 
-	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
+	_, err = r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }
 
 func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "down", "--remove-orphans")
-	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return err
+	}
+	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "down", "--remove-orphans")
+	_, err = r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }
 
 func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]ServiceStatus, error) {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "ps", "--all", "--format", "json")
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return nil, err
+	}
+	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "ps", "--all", "--format", "json")
 	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	if err != nil {
 		return nil, err
@@ -147,14 +162,23 @@ func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]Ser
 }
 
 func (r *DockerRunner) Logs(ctx context.Context, request LogsRequest) (string, error) {
-	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request), Env: request.Env})
+	args, err := logsArgs(request)
+	if err != nil {
+		return "", err
+	}
+	return r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 }
 
 func (r *DockerRunner) StreamLogs(ctx context.Context, request LogsRequest, stdout io.Writer, stderr io.Writer) error {
-	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
-		return streamer.Stream(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: logsArgs(request), Env: request.Env}, stdout, stderr)
+	args, err := logsArgs(request)
+	if err != nil {
+		return err
 	}
-	output, err := r.Logs(ctx, request)
+	command := Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env}
+	if streamer, ok := r.executor.(streamingCommandExecutor); ok {
+		return streamer.Stream(ctx, command, stdout, stderr)
+	}
+	output, err := r.executor.Run(ctx, command)
 	if err != nil {
 		return err
 	}
@@ -182,8 +206,12 @@ func commandArgs(base []string, tail ...string) []string {
 	return append(args, tail...)
 }
 
-func logsArgs(request LogsRequest) []string {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), "logs")
+func logsArgs(request LogsRequest) ([]string, error) {
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return nil, err
+	}
+	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "logs")
 	if request.Follow {
 		args = append(args, "--follow")
 	}
@@ -193,31 +221,14 @@ func logsArgs(request LogsRequest) []string {
 	if request.ServiceName != "" {
 		args = append(args, request.ServiceName)
 	}
-	return args
+	return args, nil
 }
 
-func (r DeployRequest) projectName() string {
-	return ProjectName(r.AppName)
-}
-
-func (r RestartRequest) projectName() string {
-	return ProjectName(r.AppName)
-}
-
-func (r RemoveRequest) projectName() string {
-	return ProjectName(r.AppName)
-}
-
-func (r StatusRequest) projectName() string {
-	return ProjectName(r.AppName)
-}
-
-func (r LogsRequest) projectName() string {
-	return ProjectName(r.AppName)
-}
-
-func ProjectName(appName string) string {
-	return domaincfg.AppIsolationName(appName)
+func ProjectName(appName string) (string, error) {
+	if err := domaincfg.ValidateAppName(appName); err != nil {
+		return "", err
+	}
+	return "sshdock_" + appName, nil
 }
 
 func parseServiceStatuses(output string) ([]ServiceStatus, error) {

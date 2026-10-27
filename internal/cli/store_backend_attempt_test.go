@@ -8,6 +8,8 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployment"
+	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -33,6 +35,7 @@ func TestStoreBackendRedeployCreatesDistinctAttemptsForSameRelease(t *testing.T)
 		},
 	})
 
+	startTestDeploymentWorker(t, sqlite, backend)
 	// When
 	if err := backend.RedeployApp("my-app"); err != nil {
 		t.Fatalf("RedeployApp first: %v", err)
@@ -67,6 +70,7 @@ func TestStoreBackendRedeployAttachesInitialRouteAfterConfigRecovery(t *testing.
 	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
 	router := &fakeRoutePublisher{}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir:            t.TempDir(),
 		NodeID:              "node-a",
 		AppsDir:             appsDir,
 		RecoveryRunner:      &compose.FakeRunner{DeployResult: compose.DeployResult{RouteFound: true, RouteTarget: compose.RouteTarget{ServiceName: "web", Port: 3000}}},
@@ -78,6 +82,7 @@ func TestStoreBackendRedeployAttachesInitialRouteAfterConfigRecovery(t *testing.
 		},
 	})
 
+	startTestDeploymentWorker(t, sqlite, backend)
 	if err := backend.RedeployApp("my-app"); err != nil {
 		t.Fatalf("RedeployApp: %v", err)
 	}
@@ -92,4 +97,51 @@ func TestStoreBackendRedeployAttachesInitialRouteAfterConfigRecovery(t *testing.
 	if len(router.Syncs) != 1 {
 		t.Fatalf("route syncs = %#v", router.Syncs)
 	}
+}
+
+type noopRecoveryCheckout struct{}
+
+func (noopRecoveryCheckout) Checkout(context.Context, string, string, string) error { return nil }
+
+func startTestDeploymentWorker(t *testing.T, db *store.SQLiteStore, backend *StoreBackend) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	routeAdapter := backend.router
+	if routeAdapter == nil {
+		routeAdapter = &fakeRoutePublisher{}
+	}
+	locksDir := backend.locksDir
+	if locksDir == "" {
+		locksDir = t.TempDir()
+	}
+	executor := deployment.NewExecutor(deployment.Config{Store: db, Runner: backend.recoveryRunner,
+		Checkout: noopRecoveryCheckout{}, ConfigResolver: backend.configManager, Now: backend.now,
+		Routing: router.NewService(router.ServiceConfig{Store: db, Router: routeAdapter, LocksDir: locksDir, Now: backend.now})})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			model, found, err := db.ClaimNextPendingDeployment(ctx)
+			if err != nil {
+				if ctx.Err() == nil {
+					t.Errorf("claim test deployment: %v", err)
+				}
+				return
+			}
+			if found {
+				if err := executor.Execute(ctx, model); err != nil {
+					t.Errorf("execute test deployment: %v", err)
+					return
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() { cancel(); <-done })
 }

@@ -2,9 +2,11 @@ package cli
 
 import "testing"
 
-func TestHealthCheckForHistoricalRolledBackReleaseWarns(t *testing.T) {
-	check := healthCheckForRelease("rel_legacy", "rolled_back")
-	if check.Status != "warn" {
-		t.Fatalf("health check = %#v, want legacy rolled_back status to warn", check)
+func TestHealthCheckForIncompleteReleaseWarns(t *testing.T) {
+	for _, status := range []string{"pending", "deploying"} {
+		check := healthCheckForRelease("rel_current", status)
+		if check.Status != "warn" {
+			t.Fatalf("health check for %s = %#v, want warning", status, check)
+		}
 	}
 }

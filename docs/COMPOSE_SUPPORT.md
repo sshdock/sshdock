@@ -34,6 +34,8 @@ Every Compose operation uses one SSHDock-controlled project name derived from th
 sshdock_<app-name>
 ```
 
+Runtime operations use the same DNS-label validation as app creation and Git receive. Each valid app name maps directly to its exact project name; existing noncanonical names are rejected.
+
 This project name takes precedence over a top-level Compose `name`, keeping ordinary containers, networks, and named volumes isolated between apps. Explicit global resource names, external resources, bind mounts, host networking, and similar host-coupled settings remain operator-owned Compose behavior.
 
 ## Native Deploy And Health Semantics

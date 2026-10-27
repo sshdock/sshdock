@@ -61,7 +61,7 @@ Preflight behaves the same way for completed blocking reports. `check` and `apps
 | `domains.check` | Array of `domain_name`, `service_name`, `port`, `https`, `status`, `detail` comparing intent with active Caddy configuration. |
 | `diagnostics` | `ok` and `checks`: each has `name`, `ok`, `warning`, `message`, `why`, `fix`. Warning checks can have `ok=true`; inspect `warning` separately. |
 
-Deployment states are `pending`, `deploying`, `succeeded`, and `failed`. Pending/deploying are incomplete; succeeded/failed are terminal. Daemon-interrupted active work is recorded as `failed` with failure/retry details, never silently treated as success or resumed. Triggers are `push`, `redeploy`, or historical `legacy`, `rollback`, `startup_recovery`. Release states are `pending`, `deploying`, `succeeded`, `failed`, and historical `rolled_back`. App states are `created`, `deploying`, `healthy`, `failed`, `unknown`.
+Deployment states are `pending`, `deploying`, `succeeded`, and `failed`. Pending/deploying are incomplete; succeeded/failed are terminal. Daemon-interrupted active work is recorded as `failed` with failure/retry details, never silently treated as success or resumed. Triggers are `push` and `redeploy`. Release states are `pending`, `deploying`, `succeeded`, and `failed`. App states are `created`, `deploying`, `healthy`, `failed`, `unknown`.
 
 Domain-check states are `ok`, `stored`, `unavailable`, `failed`, `missing`, `mismatch`. `stored` means active inspection is unsupported; `unavailable` means inspection failed. Neither proves a working route. Even `ok` only confirms matching active Caddy configuration; it does not test external DNS, TLS, network ingress, or an application response.
 

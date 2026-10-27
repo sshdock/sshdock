@@ -40,7 +40,7 @@ func (s *Service) restart(ctx context.Context, request restartRequest) error {
 		return err
 	}
 
-	env, err := s.resolveDeployEnv(ctx, request.appID, target.projectDir)
+	env, err := ResolveRuntimeEnv(ctx, target.model, s.configResolver)
 	if err != nil {
 		err = fmt.Errorf("resolve app config: %w", err)
 	} else {

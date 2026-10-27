@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -37,7 +38,6 @@ type CaddyRouter struct {
 	upstreamHost   string
 	adminAddress   string
 	activeClient   *http.Client
-	routes         map[string]Route
 }
 
 func NewCaddyRouter(config CaddyRouterConfig) *CaddyRouter {
@@ -55,22 +55,7 @@ func NewCaddyRouter(config CaddyRouterConfig) *CaddyRouter {
 		upstreamHost:   config.UpstreamHost,
 		adminAddress:   config.AdminAddress,
 		activeClient:   &http.Client{Timeout: 5 * time.Second},
-		routes:         map[string]Route{},
 	}
-}
-
-func (r *CaddyRouter) AttachDomain(ctx context.Context, route Route) error {
-	routes := copyRoutes(r.routes)
-	routes[route.DomainName] = route
-
-	return r.SyncRoutes(ctx, routesFromMap(routes))
-}
-
-func (r *CaddyRouter) DetachDomain(ctx context.Context, domainName string) error {
-	routes := copyRoutes(r.routes)
-	delete(routes, domainName)
-
-	return r.SyncRoutes(ctx, routesFromMap(routes))
 }
 
 func (r *CaddyRouter) SyncRoutes(ctx context.Context, routes []Route) error {
@@ -79,14 +64,10 @@ func (r *CaddyRouter) SyncRoutes(ctx context.Context, routes []Route) error {
 		return err
 	}
 
-	if err := r.Reload(ctx); err != nil {
-		return err
-	}
-	r.routes = routeMap
-	return nil
+	return r.reload(ctx)
 }
 
-func (r *CaddyRouter) Reload(ctx context.Context) error {
+func (r *CaddyRouter) reload(ctx context.Context) error {
 	if r.executor == nil {
 		return nil
 	}
@@ -172,7 +153,7 @@ func renderCaddyfile(routes map[string]Route, upstreamHost string, adminAddress 
 		builder.WriteString("\treverse_proxy ")
 		builder.WriteString(upstreamHost)
 		builder.WriteString(":")
-		builder.WriteString(portString(route.Port))
+		builder.WriteString(strconv.Itoa(route.Port))
 		builder.WriteString("\n")
 		builder.WriteString("}\n\n")
 	}
@@ -199,40 +180,4 @@ func routesByDomain(routes []Route) map[string]Route {
 		result[route.DomainName] = route
 	}
 	return result
-}
-
-func copyRoutes(routes map[string]Route) map[string]Route {
-	copied := map[string]Route{}
-	for domain, route := range routes {
-		copied[domain] = route
-	}
-	return copied
-}
-
-func routesFromMap(routeMap map[string]Route) []Route {
-	domains := make([]string, 0, len(routeMap))
-	for domain := range routeMap {
-		domains = append(domains, domain)
-	}
-	sort.Strings(domains)
-
-	routes := make([]Route, 0, len(domains))
-	for _, domain := range domains {
-		routes = append(routes, routeMap[domain])
-	}
-	return routes
-}
-
-func portString(port int) string {
-	if port == 0 {
-		return "80"
-	}
-
-	digits := []byte{}
-	for port > 0 {
-		digits = append([]byte{byte('0' + port%10)}, digits...)
-		port /= 10
-	}
-
-	return string(digits)
 }

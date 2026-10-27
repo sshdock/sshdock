@@ -3,15 +3,11 @@
 package e2e
 
 import (
-	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestGitReceiveInvalidAppNameEndToEnd(t *testing.T) {
@@ -48,7 +44,6 @@ func TestGitReceiveInvalidAppNameEndToEnd(t *testing.T) {
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GIT_SSH="+fakeSSHPath,
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
 
 	// When
@@ -70,16 +65,8 @@ func TestGitReceiveInvalidAppNameEndToEnd(t *testing.T) {
 		}
 	}
 
-	sqlite, openErr := store.OpenSQLite(context.Background(), filepath.Join(dataDir, "sshdock.db"))
-	if openErr != nil {
-		t.Fatalf("OpenSQLite: %v", openErr)
-	}
-	t.Cleanup(func() { _ = sqlite.Close() })
-	if _, getErr := sqlite.GetApp(context.Background(), "My_App"); !errors.Is(getErr, store.ErrNotFound) {
-		t.Fatalf("GetApp(My_App) error = %v, want ErrNotFound", getErr)
-	}
-	if _, getErr := sqlite.GetApp(context.Background(), "my-app"); !errors.Is(getErr, store.ErrNotFound) {
-		t.Fatalf("GetApp(my-app) error = %v, want ErrNotFound", getErr)
+	if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+		t.Fatalf("invalid receive initialized host state: %v", err)
 	}
 }
 

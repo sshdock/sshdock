@@ -99,21 +99,32 @@ func TestAppPreflightKeepsDatabaseAndMissingKeyUnchanged(t *testing.T) {
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", keyPath)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
+	t.Setenv("PATH", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	if code := runWithEnv([]string{"apps", "check", "read-only", "--json"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("exit=%d stdout=%s stderr=%s", code, &stdout, &stderr)
 	}
 	var result struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
+		Data struct {
+			OK     bool                            `json:"ok"`
+			Checks []struct{ Name, Status string } `json:"checks"`
+		} `json:"data"`
+		Error json.RawMessage `json:"error"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Error.Code != "unavailable" || stderr.Len() != 0 {
+	if result.Data.OK || string(result.Error) != "null" || stderr.Len() != 0 {
 		t.Fatalf("stdout=%s stderr=%s", &stdout, &stderr)
+	}
+	nativeFailed := false
+	for _, check := range result.Data.Checks {
+		if check.Name == "native Compose validation" && check.Status == "fail" {
+			nativeFailed = true
+		}
+	}
+	if !nativeFailed {
+		t.Fatalf("missing native Compose failure: %s", &stdout)
 	}
 	after, err := os.ReadFile(dbPath)
 	if err != nil || !bytes.Equal(before, after) {

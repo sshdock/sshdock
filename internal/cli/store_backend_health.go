@@ -136,7 +136,7 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 		projectDir, composePath, err := appmodel.CurrentComposeEntry(model)
 		if err != nil {
 			report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "services", Detail: err.Error()})
-		} else if err := b.addServiceStatus(ctx, name, projectDir, composePath, domains, &report); err != nil {
+		} else if err := b.addServiceStatus(ctx, model, projectDir, composePath, domains, &report); err != nil {
 			return AppHealth{}, compose.RedactError(err, redactionValues)
 		}
 	}
@@ -182,14 +182,15 @@ func addRouteHealth(routes []DomainCheck, report *AppHealth) {
 	report.Checks = append(report.Checks, HealthCheck{Status: checkStatus, Name: "routes", Detail: report.RouteStatus})
 }
 
-func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projectDir string, composePath string, domains []appmodel.Domain, report *AppHealth) error {
-	env, err := b.configEnv(ctx, name, projectDir)
+func (b *StoreBackend) addServiceStatus(ctx context.Context, model appmodel.App, projectDir string, composePath string, domains []appmodel.Domain, report *AppHealth) error {
+	env, err := appmodel.ResolveRuntimeEnv(ctx, model, b.configManager)
 	if err != nil {
-		return err
+		report.Checks = append(report.Checks, HealthCheck{Status: "warn", Name: "services", Detail: err.Error()})
+		return nil
 	}
-	services, err := b.recoveryRunner.Status(ctx, compose.StatusRequest{AppName: name, ProjectDir: projectDir, ComposePath: composePath, Env: env})
+	services, err := b.recoveryRunner.Status(ctx, compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, Env: env})
 	if err != nil {
-		return fmt.Errorf("load service status for app %q: %w", name, err)
+		return fmt.Errorf("load service status for app %q: %w", model.ID, err)
 	}
 	report.ServiceCount = len(services)
 	for _, service := range services {
@@ -210,7 +211,7 @@ func (b *StoreBackend) addServiceStatus(ctx context.Context, name string, projec
 			candidates = append(candidates, service.Name)
 		}
 	}
-	statusRequest := compose.StatusRequest{AppName: name, ProjectDir: projectDir, ComposePath: composePath, Env: env}
+	statusRequest := compose.StatusRequest{AppName: model.ID, ProjectDir: projectDir, ComposePath: composePath, Env: env}
 	nonRestarting, err := compose.NonRestartingServices(composePath, env, candidates)
 	if inspector, ok := b.recoveryRunner.(interface {
 		NonRestartingServices(context.Context, compose.StatusRequest, []string) ([]string, error)

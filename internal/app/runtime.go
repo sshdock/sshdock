@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/sshdock/sshdock/internal/compose"
 )
 
 type runtimeTarget struct {
+	model       App
 	projectDir  string
 	composePath string
 }
@@ -22,27 +22,17 @@ func (s *Service) currentRuntimeTarget(ctx context.Context, appID string) (runti
 	if err != nil {
 		return runtimeTarget{}, err
 	}
-	return runtimeTarget{projectDir: projectDir, composePath: composePath}, nil
+	return runtimeTarget{model: model, projectDir: projectDir, composePath: composePath}, nil
 }
 
 func CurrentComposeEntry(model App) (string, string, error) {
-	projectDir, err := currentProjectDir(model)
-	if err != nil {
-		return "", "", err
+	projectDir := model.WorktreePath
+	if projectDir == "" {
+		return "", "", fmt.Errorf("resolve current Compose entry for app %q: worktree path is empty; redeploy current remote main", model.ID)
 	}
 	composePath, err := compose.DetectFile(projectDir)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve current Compose entry for app %q: %w", model.ID, err)
 	}
 	return projectDir, composePath, nil
-}
-
-func currentProjectDir(model App) (string, error) {
-	if model.WorktreePath != "" {
-		return model.WorktreePath, nil
-	}
-	if model.ComposePath != "" {
-		return filepath.Dir(model.ComposePath), nil
-	}
-	return "", fmt.Errorf("resolve current Compose entry for app %q: worktree path is empty; redeploy current remote main", model.ID)
 }

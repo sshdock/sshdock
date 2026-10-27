@@ -161,6 +161,8 @@ ssh sshdock@sshdock.example.com apps remove my-app --force
 
 `apps redeploy` retries the commit currently stored at remote `main`, creating another deployment attempt even when that commit was deployed before. To select an older commit or tag, follow [manual deployment recovery](docs/RECOVERY.md): review the target, confirm its full commit, and push with an explicit expected-main lease. Then verify the new attempt, service health and public route separately. Preserved volumes do not reverse database migrations.
 
+Push and redeploy use the same deployment execution: redacted stage logs, Compose warnings, release outcomes, and initial routing. Redeploy queues the attempt for the daemon and waits for its result; it rejects an app with a pending or active deployment. Disconnecting the waiting client leaves the queued deployment running. Both triggers record `deploy.started`, `deploy.succeeded`, or `deploy.failed`; the deployment's `trigger` distinguishes them. A failed retry keeps any earlier success for that release. If containers deploy but outcome recording fails, the attempt stays `succeeded` with an error detail and the waiting redeploy command reports that error.
+
 On startup, `sshdockd` resumes pending push deployments but never silently reruns an attempt interrupted while actively deploying. Docker Compose restart policies own container recovery after Docker or host reboot. `apps health` and `diagnostics` warn when a routed or running service still uses Compose's default non-restarting policy; use `restart: unless-stopped` or `restart: always` when that service should return after reboot.
 
 Manual domain attach is available when auto-routing is not enough:

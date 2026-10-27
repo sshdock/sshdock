@@ -15,26 +15,50 @@ import (
 )
 
 func TestParseReceivePackCommand(t *testing.T) {
-	appName, err := ParseReceivePackCommand("git-receive-pack 'test-app.git'")
-	if err != nil {
-		t.Fatalf("ParseReceivePackCommand: %v", err)
+	for _, command := range []string{
+		"git-receive-pack 'test-app.git'",
+		`git-receive-pack "test-app.git"`,
+		"git-receive-pack test-app.git",
+		" \tgit-receive-pack\t'test-app.git' \n",
+	} {
+		t.Run(command, func(t *testing.T) {
+			name, err := ParseReceivePackCommand(command)
+			if err != nil || name != "test-app" {
+				t.Fatalf("ParseReceivePackCommand = %q, %v", name, err)
+			}
+		})
 	}
-	if appName != "test-app" {
-		t.Fatalf("appName = %q, want test-app", appName)
+	for _, name := range []string{"a", "0", strings.Repeat("a", 63), "foo--bar"} {
+		got, err := ParseReceivePackCommand("git-receive-pack '" + name + ".git'")
+		if err != nil || got != name {
+			t.Fatalf("ParseReceivePackCommand(%q) = %q, %v", name, got, err)
+		}
 	}
 }
 
-func TestParseReceivePackCommandRejectsNamespacePath(t *testing.T) {
-	_, err := ParseReceivePackCommand("git-receive-pack 'ike/test-app.git'")
-	if err == nil {
-		t.Fatal("ParseReceivePackCommand succeeded, want error")
-	}
-}
-
-func TestParseReceivePackCommandRejectsUnsupportedCommand(t *testing.T) {
-	_, err := ParseReceivePackCommand("git-upload-pack 'test-app.git'")
-	if err == nil {
-		t.Fatal("ParseReceivePackCommand succeeded, want error")
+func TestParseReceivePackCommandRejectsUnsafeCommandAndPath(t *testing.T) {
+	for _, command := range []string{
+		"git-upload-pack 'test-app.git'",
+		"git-receive-pack-other 'test-app.git'",
+		"git-receive-pack",
+		"git-receive-pack ''",
+		"git-receive-pack 'app'",
+		"git-receive-pack '.git'",
+		"git-receive-pack 'ike/test-app.git'",
+		"git-receive-pack '../test-app.git'",
+		`git-receive-pack 'ike\test-app.git'`,
+		"git-receive-pack '/test-app.git'",
+		"git-receive-pack 'test'app.git'",
+		"git-receive-pack 'test-app.git' extra",
+		"git-receive-pack 'test-app.git",
+		`git-receive-pack "test-app.git'`,
+		"git-receive-pack 'app;echo injected.git'",
+	} {
+		t.Run(command, func(t *testing.T) {
+			if name, err := ParseReceivePackCommand(command); err == nil || name != "" {
+				t.Fatalf("ParseReceivePackCommand = %q, %v, want rejection", name, err)
+			}
+		})
 	}
 }
 

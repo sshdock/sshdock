@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -249,8 +248,7 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteSucceededRelease(t *testing.T) {
 	good := app.Release{ID: "rel_good", AppID: "app_1", CommitSHA: "good", Status: app.ReleaseStatusSucceeded, CreatedAt: now, UpdatedAt: now}
 	deploying := app.Release{ID: "rel_deploying", AppID: "app_1", CommitSHA: "deploying", Status: app.ReleaseStatusDeploying, CreatedAt: now, UpdatedAt: now}
 	failed := app.Release{ID: "rel_failed", AppID: "app_1", CommitSHA: "failed", Status: app.ReleaseStatusFailed, CreatedAt: now, UpdatedAt: now}
-	legacyRolledBack := app.Release{ID: "rel_legacy_rollback", AppID: "app_1", CommitSHA: "legacy", Status: app.ReleaseStatusRolledBack, CreatedAt: now, UpdatedAt: now}
-	for _, release := range []app.Release{good, deploying, failed, legacyRolledBack} {
+	for _, release := range []app.Release{good, deploying, failed} {
 		if err := store.CreateRelease(ctx, release); err != nil {
 			t.Fatalf("CreateRelease %s: %v", release.ID, err)
 		}
@@ -268,9 +266,6 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteSucceededRelease(t *testing.T) {
 	if err := store.MarkReleaseDeployingUnlessSucceeded(ctx, failed.ID, now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("MarkReleaseDeployingUnlessSucceeded failed: %v", err)
 	}
-	if err := store.MarkReleaseDeployingUnlessSucceeded(ctx, legacyRolledBack.ID, now.Add(2*time.Minute)); err != nil {
-		t.Fatalf("MarkReleaseDeployingUnlessSucceeded legacy rolled back: %v", err)
-	}
 
 	gotGood, err := store.GetRelease(ctx, good.ID)
 	if err != nil {
@@ -284,10 +279,6 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteSucceededRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelease failed: %v", err)
 	}
-	gotLegacyRolledBack, err := store.GetRelease(ctx, legacyRolledBack.ID)
-	if err != nil {
-		t.Fatalf("GetRelease legacy rolled back: %v", err)
-	}
 	if gotGood.Status != app.ReleaseStatusSucceeded {
 		t.Fatalf("good release status = %q", gotGood.Status)
 	}
@@ -296,9 +287,6 @@ func TestSQLiteStoreFailedAttemptDoesNotDemoteSucceededRelease(t *testing.T) {
 	}
 	if gotFailed.Status != app.ReleaseStatusDeploying {
 		t.Fatalf("failed release status = %q", gotFailed.Status)
-	}
-	if gotLegacyRolledBack.Status != app.ReleaseStatusDeploying {
-		t.Fatalf("legacy rolled-back release status = %q, want current deploying state", gotLegacyRolledBack.Status)
 	}
 }
 
@@ -467,81 +455,6 @@ func TestSQLiteStoreClaimNextPendingDeploymentMarksOnlyOneAttemptDeploying(t *te
 	}
 }
 
-func TestOpenSQLiteMigratesLegacyHistoryLosslessly(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	legacy, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open legacy database: %v", err)
-	}
-	statements := []string{
-		`create table apps (id text primary key, name text not null, node_id text not null, repo_path text not null, worktree_path text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`,
-		`create table releases (id text primary key, app_id text not null, commit_sha text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`,
-		`create table deployments (id text primary key, app_id text not null, release_id text not null, status text not null, started_at text not null, finished_at text not null, error_message text not null)`,
-		`create table domains (id text primary key, app_id text not null, service_name text not null, domain_name text not null, port integer not null, https integer not null, created_at text not null, updated_at text not null)`,
-		`create table events (id text primary key, app_id text not null, type text not null, message text not null, created_at text not null)`,
-		`create table server_config (key text primary key, value text not null, updated_at text not null)`,
-		`create table ssh_keys (name text primary key, public_key text not null, created_at text not null)`,
-		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
-		`insert into apps values ('my-app', 'my-app', 'local', '/apps/my-app/repo.git', '/apps/my-app/worktree', 'compose.yml', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
-		`insert into releases values ('rel_abcdef', 'my-app', 'abcdef', 'compose.yml', 'rolled_back', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z')`,
-		`insert into deployments values ('dep_abcdef', 'my-app', 'rel_abcdef', 'failed', '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'stage=build services; detail=legacy failure; retry=push again')`,
-		`insert into domains values ('dom_1', 'my-app', 'web', 'my-app.example.com', 3000, 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z')`,
-		`insert into events values ('evt_1', 'my-app', 'rollback.succeeded', 'legacy rollback succeeded', '2026-07-14T09:01:00Z')`,
-		`insert into app_config_values values ('my-app', 'SECRET', '', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`,
-	}
-	for _, statement := range statements {
-		if _, err := legacy.ExecContext(ctx, statement); err != nil {
-			t.Fatalf("prepare legacy database: %v\n%s", err, statement)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatalf("close legacy database: %v", err)
-	}
-
-	// When
-	migrated, err := OpenSQLite(ctx, path)
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := migrated.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-	})
-
-	// Then
-	apps, err := migrated.ListApps(ctx)
-	if err != nil || len(apps) != 1 {
-		t.Fatalf("apps = %#v, err = %v", apps, err)
-	}
-	releases, err := migrated.ListReleasesByApp(ctx, "my-app")
-	if err != nil || len(releases) != 1 || releases[0].ID != "rel_abcdef" || releases[0].Status != app.ReleaseStatusRolledBack {
-		t.Fatalf("releases = %#v, err = %v", releases, err)
-	}
-	deployments, err := migrated.ListDeploymentsByApp(ctx, "my-app")
-	if err != nil || len(deployments) != 1 {
-		t.Fatalf("deployments = %#v, err = %v", deployments, err)
-	}
-	deployment := deployments[0]
-	if deployment.Trigger != app.DeploymentTriggerLegacy || deployment.CommitSHA != "abcdef" || deployment.FailureDetail == "" || deployment.RetryGuidance == "" {
-		t.Fatalf("migrated deployment = %#v", deployment)
-	}
-	domains, err := migrated.ListDomainsByApp(ctx, "my-app")
-	if err != nil || len(domains) != 1 {
-		t.Fatalf("domains = %#v, err = %v", domains, err)
-	}
-	events, err := migrated.ListEventsByApp(ctx, "my-app")
-	if err != nil || len(events) != 1 || events[0].Type != "rollback.succeeded" {
-		t.Fatalf("events = %#v, err = %v", events, err)
-	}
-	configValues, err := migrated.ListAppConfigValues(ctx, "my-app")
-	if err != nil || len(configValues) != 1 || configValues[0].Name != "SECRET" {
-		t.Fatalf("config = %#v, err = %v", configValues, err)
-	}
-}
-
 func TestOpenSQLiteConfiguresBusyTimeoutForConcurrentProcesses(t *testing.T) {
 	// Given a store opened through the production SQLite boundary.
 	ctx := context.Background()
@@ -567,112 +480,14 @@ func TestOpenSQLiteConfiguresBusyTimeoutForConcurrentProcesses(t *testing.T) {
 	}
 }
 
-func TestOpenSQLiteMigratesUnambiguousScopedConfigToFlatSchema(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "legacy-config.db")
-	legacy, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open legacy database: %v", err)
-	}
-	statements := []string{
-		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
-		`insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'dashboard')`,
-	}
-	for _, statement := range statements {
-		if _, err := legacy.ExecContext(ctx, statement); err != nil {
-			t.Fatalf("prepare legacy config database: %v\n%s", err, statement)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatalf("close legacy database: %v", err)
-	}
-
-	// When
-	migrated, err := OpenSQLite(ctx, path)
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := migrated.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-	})
-
-	// Then
-	value, err := migrated.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"})
-	if err != nil {
-		t.Fatalf("GetAppConfigValue: %v", err)
-	}
-	if value.Name != "API_TOKEN" || string(value.Ciphertext) == string([]byte{0x01, 0x02}) {
-		t.Fatalf("migrated config value = %#v", value)
-	}
-	hasScope, err := tableColumnExists(ctx, migrated.db, "app_config_values", "scope")
-	if err != nil {
-		t.Fatalf("inspect migrated config schema: %v", err)
-	}
-	if hasScope {
-		t.Fatal("migrated app_config_values still has scope column")
-	}
-}
-
-func TestOpenSQLiteRejectsConflictingScopedConfigWithoutMutatingLegacyRows(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "conflicting-config.db")
-	legacy, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open legacy database: %v", err)
-	}
-	statements := []string{
-		`create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`,
-		`insert into app_config_values values ('my-app', 'API_TOKEN', '', x'0102', x'0304', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`,
-		`insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', x'0506', x'0708', 1, '2026-07-14T09:00:00Z', '2026-07-14T09:01:00Z', 'dashboard')`,
-	}
-	for _, statement := range statements {
-		if _, err := legacy.ExecContext(ctx, statement); err != nil {
-			t.Fatalf("prepare conflicting config database: %v\n%s", err, statement)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatalf("close legacy database: %v", err)
-	}
-
-	// When
-	_, err = OpenSQLite(ctx, path)
-
-	// Then
-	if err == nil {
-		t.Fatal("OpenSQLite error = nil, want conflicting config migration error")
-	}
-	for _, want := range []string{
-		`app config migration blocked for app "my-app" key "API_TOKEN"`,
-		`scopes: <flat>, worker`,
-		`remove all but one value with the previous SSHDock version, then retry`,
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("OpenSQLite error missing %q:\n%v", want, err)
-		}
-	}
-
-	legacy, err = sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("reopen legacy database: %v", err)
-	}
-	defer legacy.Close()
-	var count int
-	if err := legacy.QueryRowContext(ctx, `select count(*) from app_config_values where app_id = 'my-app' and name = 'API_TOKEN'`).Scan(&count); err != nil {
-		t.Fatalf("count legacy config rows: %v", err)
-	}
-	if count != 2 {
-		t.Fatalf("legacy config row count = %d, want 2", count)
-	}
-}
-
 func TestSQLiteStoreDomains(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t, ctx)
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	if err := store.CreateApp(ctx, app.App{ID: "app_1", Name: "app_1", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
 	domain := app.Domain{
 		ID:          "dom_1",
 		AppID:       "app_1",
@@ -696,6 +511,9 @@ func TestSQLiteStoreDomains(t *testing.T) {
 		t.Fatalf("ListDomainsByApp = %#v, want [%#v]", domains, domain)
 	}
 
+	if err := store.CreateApp(ctx, app.App{ID: "app_2", Name: "app_2", Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	secondDomain := app.Domain{
 		ID:          "dom_2",
 		AppID:       "app_2",
@@ -748,6 +566,10 @@ func TestSQLiteStoreAttachDomainUpsertsByDomainID(t *testing.T) {
 	store := newTestStore(t, ctx)
 	createdAt := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Hour)
+	if err := store.CreateApp(ctx, app.App{ID: "my-app", Name: "my-app", Status: app.AppStatusCreated, CreatedAt: createdAt, UpdatedAt: createdAt}); err != nil {
+		t.Fatal(err)
+	}
+
 	domain := app.Domain{
 		ID:          "dom_my_app_my_app_example_com",
 		AppID:       "my-app",
@@ -913,6 +735,10 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 	createdAt := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Minute)
 
+	if err := store.CreateApp(ctx, app.App{ID: "my-app", Name: "my-app", Status: app.AppStatusCreated, CreatedAt: createdAt, UpdatedAt: createdAt}); err != nil {
+		t.Fatal(err)
+	}
+
 	first := AppConfigValue{
 		AppID:      "my-app",
 		Name:       "DATABASE_URL",
@@ -923,8 +749,8 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 		UpdatedAt:  createdAt,
 		MutatedBy:  "dashboard",
 	}
-	if err := store.UpsertAppConfigValue(ctx, first); err != nil {
-		t.Fatalf("UpsertAppConfigValue: %v", err)
+	if err := store.SetAppConfigValue(ctx, first, configTestEvent("evt_first", "my-app", "set", createdAt)); err != nil {
+		t.Fatalf("SetAppConfigValue: %v", err)
 	}
 
 	second := AppConfigValue{
@@ -937,16 +763,17 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 		UpdatedAt:  createdAt,
 		MutatedBy:  "dashboard",
 	}
-	if err := store.UpsertAppConfigValue(ctx, second); err != nil {
-		t.Fatalf("UpsertAppConfigValue second: %v", err)
+	if err := store.SetAppConfigValue(ctx, second, configTestEvent("evt_second", "my-app", "set", createdAt)); err != nil {
+		t.Fatalf("SetAppConfigValue second: %v", err)
 	}
 
 	replacement := first
 	replacement.Ciphertext = []byte("ciphertext-new")
 	replacement.Nonce = []byte("nonce-new1234")
+	replacement.CreatedAt = updatedAt
 	replacement.UpdatedAt = updatedAt
-	if err := store.UpsertAppConfigValue(ctx, replacement); err != nil {
-		t.Fatalf("UpsertAppConfigValue replacement: %v", err)
+	if err := store.SetAppConfigValue(ctx, replacement, configTestEvent("evt_replacement", "my-app", "set", updatedAt)); err != nil {
+		t.Fatalf("SetAppConfigValue replacement: %v", err)
 	}
 
 	got, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "DATABASE_URL"})
@@ -968,13 +795,13 @@ func TestSQLiteStoreAppConfigValues(t *testing.T) {
 		t.Fatalf("values ordering/content = %#v", values)
 	}
 
-	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); err != nil {
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}, configTestEvent("evt_delete", "my-app", "unset", updatedAt)); err != nil {
 		t.Fatalf("DeleteAppConfigValue: %v", err)
 	}
 	if _, err := store.GetAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetAppConfigValue deleted error = %v, want ErrNotFound", err)
 	}
-	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}); !errors.Is(err, ErrNotFound) {
+	if err := store.DeleteAppConfigValue(ctx, AppConfigRef{AppID: "my-app", Name: "API_TOKEN"}, configTestEvent("evt_delete", "my-app", "unset", updatedAt)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("DeleteAppConfigValue missing error = %v, want ErrNotFound", err)
 	}
 }
@@ -1015,8 +842,8 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if err := store.CreateEvent(ctx, app.Event{ID: "evt_1", AppID: model.ID, Type: "deploy.succeeded", Message: "Deploy succeeded", CreatedAt: now}); err != nil {
 		t.Fatalf("CreateEvent: %v", err)
 	}
-	if err := store.UpsertAppConfigValue(ctx, AppConfigValue{AppID: model.ID, Name: "SECRET", Ciphertext: []byte("ciphertext"), Nonce: []byte("nonce-1234567"), KeyVersion: 1, CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatalf("UpsertAppConfigValue: %v", err)
+	if err := store.SetAppConfigValue(ctx, AppConfigValue{AppID: model.ID, Name: "SECRET", Ciphertext: []byte("ciphertext"), Nonce: []byte("nonce-1234567"), KeyVersion: 1, CreatedAt: now, UpdatedAt: now}, configTestEvent("evt_config", model.ID, "set", now)); err != nil {
+		t.Fatalf("SetAppConfigValue: %v", err)
 	}
 
 	if err := store.DeleteApp(ctx, model.ID); err != nil {
@@ -1038,7 +865,7 @@ func TestSQLiteStoreDeleteAppRemovesRelatedRows(t *testing.T) {
 	if domains, err := store.ListDomainsByApp(ctx, model.ID); err != nil || len(domains) != 0 {
 		t.Fatalf("domains after DeleteApp = %#v, err = %v", domains, err)
 	}
-	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 1 || events[0].Type != "deploy.succeeded" {
+	if events, err := store.ListEventsByApp(ctx, model.ID); err != nil || len(events) != 2 || events[1].Type != "config.set" {
 		t.Fatalf("audit events after DeleteApp = %#v, err = %v", events, err)
 	}
 	if values, err := store.ListAppConfigValues(ctx, model.ID); err != nil || len(values) != 0 {

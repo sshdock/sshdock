@@ -23,7 +23,10 @@ func TestRouteThroughCaddyEndToEnd(t *testing.T) {
 
 	paths := setupBootstrappedServerPush(t, "docker")
 	appName := "route-app"
-	projectName := compose.ProjectName(appName)
+	projectName, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	servicePort := freeLocalPort(t)
 	caddyPort := freeLocalPort(t)
 	unmanagedPort := freeLocalPort(t)

@@ -62,8 +62,8 @@ func (m InteractiveDashboardModel) executeAttachInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	port, err := strconv.Atoi(parts[2])
-	if err != nil || port <= 0 {
-		m.err = fmt.Errorf("port must be a positive integer")
+	if err != nil {
+		m.err = fmt.Errorf("port must be an integer")
 		return m, nil
 	}
 	return m, m.executeAction(dashboardActionRequest{kind: dashboardActionAttachDomain, primary: parts[0], secondary: parts[1], port: port})

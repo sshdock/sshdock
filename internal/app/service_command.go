@@ -57,10 +57,10 @@ func (s *Service) runServiceCommand(ctx context.Context, action serviceCommandAc
 
 	request.ProjectDir = target.projectDir
 	request.ComposePath = target.composePath
-	request.Env, err = s.resolveDeployEnv(ctx, request.AppName, request.ProjectDir)
+	request.Env, err = ResolveRuntimeEnv(ctx, target.model, s.configResolver)
 	redactionValues := map[string]string(nil)
 	if err == nil {
-		redactionValues, err = s.resolveRedactionValues(ctx, request.AppName, request.Env)
+		redactionValues, err = s.resolveRedactionValues(ctx, request.AppName)
 	}
 	if err == nil {
 		err = s.executeServiceCommand(ctx, action, request)

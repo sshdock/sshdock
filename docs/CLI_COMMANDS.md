@@ -146,7 +146,11 @@ printf '%s' "$DATABASE_URL" | ssh sshdock@sshdock.example.com config set my-app 
 
 The value is encrypted before it is stored in SQLite. The default key file is `/var/lib/sshdock/config.key`, or `SSHDOCK_CONFIG_KEY_PATH` when overridden.
 
+Each successful set or unset commits the value change and its audit event together. Events contain the key name, never its value.
+
 Flat app config is the default. SSHDock supplies flat stored values only to the Docker Compose process environment; Compose passes a value to a container only where the Compose model references it. Operational names beginning with `SSHDOCK_`, `COMPOSE_`, `DOCKER_`, `SSH_`, `LD_`, `BUILDKIT_`, or `BUILDX_`, plus `PATH` and `HOME`, are reserved and cannot be stored as app config.
+
+This local encryption model protects against database-only leaks and ordinary SQLite backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up the SQLite database and the host-local config key together.
 
 If the app is already running, deploy or redeploy it after changing config so containers receive the new value.
 
@@ -158,7 +162,9 @@ Read `KEY=VALUE` lines from stdin and store each value for an existing app.
 ssh sshdock@sshdock.example.com config import my-app < .env.production
 ```
 
-Blank lines and `#` comments are ignored. Values are not printed.
+Lines are trimmed and split at the first `=`; blank lines and `#` comments are ignored. Quotes, escapes, and variable references are stored literally. Values are not printed.
+
+Each successful line uses the same audited set operation. The success count includes repeated keys. Import stops at the first invalid line or read failure; values stored before that error remain applied. Even an empty import requires an existing app.
 
 If one or more values are imported for a running app, deploy or redeploy it so containers receive the new values.
 
@@ -220,14 +226,6 @@ services:
 ```
 
 Missing required interpolation fails Compose validation before containers start. The failure names the missing key and remains redacted in deploy output, deployment history, events, logs, health output, and the TUI. Config mutation never starts, restarts, or redeploys an app; run `apps redeploy` explicitly when the new value should take effect.
-
-### Migrating Existing Scoped Config
-
-When SSHDock first opens an older database, it migrates a single existing value for each app/key to the flat config model. The ciphertext stays encrypted, remains bound to the same host-local key, and is not written to a plaintext migration file.
-
-If an app/key has values in more than one old scope, startup stops instead of choosing one. The error names the app, key, and conflicting scopes. Run the previous SSHDock version, remove all but the intended value for that app/key, then retry the upgrade.
-
-This local encryption model protects against database-only leaks and ordinary SQLite backup exposure. It does not protect secrets from a fully compromised VPS, root user, SSHDock daemon process, Docker runtime, or malicious Compose workload. Back up the SQLite database and the host-local config key together.
 
 ### `sshdock server domain set <domain>`
 
@@ -324,6 +322,8 @@ App names must already be normalized DNS labels: lowercase letters, numbers, and
 git remote set-url sshdock git@<server-domain>:<suggested-name>.git
 ```
 
+The same validation applies to existing apps at Git receive and Compose runtime boundaries. Valid app names keep the exact `sshdock_<app-name>` project identity.
+
 ### `sshdock apps list`
 
 List apps from SQLite.
@@ -357,6 +357,8 @@ sudo sshdock apps health my-app
 ```
 
 Output reports remote Git `main` as the desired commit independently from the latest deployment attempt, including that attempt's ID, commit, trigger, status, and `attempt release`. It also reports current-worktree Compose service counts plus one name/state row per service, desired domain count, active Caddy route state, and the most recent deployment failure with its attempt ID. A failed latest attempt remains visible even if containers from an older deployment are still running; after a successful Git-selected rollback, the attempt-release check follows that successful attempt while the prior failure remains visible separately.
+
+Malformed checked-out revision metadata produces a services warning with recovery guidance. Health and dashboard history remain available; operational commands still require valid runtime metadata.
 
 Check rows keep the output script-friendly and distinguish app, current-main, attempt-release, deployment-attempt, domain, active-route, service, and restart-policy state. Missing Git or worktree state, absent or stopped containers, unrouted apps, and unavailable Caddy inspection are reported as warnings or failures instead of being inferred as healthy. A routed or running service using Compose's default `restart: "no"` produces a `warn` check with the affected service names.
 
@@ -441,6 +443,8 @@ sudo sshdock apps redeploy my-app
 
 Redeploy resolves the app bare repository's `refs/heads/main`, checks out that commit into the app worktree, runs the configured Compose runner, and records a new deployment attempt and events in SQLite. Repeating a redeploy of the same commit creates another attempt instead of overwriting its history.
 
+The command queues work for the deployment daemon and waits for the exact attempt to finish, using the same execution as Git push, including redacted durable stage logs, `deploy.warning` events, initial route inference, and `deploy.started` / `deploy.succeeded` / `deploy.failed` events. Inspect the attempt's `trigger` to distinguish `redeploy` from `push`. Disconnecting the waiting client does not cancel the deployment; reconnect with `deployments list` and `deployments logs`. The daemon also records `deploy.queued` for redeploy. An app with a pending or active deployment rejects another redeploy; wait for the existing attempt to finish. A failed retry preserves any earlier success recorded for its release. If containers deploy but outcome recording fails, the attempt stays `succeeded` with an error detail and the waiting redeploy command reports that error.
+
 ### `sshdock apps remove <name> [--force]`
 
 Remove an app and its SSHDock-managed server-side runtime resources.
@@ -477,8 +481,6 @@ Output format:
 ```
 
 `failure-detail` is present when a failed deployment for that release has a persisted error. It uses the same `stage`, `detail`, `changed`, `fix`, and `retry` fields shown by failed push output.
-
-Databases upgraded from older SSHDock versions may still display historical `rolled_back` release rows, `rollback` or `startup_recovery` deployment triggers, and rollback events. They remain readable audit history only and are never selected by current lifecycle or deployment commands.
 
 ### `sshdock deployments list <app>`
 
@@ -553,6 +555,11 @@ services:
 ```
 
 The command persists the domain, rebuilds the generated Caddyfile from SQLite state, validates it, reloads Caddy, and records domain/router events.
+
+Ports must be integers from `1` through `65535`; invalid requests do not change routing intent. Addresses accept a hostname or an `http://` / `https://` site address with an optional listen port, without paths or credentials. Equivalent spellings use one stored address. A public hostname and listen port belong to one app; detach an existing owner's address before assigning it to another app.
+
+Manual routing and deployment auto-routing share validation, persistence, Caddy application, and recovery records. Changes across CLI, SSH, and the daemon are serialized through the complete route rebuild so one operation cannot overwrite another app's newer routes. A manual reload failure returns an error and keeps the intended domain change for retry; inspect `domains check`. A later successful full rebuild clears resolved apply failures. Removing an app also uses this rebuild, and repeating remove resumes a failed rebuild after the app record has already been deleted.
+
 
 With a base domain configured, this command is the manual override/fallback path. Deploy-time auto-routing creates `<app>.<base-domain>` only when the app name is DNS-label-safe and Compose inference is safe:
 
@@ -721,7 +728,8 @@ Production installs set these through the bootstrap script and systemd unit wher
 - `SSHDOCK_CADDY_CONFIG_PATH`: generated SSHDock Caddy route file.
 - `SSHDOCK_CADDY_MAIN_CONFIG_PATH`: Caddy main config file that imports the generated route file. Default: `/etc/caddy/Caddyfile`.
 - `SSHDOCK_CADDY_ADMIN_ADDRESS`: optional Caddy admin endpoint override.
-- `SSHDOCK_COMPOSE_RUNNER`: set `docker` for real `sshdockd` runtime hooks and dashboards; set `fake` only for tests. `sshdock` Compose runtime commands default to Docker when this variable is unset.
+
+Runtime commands always use Docker Engine and the Docker Compose plugin.
 
 For local development, set `SSHDOCK_DATA_DIR` to avoid writing to `/var/lib/sshdock`:
 

@@ -33,7 +33,7 @@ func (r *Report) checkRestartPolicies(ctx context.Context, cfg config.Config, ex
 		for _, domain := range domains {
 			candidates = append(candidates, domain.ServiceName)
 		}
-		env, err := configService.ResolveAppConfig(ctx, model.ID)
+		env, err := appmodel.ResolveRuntimeEnv(ctx, model, configService)
 		if err != nil {
 			r.addWarning("restart policy "+model.ID, "unable to resolve app config: "+err.Error())
 			continue

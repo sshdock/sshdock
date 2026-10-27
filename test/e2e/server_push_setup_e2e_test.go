@@ -68,6 +68,8 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		if err := os.Remove(filepath.Join(fakeBinDir, "docker")); err != nil {
 			t.Fatal(err)
 		}
+	} else {
+		writeDockerFixture(t, fakeBinDir)
 	}
 
 	installBinDir := filepath.Join(installRoot, "usr", "local", "bin")
@@ -78,23 +80,21 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	runCommand(t, tmp, nil, sshKeygenPath, "-t", "ed25519", "-N", "", "-f", clientKeyPath)
 	publicKey := readFile(t, clientKeyPath+".pub")
 
-	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_OPERATOR_USER=%s %s git-receive",
+	receiveCommand := fmt.Sprintf("env PATH=%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_OPERATOR_USER=%s %s git-receive",
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
-		composeRunner,
 		currentUser.Username,
 		filepath.Join(installBinDir, "sshdockd"),
 	)
-	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_COMPOSE_RUNNER=%s SSHDOCK_FAKE_COMPOSE_SERVICES=web:running SSHDOCK_FAKE_COMPOSE_LOGS=first-dashboard-log SSHDOCK_FAKE_COMPOSE_EXEC_OUTPUT=exec-output SSHDOCK_FAKE_COMPOSE_RUN_OUTPUT=run-output SSHDOCK_CADDY_CONFIG_PATH=%s SSHDOCK_CADDY_MAIN_CONFIG_PATH=%s %s operator",
+	operatorCommand := fmt.Sprintf("env PATH=%s%c%s%c%s SSHDOCK_DATA_DIR=%s SSHDOCK_CADDY_CONFIG_PATH=%s SSHDOCK_CADDY_MAIN_CONFIG_PATH=%s %s operator",
 		fakeBinDir,
 		os.PathListSeparator,
 		installBinDir,
 		os.PathListSeparator,
 		os.Getenv("PATH"),
 		dataDir,
-		composeRunner,
 		filepath.Join(tmp, "operator.caddyfile"),
 		filepath.Join(tmp, "operator.caddyfile"),
 		filepath.Join(installBinDir, "sshdockd"),
@@ -106,7 +106,6 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 		"SSHDOCK_GIT_RECEIVE_COMMAND="+receiveCommand,
 		"SSHDOCK_OPERATOR_AUTHORIZED_KEYS_PATH="+operatorAuthorizedKeysPath,
 		"SSHDOCK_OPERATOR_COMMAND="+operatorCommand,
-		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
 	)
 	runCommandInput(t, root, cliEnv, publicKey, filepath.Join(installBinDir, "sshdock"), "ssh-keys", "add", "admin")
 
@@ -120,7 +119,6 @@ func setupBootstrappedServerPush(t *testing.T, composeRunner string) serverPushP
 	daemon.Env = append(os.Environ(),
 		"PATH="+fakeBinDir+string(os.PathListSeparator)+installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER="+composeRunner,
 	)
 	daemon.Stdout = daemonLog
 	daemon.Stderr = daemonLog

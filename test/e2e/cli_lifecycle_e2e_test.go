@@ -29,21 +29,20 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 	writeFakeCaddy(t, filepath.Join(binDir, "caddy"))
 
 	appName := "cli-lifecycle-app"
 	dataDir := filepath.Join(tmp, "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	caddyConfigPath := filepath.Join(tmp, "Caddyfile")
 	authorizedKeysPath := filepath.Join(tmp, "git", ".ssh", "authorized_keys")
 	operatorAuthorizedKeysPath := filepath.Join(tmp, ".ssh", "authorized_keys")
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
-		"SSHDOCK_FAKE_COMPOSE_SERVICES=web:running",
-		"SSHDOCK_FAKE_COMPOSE_LOGS=web log\n",
+		`SSHDOCK_TEST_DOCKER_SERVICES=[{"Service":"web","State":"running"}]`,
+		"SSHDOCK_TEST_DOCKER_LOGS=web log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_GIT_AUTHORIZED_KEYS_PATH="+authorizedKeysPath,
@@ -97,7 +96,7 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 	assertCLIOutputContains(t, root, env, sshdockPath, []string{"ssh-keys", "list"}, []string{"admin", "SHA256:"})
 
 	runCommand(t, root, env, sshdockPath, "apps", "stop", appName)
-	failingStartEnv := append(append([]string{}, env...), "SSHDOCK_FAKE_COMPOSE_START_ERROR=no containers to start")
+	failingStartEnv := append(append([]string{}, env...), "SSHDOCK_TEST_DOCKER_START_ERROR=no containers to start")
 	startCmd := exec.Command(sshdockPath, "apps", "start", appName)
 	startCmd.Dir = root
 	startCmd.Env = failingStartEnv
@@ -118,8 +117,8 @@ func TestCLILifecycleEndToEnd(t *testing.T) {
 		"start.succeeded",
 		"restart.started",
 		"restart.succeeded",
-		"redeploy.started",
-		"redeploy.succeeded",
+		"deploy.started",
+		"deploy.succeeded",
 	})
 
 	runCommand(t, root, env, sshdockPath, "domains", "detach", appName, domain)

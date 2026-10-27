@@ -10,6 +10,8 @@ Operational commands resolve the revision of the Compose worktree through the ma
 
 This metadata overrides inherited process and project `.env` values. The existing `SSHDOCK_` app-config reservation remains in force. The value is public metadata, separate from encrypted config values and secret redaction. Containers receive it only when the committed Compose model references it.
 
+The app runtime owns operational revision resolution. Encrypted config resolution supplies only stored values; deployment execution adds the attempt's commit explicitly. Secret redaction does not depend on repository metadata, so malformed `HEAD` cannot prevent safe history inspection.
+
 ## External build contract
 
 An external CI builds and publishes an OCI image tagged with the full source commit, then pushes that exact commit to SSHDock `main`. An image-only Compose service references `image: registry.example/app:${SSHDOCK_GIT_SHA:?deploy a commit}`. Compose retains its normal pull/build/up behavior; `build` has no application image to build when the model has no `build:` services.

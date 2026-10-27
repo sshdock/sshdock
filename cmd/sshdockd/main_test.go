@@ -12,7 +12,6 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/cli"
-	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -49,7 +48,6 @@ func TestRunRequiresExplicitCommandWithoutInitializingState(t *testing.T) {
 			dataDir := filepath.Join(t.TempDir(), "unused-state")
 			t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 			t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
-			t.Setenv("SSHDOCK_COMPOSE_RUNNER", "invalid")
 			var stdout, stderr bytes.Buffer
 
 			if code := runWithInput(tt.args, nil, &stdout, &stderr); code != 2 {
@@ -68,105 +66,10 @@ func TestRunRequiresExplicitCommandWithoutInitializingState(t *testing.T) {
 	}
 }
 
-func TestHookRunnerFromEnvSelectsDockerRunner(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "docker")
-
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("hookRunnerFromEnv: %v", err)
-	}
-	if _, ok := runner.(*compose.DockerRunner); !ok {
-		t.Fatalf("runner = %T, want *compose.DockerRunner", runner)
-	}
-}
-
-func TestHookRunnerFromEnvConfiguresFakeDeployError(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_ERROR", "compose failed")
-
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("hookRunnerFromEnv: %v", err)
-	}
-	fake, ok := runner.(*compose.FakeRunner)
-	if !ok {
-		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
-	}
-	if fake.DeployErr == nil || fake.DeployErr.Error() != "compose failed" {
-		t.Fatalf("DeployErr = %v, want compose failed", fake.DeployErr)
-	}
-}
-
-func TestHookRunnerFromEnvConfiguresFakeDeployRouteResult(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_ROUTE", "web:3100")
-
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("hookRunnerFromEnv: %v", err)
-	}
-	fake, ok := runner.(*compose.FakeRunner)
-	if !ok {
-		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
-	}
-	if !fake.DeployResult.RouteFound || fake.DeployResult.RouteTarget != (compose.RouteTarget{ServiceName: "web", Port: 3100}) {
-		t.Fatalf("DeployResult = %#v, want web:3100 route", fake.DeployResult)
-	}
-}
-
-func TestHookRunnerFromEnvConfiguresFakeDeployRouteReason(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_ROUTE_REASON", "effective Compose model route is ambiguous")
-
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("hookRunnerFromEnv: %v", err)
-	}
-	fake := runner.(*compose.FakeRunner)
-	if fake.DeployResult.RouteReason != "effective Compose model route is ambiguous" {
-		t.Fatalf("DeployResult = %#v", fake.DeployResult)
-	}
-}
-
-func TestHookRunnerFromEnvConfiguresFakeDeployDelay(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "250ms")
-
-	runner, err := hookRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("hookRunnerFromEnv: %v", err)
-	}
-	if runner.(*compose.FakeRunner).DeployDelay != 250*time.Millisecond {
-		t.Fatalf("DeployDelay = %s, want 250ms", runner.(*compose.FakeRunner).DeployDelay)
-	}
-}
-
-func TestDashboardRunnerFromEnvConfiguresFakeStatusAndLogs(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_LOGS", "first log\nsecond log\n")
-
-	runner, err := dashboardRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("dashboardRunnerFromEnv: %v", err)
-	}
-	fake, ok := runner.(*compose.FakeRunner)
-	if !ok {
-		t.Fatalf("runner = %T, want *compose.FakeRunner", runner)
-	}
-	if len(fake.Services) != 2 || fake.Services[0].Name != "web" || fake.Services[0].State != "running" || fake.Services[1].Name != "worker" || fake.Services[1].State != "exited" {
-		t.Fatalf("fake services = %#v", fake.Services)
-	}
-	if fake.LogOutput != "first log\nsecond log\n" {
-		t.Fatalf("fake log output = %q", fake.LogOutput)
-	}
-}
-
 func TestRunDashboardRendersOnce(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -193,7 +96,6 @@ func TestRunOperatorDispatchesRestrictedAppInspectionCommand(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	t.Setenv("SSH_ORIGINAL_COMMAND", "apps list")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -218,7 +120,6 @@ func TestRunOperatorHelpListsOnlyRemoteCommands(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	t.Setenv("SSH_ORIGINAL_COMMAND", "help")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

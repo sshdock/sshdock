@@ -1,7 +1,6 @@
 package appconfig
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -16,10 +15,10 @@ import (
 
 type configStore interface {
 	GetApp(ctx context.Context, id string) (appmodel.App, error)
-	UpsertAppConfigValue(ctx context.Context, value store.AppConfigValue) error
+	SetAppConfigValue(ctx context.Context, value store.AppConfigValue, event appmodel.Event) error
 	GetAppConfigValue(ctx context.Context, ref store.AppConfigRef) (store.AppConfigValue, error)
 	ListAppConfigValues(ctx context.Context, appID string) ([]store.AppConfigValue, error)
-	DeleteAppConfigValue(ctx context.Context, ref store.AppConfigRef) error
+	DeleteAppConfigValue(ctx context.Context, ref store.AppConfigRef, event appmodel.Event) error
 }
 
 type Service struct {
@@ -47,7 +46,6 @@ type Entry struct {
 	Name          string
 	Status        string
 	RedactedValue string
-	Value         string
 	UpdatedAt     time.Time
 	MutatedBy     string
 }
@@ -80,6 +78,10 @@ func (s *Service) Set(ctx context.Context, request SetRequest) error {
 	if err := s.requireApp(ctx, ref.AppID); err != nil {
 		return err
 	}
+	event, err := s.mutationEvent(ref, "set")
+	if err != nil {
+		return err
+	}
 	key, err := LoadOrCreateHostKey(s.keyPath)
 	if err != nil {
 		return err
@@ -89,56 +91,31 @@ func (s *Service) Set(ctx context.Context, request SetRequest) error {
 		return err
 	}
 
-	now := s.now()
-	createdAt := now
-	if existing, err := s.store.GetAppConfigValue(ctx, storeRef(ref)); err == nil {
-		createdAt = existing.CreatedAt
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("load existing config value %s: %w", ref.display(), err)
-	}
 	mutatedBy := strings.TrimSpace(request.MutatedBy)
 	if mutatedBy == "" {
 		mutatedBy = "dashboard"
 	}
 
-	return s.store.UpsertAppConfigValue(ctx, store.AppConfigValue{
+	return s.store.SetAppConfigValue(ctx, store.AppConfigValue{
 		AppID:      ref.AppID,
 		Name:       ref.Name,
 		Ciphertext: box.Ciphertext,
 		Nonce:      box.Nonce,
 		KeyVersion: box.KeyVersion,
-		CreatedAt:  createdAt,
-		UpdatedAt:  now,
+		CreatedAt:  event.CreatedAt,
+		UpdatedAt:  event.CreatedAt,
 		MutatedBy:  mutatedBy,
-	})
+	}, event)
 }
 
-func (s *Service) Import(ctx context.Context, request ImportRequest) error {
-	if request.Input == nil {
-		request.Input = strings.NewReader("")
+func (s *Service) Import(ctx context.Context, request ImportRequest) (int, error) {
+	request.AppID = strings.TrimSpace(request.AppID)
+	if err := s.requireApp(ctx, request.AppID); err != nil {
+		return 0, err
 	}
-	scanner := bufio.NewScanner(request.Input)
-	lineNumber := 0
-	for scanner.Scan() {
-		lineNumber++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		name, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return fmt.Errorf("config import line %d must be KEY=VALUE", lineNumber)
-		}
-		if err := s.Set(ctx, SetRequest{
-			AppID:     request.AppID,
-			Name:      strings.TrimSpace(name),
-			Value:     []byte(value),
-			MutatedBy: request.MutatedBy,
-		}); err != nil {
-			return err
-		}
-	}
-	return scanner.Err()
+	return ImportLines(request.Input, func(name string, value []byte) error {
+		return s.Set(ctx, SetRequest{AppID: request.AppID, Name: name, Value: value, MutatedBy: request.MutatedBy})
+	})
 }
 
 func (s *Service) List(ctx context.Context, appID string) ([]Entry, error) {
@@ -198,7 +175,23 @@ func (s *Service) Unset(ctx context.Context, ref ConfigRef) error {
 	if err := s.requireApp(ctx, ref.AppID); err != nil {
 		return err
 	}
-	return s.store.DeleteAppConfigValue(ctx, storeRef(ref))
+	event, err := s.mutationEvent(ref, "unset")
+	if err != nil {
+		return err
+	}
+	return s.store.DeleteAppConfigValue(ctx, storeRef(ref), event)
+}
+
+func (s *Service) mutationEvent(ref ConfigRef, operation string) (appmodel.Event, error) {
+	id, err := appmodel.NewDeploymentID()
+	if err != nil {
+		return appmodel.Event{}, fmt.Errorf("create config mutation event ID: %w", err)
+	}
+	eventType := "config." + operation
+	return appmodel.Event{
+		ID: "evt_" + id + "_config_" + operation, AppID: ref.AppID,
+		Type: eventType, Message: "Config " + operation + " for " + ref.Name, CreatedAt: s.now(),
+	}, nil
 }
 
 func (s *Service) requireApp(ctx context.Context, appID string) error {

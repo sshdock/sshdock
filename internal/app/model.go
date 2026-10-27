@@ -2,15 +2,6 @@ package app
 
 import "time"
 
-type Node struct {
-	ID        string
-	Name      string
-	Address   string
-	Status    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
 type App struct {
 	ID           string
 	Name         string
@@ -36,12 +27,8 @@ type Release struct {
 type DeploymentTrigger string
 
 const (
-	DeploymentTriggerLegacy   DeploymentTrigger = "legacy"
 	DeploymentTriggerPush     DeploymentTrigger = "push"
 	DeploymentTriggerRedeploy DeploymentTrigger = "redeploy"
-	// Retained only so historical deployment rows remain readable after upgrade.
-	DeploymentTriggerRollback        DeploymentTrigger = "rollback"
-	DeploymentTriggerStartupRecovery DeploymentTrigger = "startup_recovery"
 )
 
 type Deployment struct {

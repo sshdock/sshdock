@@ -258,6 +258,18 @@ func (s *SQLiteStore) CreateDeployment(ctx context.Context, model app.Deployment
 }
 
 func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) (returnErr error) {
+	return s.reserveDeployment(ctx, model, expectedCurrentCommit)
+}
+
+// QueueRedeployment records a daemon-owned redeploy and its queue event together.
+func (s *SQLiteStore) QueueRedeployment(ctx context.Context, model app.Deployment) error {
+	if model.Status != app.DeploymentStatusPending || model.Trigger != app.DeploymentTriggerRedeploy {
+		return fmt.Errorf("queue redeploy: attempt must be pending with trigger redeploy")
+	}
+	return s.reserveDeployment(ctx, model, "")
+}
+
+func (s *SQLiteStore) reserveDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) (returnErr error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin deployment queue transaction: %w", err)
@@ -285,7 +297,7 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 		return fmt.Errorf("find active deployment: %w", err)
 	}
 	if err == nil {
-		if activeStatus != string(app.DeploymentStatusPending) || activeCommit == expectedCurrentCommit {
+		if model.Trigger != app.DeploymentTriggerPush || model.Status != app.DeploymentStatusPending || activeStatus != string(app.DeploymentStatusPending) || activeCommit == expectedCurrentCommit {
 			return ErrActiveDeployment
 		}
 		result, deleteErr := tx.ExecContext(ctx, `
@@ -297,9 +309,10 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 		result, deleteErr = tx.ExecContext(ctx, `
 			delete from deployments
 			where id = ?
+			  and trigger = 'push'
 			  and not exists (
 				select 1 from events
-				where id = 'evt_' || deployments.id || '_git_ref_accepted'
+				where id in ('evt_' || deployments.id || '_git_ref_accepted', 'evt_' || deployments.id || '_queued')
 			  )`, activeID)
 		if deleteErr != nil {
 			return fmt.Errorf("discard stale pre-receive reservation: %w", deleteErr)
@@ -355,6 +368,12 @@ func (s *SQLiteStore) QueueDeployment(ctx context.Context, model app.Deployment,
 	}
 	if affected == 0 {
 		return notFound("app", model.AppID)
+	}
+	if model.Trigger == app.DeploymentTriggerRedeploy {
+		if _, err := tx.ExecContext(ctx, `insert into events (id, app_id, type, message, created_at) values (?, ?, ?, ?, ?)`,
+			"evt_"+model.ID+"_queued", model.AppID, "deploy.queued", "Redeploy queued for release "+model.ReleaseID, formatTime(model.StartedAt)); err != nil {
+			return fmt.Errorf("record redeploy queue event: %w", err)
+		}
 	}
 	if err := retainRecentDeploymentLogs(ctx, tx, model.AppID); err != nil {
 		return err
@@ -441,9 +460,10 @@ func (s *SQLiteStore) UpdateDeploymentFailure(ctx context.Context, model app.Dep
 }
 
 func (s *SQLiteStore) AttachDomain(ctx context.Context, model app.Domain) error {
-	_, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, `
 		insert into domains (id, app_id, service_name, domain_name, port, https, created_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?)
+		select ?, ?, ?, ?, ?, ?, ?, ?
+ where exists (select 1 from apps where id = ?)
 		on conflict(id) do update set
 			app_id = excluded.app_id,
 			service_name = excluded.service_name,
@@ -459,8 +479,19 @@ func (s *SQLiteStore) AttachDomain(ctx context.Context, model app.Domain) error 
 		model.HTTPS,
 		formatTime(model.CreatedAt),
 		formatTime(model.UpdatedAt),
+		model.AppID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return notFound("app", model.AppID)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) ListDomains(ctx context.Context) ([]app.Domain, error) {
@@ -717,26 +748,22 @@ func (s *SQLiteStore) DeleteSSHKey(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *SQLiteStore) UpsertAppConfigValue(ctx context.Context, value AppConfigValue) error {
-	_, err := s.db.ExecContext(ctx, `
-		insert into app_config_values (app_id, name, ciphertext, nonce, key_version, created_at, updated_at, mutated_by)
-		values (?, ?, ?, ?, ?, ?, ?, ?)
-		on conflict(app_id, name) do update set
-			ciphertext = excluded.ciphertext,
-			nonce = excluded.nonce,
-			key_version = excluded.key_version,
-			updated_at = excluded.updated_at,
-			mutated_by = excluded.mutated_by`,
-		value.AppID,
-		value.Name,
-		value.Ciphertext,
-		value.Nonce,
-		value.KeyVersion,
-		formatTime(value.CreatedAt),
-		formatTime(value.UpdatedAt),
-		value.MutatedBy,
-	)
-	return err
+func (s *SQLiteStore) SetAppConfigValue(ctx context.Context, value AppConfigValue, event app.Event) error {
+	return s.mutateAppConfig(ctx, value.AppID, event, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			insert into app_config_values (app_id, name, ciphertext, nonce, key_version, created_at, updated_at, mutated_by)
+			values (?, ?, ?, ?, ?, ?, ?, ?)
+			on conflict(app_id, name) do update set
+				ciphertext = excluded.ciphertext,
+				nonce = excluded.nonce,
+				key_version = excluded.key_version,
+				updated_at = excluded.updated_at,
+				mutated_by = excluded.mutated_by`,
+			value.AppID, value.Name, value.Ciphertext, value.Nonce, value.KeyVersion,
+			formatTime(value.CreatedAt), formatTime(value.UpdatedAt), value.MutatedBy,
+		)
+		return err
+	})
 }
 
 func (s *SQLiteStore) GetAppConfigValue(ctx context.Context, ref AppConfigRef) (AppConfigValue, error) {
@@ -776,24 +803,47 @@ func (s *SQLiteStore) ListAppConfigValues(ctx context.Context, appID string) ([]
 	return values, rows.Err()
 }
 
-func (s *SQLiteStore) DeleteAppConfigValue(ctx context.Context, ref AppConfigRef) error {
-	result, err := s.db.ExecContext(ctx, `
-		delete from app_config_values
-		where app_id = ? and name = ?`,
-		ref.AppID,
-		ref.Name,
-	)
+func (s *SQLiteStore) DeleteAppConfigValue(ctx context.Context, ref AppConfigRef, event app.Event) error {
+	return s.mutateAppConfig(ctx, ref.AppID, event, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `delete from app_config_values where app_id = ? and name = ?`, ref.AppID, ref.Name)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return notFound("app config value", ref.AppID+"/"+ref.Name)
+		}
+		return nil
+	})
+}
+
+func (s *SQLiteStore) mutateAppConfig(ctx context.Context, appID string, event app.Event, mutate func(*sql.Tx) error) error {
+	if event.AppID != appID {
+		return fmt.Errorf("config mutation event app %q does not match app %q", event.AppID, appID)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
+	defer tx.Rollback()
+	var id string
+	if err := tx.QueryRowContext(ctx, `select id from apps where id = ?`, appID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return notFound("app", appID)
+		}
 		return err
 	}
-	if affected == 0 {
-		return notFound("app config value", ref.AppID+"/"+ref.Name)
+	if err := mutate(tx); err != nil {
+		return err
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `insert into events (id, app_id, type, message, created_at) values (?, ?, ?, ?, ?)`,
+		event.ID, event.AppID, event.Type, event.Message, formatTime(event.CreatedAt)); err != nil {
+		return fmt.Errorf("record %s event for app %q: %w", event.Type, appID, err)
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) DeleteApp(ctx context.Context, appID string) error {

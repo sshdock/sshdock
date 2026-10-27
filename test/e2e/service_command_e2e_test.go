@@ -56,7 +56,11 @@ func TestDockerServiceCommandsEndToEnd(t *testing.T) {
 	if execOutput.String() != "value with spaces" || runOutput.String() != "value with spaces" {
 		t.Fatalf("service command output: exec=%q run=%q", execOutput.String(), runOutput.String())
 	}
-	containerIDs, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=com.docker.compose.project="+compose.ProjectName(appName), "--filter", "label=com.docker.compose.oneoff=True").CombinedOutput()
+	projectName, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
+	containerIDs, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=com.docker.compose.project="+projectName, "--filter", "label=com.docker.compose.oneoff=True").CombinedOutput()
 	if err != nil {
 		t.Fatalf("inspect one-off containers: %v\n%s", err, containerIDs)
 	}

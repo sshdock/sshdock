@@ -74,7 +74,10 @@ func TestExternalBuildRegistryEndToEnd(t *testing.T) {
 		t.Cleanup(func() { _ = runCommandNoFail("", nil, "docker", "image", "rm", image) })
 	}
 	worktree := filepath.Join(paths.dataDir, "apps", appName, "worktree")
-	project := compose.ProjectName(appName)
+	project, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	cleanupEnv := append(os.Environ(), "SSHDOCK_GIT_SHA="+a)
 	t.Cleanup(func() {
 		_ = runCommandNoFail(worktree, cleanupEnv, "docker", "compose", "-p", project, "down", "--remove-orphans")

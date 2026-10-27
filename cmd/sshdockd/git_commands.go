@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/sshdock/sshdock/internal/config"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/store"
 )
@@ -29,6 +30,10 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	if *appName == "" || *repoPath == "" {
 		fmt.Fprintln(stderr, "usage: sshdockd git-hook --app <name> --repo <repo.git> [--worktree <path>]")
 		return 2
+	}
+	if err := domaincfg.ValidateAppName(*appName); err != nil {
+		fmt.Fprintln(stderr, gitrecv.WithAppNameGuidance(err, readOnlyGitRecoveryHost(config.LoadFromEnv())))
+		return 1
 	}
 	if stdin == nil {
 		stdin = os.Stdin
@@ -89,6 +94,10 @@ func runGitPreReceive(args []string, stdin io.Reader, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: sshdockd git-pre-receive --app <name>")
 		return 2
 	}
+	if err := domaincfg.ValidateAppName(*appName); err != nil {
+		fmt.Fprintln(stderr, gitrecv.WithAppNameGuidance(err, readOnlyGitRecoveryHost(config.LoadFromEnv())))
+		return 1
+	}
 	if stdin == nil {
 		stdin = os.Stdin
 	}
@@ -128,6 +137,16 @@ func runGitPreReceive(args []string, stdin io.Reader, stderr io.Writer) int {
 	return 0
 }
 
+func readOnlyGitRecoveryHost(cfg config.Config) string {
+	ctx := context.Background()
+	sqlite, err := store.OpenSQLiteReadOnly(ctx, cfg.SQLiteDBPath)
+	if err != nil {
+		return cfg.GitHost
+	}
+	defer sqlite.Close()
+	return configRecoveryHost(ctx, sqlite, cfg)
+}
+
 func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	originalCommand := os.Getenv("SSH_ORIGINAL_COMMAND")
 	if originalCommand == "" {
@@ -139,6 +158,10 @@ func runGitReceive(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	cfg := config.LoadFromEnv()
+	if _, err := gitrecv.ParseReceivePackCommand(originalCommand); err != nil {
+		fmt.Fprintln(stderr, gitrecv.WithAppNameGuidance(err, readOnlyGitRecoveryHost(cfg)))
+		return 1
+	}
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

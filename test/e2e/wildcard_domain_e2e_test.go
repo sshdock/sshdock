@@ -25,6 +25,7 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 	writeFakeCaddy(t, filepath.Join(binDir, "caddy"))
 
 	dataDir := filepath.Join(tmp, "data")
@@ -32,9 +33,8 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
-		"SSHDOCK_FAKE_COMPOSE_SERVICES=web:running,api:running,admin:running",
-		"SSHDOCK_FAKE_COMPOSE_LOGS=wildcard log\n",
+		`SSHDOCK_TEST_DOCKER_SERVICES=[{"Service":"web","State":"running"},{"Service":"api","State":"running"},{"Service":"admin","State":"running"}]`,
+		"SSHDOCK_TEST_DOCKER_LOGS=wildcard log\n",
 		"SSHDOCK_CADDY_CONFIG_PATH="+caddyConfigPath,
 		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+caddyConfigPath,
 	)
@@ -60,7 +60,7 @@ func TestWildcardDomainEndToEnd(t *testing.T) {
 			t.Fatalf("apps create output missing %q:\n%s", want, createOutput)
 		}
 	}
-	routedEnv := append(env, "SSHDOCK_FAKE_COMPOSE_ROUTE=web:3100")
+	routedEnv := append(env, `SSHDOCK_TEST_DOCKER_MODEL={"services":{"web":{"image":"example/web:latest","ports":[{"host_ip":"127.0.0.1","published":"3100","target":80}]}}}`)
 	pushLocalComposeApp(t, tmp, routedEnv, filepath.Join(dataDir, "apps", appName, "repo.git"), "initial wildcard app", fmt.Sprintf(`
 services:
   web:
@@ -92,7 +92,7 @@ services:
 
 	ambiguousApp := "ambiguous-app"
 	runCommand(t, root, env, sshdockPath, "apps", "create", ambiguousApp)
-	ambiguousEnv := append(env, "SSHDOCK_FAKE_COMPOSE_ROUTE_REASON=effective Compose model route is ambiguous")
+	ambiguousEnv := append(env, `SSHDOCK_TEST_DOCKER_MODEL={"services":{"api":{"image":"example/api:latest","ports":[{"published":"4100","target":80}]},"admin":{"image":"example/admin:latest","ports":[{"published":"4200","target":80}]}}}`)
 	pushLocalComposeApp(t, tmp, ambiguousEnv, filepath.Join(dataDir, "apps", ambiguousApp, "repo.git"), "ambiguous wildcard app", `
 services:
   api:

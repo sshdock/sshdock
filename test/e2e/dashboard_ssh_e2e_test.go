@@ -88,7 +88,6 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	operatorEnv := append(os.Environ(),
 		"PATH="+filepath.Join(paths.tmp, "fake-bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 		"SSHDOCK_CADDY_CONFIG_PATH="+filepath.Join(paths.tmp, "operator.caddyfile"),
 		"SSHDOCK_CADDY_MAIN_CONFIG_PATH="+filepath.Join(paths.tmp, "operator.caddyfile"),
 	)
@@ -125,7 +124,7 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 	}{
 		{[]string{"deployments", "info", appName, attempts.Data[0].ID, "--json"}, 0, ""},
 		{[]string{"deployments", "info", appName, "dep_missing", "--json"}, 1, "not_found"},
-		{[]string{"apps", "check", appName, "--json"}, 1, "unavailable"},
+		{[]string{"apps", "check", appName, "--json"}, 0, ""},
 		{[]string{"apps", "stop", appName, "--json"}, 2, "invalid_arguments"},
 	} {
 		command := exec.Command(sshPath, append(dashboardSSHArgs(paths, server, false), test.args...)...)
@@ -241,7 +240,7 @@ func TestDashboardSSHRestrictedOperatorCommandsEndToEnd(t *testing.T) {
 			t.Fatalf("apps %s output missing app name:\n%s", label, output)
 		}
 	}
-	for _, eventType := range []string{"stop.started", "stop.succeeded", "start.started", "start.succeeded", "restart.started", "restart.succeeded", "redeploy.started", "redeploy.succeeded", "exec.started", "exec.succeeded", "run.started", "run.succeeded"} {
+	for _, eventType := range []string{"stop.started", "stop.succeeded", "start.started", "start.succeeded", "restart.started", "restart.succeeded", "deploy.started", "deploy.succeeded", "exec.started", "exec.succeeded", "run.started", "run.succeeded"} {
 		if !strings.Contains(eventsOutput, eventType) {
 			t.Fatalf("events output missing %q:\n%s", eventType, eventsOutput)
 		}

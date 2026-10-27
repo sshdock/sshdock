@@ -164,10 +164,6 @@ func (m InteractiveDashboardModel) WithLogs(loadLogs DashboardLogsFunc) Interact
 	return m
 }
 
-func RunInteractiveDashboard(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, input io.Reader, output io.Writer) error {
-	return RunInteractiveDashboardWithActions(ctx, snapshot, refresh, nil, nil, input, output)
-}
-
 func RunInteractiveDashboardWithActions(ctx context.Context, snapshot DashboardSnapshot, refresh DashboardRefreshFunc, loadLogs DashboardLogsFunc, actions DashboardActions, input io.Reader, output io.Writer) error {
 	program := tea.NewProgram(
 		NewInteractiveDashboardModelWithActions(snapshot, refresh, actions).WithLogs(loadLogs),
@@ -659,20 +655,6 @@ func (m InteractiveDashboardModel) detailContent(width int) string {
 	return builder.String()
 }
 
-func (m InteractiveDashboardModel) detailView() string {
-	selected, ok := m.selectedApp()
-	if !ok {
-		return "No apps\n"
-	}
-
-	var builder strings.Builder
-	builder.WriteString("App ")
-	builder.WriteString(selected.Detail.Metadata().Name)
-	builder.WriteString("\n")
-	builder.WriteString(m.detailContent(panelContentWidth(m.dashboardLayout().rightWidth)))
-	return builder.String()
-}
-
 func (m InteractiveDashboardModel) compactView() string {
 	layout := m.dashboardLayout()
 	apps := m.renderPanel("Apps", m.appListView(panelContentWidth(layout.width), true), layout.width, layout.compactListInnerHeight, m.focus == dashboardFocusApps)
@@ -1033,10 +1015,6 @@ func (m InteractiveDashboardModel) selectedLogs() map[string]LogsView {
 	return selected.Logs
 }
 
-func logsText(logsByService map[string]LogsView) string {
-	return logsTableText(logsByService, 80)
-}
-
 func logsTableText(logsByService map[string]LogsView, width int) string {
 	if len(logsByService) == 0 {
 		return "- none"
@@ -1172,7 +1150,7 @@ func renderDeployTable(width int, deployments []DeploymentView) string {
 		rows = append(rows, []string{
 			compactDeploymentID(deployment.ID),
 			deployment.Status,
-			compactDeploymentTrigger(deployment.Trigger),
+			deployment.Trigger,
 			compactCommitSHA(deployment.CommitSHA),
 			compactReleaseID(deployment.ReleaseID),
 			formatDashboardCompactTime(deployment.StartedAt),
@@ -1358,13 +1336,6 @@ func compactReleaseID(value string) string {
 	return "rel_…" + value[len(value)-suffixLength:]
 }
 
-func compactDeploymentTrigger(value string) string {
-	if value == "startup_recovery" {
-		return "startup"
-	}
-	return value
-}
-
 func formatDashboardTime(value time.Time) string {
 	if value.IsZero() {
 		return "-"
@@ -1377,68 +1348,6 @@ func formatDashboardCompactTime(value time.Time) string {
 		return "-"
 	}
 	return value.Format("01-02 15:04")
-}
-
-func renderServiceBlock(services []ServiceView) string {
-	var builder strings.Builder
-	builder.WriteString("Services\n")
-	if len(services) == 0 {
-		builder.WriteString("- none\n")
-		return builder.String()
-	}
-	for _, service := range services {
-		fmt.Fprintf(&builder, "- %s %s\n", service.Name, service.State)
-	}
-	return builder.String()
-}
-
-func renderDomainBlock(domains []DomainView) string {
-	var builder strings.Builder
-	builder.WriteString("Domains\n")
-	if len(domains) == 0 {
-		builder.WriteString("- none\n")
-		return builder.String()
-	}
-	for _, domain := range domains {
-		fmt.Fprintf(&builder, "- %s -> %s https=%t\n", domain.DomainName, domain.Target, domain.HTTPS)
-	}
-	return builder.String()
-}
-
-func renderReleaseBlock(releases []ReleaseView) string {
-	var builder strings.Builder
-	builder.WriteString("Releases\n")
-	if len(releases) == 0 {
-		builder.WriteString("- none\n")
-		return builder.String()
-	}
-	for _, release := range releases {
-		fmt.Fprintf(&builder, "- %s %s %s\n", release.ID, release.Status, release.CommitSHA)
-	}
-	return builder.String()
-}
-
-func renderDeploymentBlock(deployments []DeploymentView) string {
-	var builder strings.Builder
-	builder.WriteString("Deployments\n")
-	if len(deployments) == 0 {
-		builder.WriteString("- none\n")
-		return builder.String()
-	}
-	for _, deployment := range deployments {
-		fmt.Fprintf(&builder, "- %s %s %s trigger=%s commit=%s", deployment.ID, deployment.Status, deployment.ReleaseID, deployment.Trigger, deployment.CommitSHA)
-		if deployment.FailureStage != "" {
-			fmt.Fprintf(&builder, " failure-stage=%s", deployment.FailureStage)
-		}
-		if deployment.FailureDetail != "" {
-			fmt.Fprintf(&builder, " detail=%s", deployment.FailureDetail)
-		}
-		if deployment.RetryGuidance != "" {
-			fmt.Fprintf(&builder, " retry=%s", deployment.RetryGuidance)
-		}
-		builder.WriteByte('\n')
-	}
-	return builder.String()
 }
 
 func fitLine(s string, maxWidth int) string {

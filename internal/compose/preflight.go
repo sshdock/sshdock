@@ -42,6 +42,10 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 	if request.Scope != "local" && request.Scope != "server" {
 		return report, fmt.Errorf("preflight scope must be local or server")
 	}
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return report, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	report = PreflightReport{OK: true, Scope: request.Scope, Checks: []PreflightCheck{}}
@@ -130,13 +134,13 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 		report.add("native Compose validation", status, "Docker Compose is unavailable; native configuration validation was not completed: "+versionErr.Error(), "Install or repair the Docker Compose plugin; run docker compose version.", blocking)
 		return report, ctx.Err()
 	}
-	command := Command{Name: "docker", Dir: request.ProjectDir, Env: request.Env, Args: commandArgs(composeArgs([]string{path}, ProjectName(request.AppName)), "config", "--format", "json")}
+	command := Command{Name: "docker", Dir: request.ProjectDir, Env: request.Env, Args: commandArgs(composeArgs([]string{path}, projectName), "config", "--format", "json")}
 	output, warnings, configErr := r.preflightCommand(ctx, command)
 	if configErr != nil {
 		report.add("native Compose validation", "fail", configErr.Error(), "Run docker compose -f '"+strings.ReplaceAll(path, "'", "'\\''")+"' config on this host and fix the reported configuration.", true)
 		return report, ctx.Err()
 	}
-	result, modelErr := analyzeEffectiveModel(output, ProjectName(request.AppName))
+	result, modelErr := analyzeEffectiveModel(output, projectName)
 	if modelErr != nil {
 		report.add("native Compose validation", "unknown", "Docker Compose returned an unreadable effective model; configuration validity could not be established.", "Check docker compose version and docker compose config --format json.", false)
 		return report, nil
@@ -165,7 +169,7 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 		} else {
 			report.add("Docker runtime", "ok", "The configured Docker daemon is accessible; this does not prove an application will build or start.", "", false)
 		}
-		r.preflightServerPorts(ctx, request, ports, runtimeErr == nil, &report)
+		r.preflightServerPorts(ctx, request, projectName, ports, runtimeErr == nil, &report)
 	}
 	return report, ctx.Err()
 }

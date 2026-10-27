@@ -1,9 +1,7 @@
 package appconfig
 
 import (
-	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,12 +23,12 @@ func TestServiceSetListRevealUnsetAndImport(t *testing.T) {
 	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret"), MutatedBy: "dashboard"}); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if err := service.Import(ctx, ImportRequest{
+	if count, err := service.Import(ctx, ImportRequest{
 		AppID:     "my-app",
 		Input:     strings.NewReader("API_TOKEN=worker-secret\n# comment\nEMPTY=\n"),
 		MutatedBy: "dashboard",
-	}); err != nil {
-		t.Fatalf("Import: %v", err)
+	}); err != nil || count != 2 {
+		t.Fatalf("Import = %d, %v, want two values", count, err)
 	}
 
 	entries, err := service.List(ctx, "my-app")
@@ -42,9 +40,6 @@ func TestServiceSetListRevealUnsetAndImport(t *testing.T) {
 	}
 	if entries[0].Name != "API_TOKEN" || entries[0].Status != "set" || entries[0].RedactedValue != "<redacted>" {
 		t.Fatalf("first entry = %#v", entries[0])
-	}
-	if entries[0].Value != "" {
-		t.Fatalf("list exposed value %q", entries[0].Value)
 	}
 
 	value, err := service.Reveal(ctx, ConfigRef{AppID: "my-app", Name: "DATABASE_URL"})
@@ -102,34 +97,6 @@ func TestServiceRevealReportsMissingHostKey(t *testing.T) {
 	}
 }
 
-func TestServiceResolveEnvIgnoresLegacyManifestRequirements(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newConfigTestStore(t, ctx)
-	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
-	createConfigTestApp(t, ctx, sqlite, "my-app", now)
-	projectDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(projectDir, ".sshdock.yml"), []byte(`config:
-  required:
-    - DATABASE_URL
-    - API_TOKEN
-`), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-
-	service := NewService(sqlite, filepath.Join(t.TempDir(), "config.key"), WithClock(func() time.Time { return now }))
-	if err := service.Set(ctx, SetRequest{AppID: "my-app", Name: "DATABASE_URL", Value: []byte("postgres://secret")}); err != nil {
-		t.Fatalf("Set: %v", err)
-	}
-
-	env, err := service.ResolveEnv(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("ResolveEnv: %v", err)
-	}
-	if env["DATABASE_URL"] != "postgres://secret" || len(env) != 1 {
-		t.Fatalf("env = %#v", env)
-	}
-}
-
 func TestServiceResolveEnvSuppliesAllFlatValues(t *testing.T) {
 	// Given
 	ctx := context.Background()
@@ -156,75 +123,6 @@ func TestServiceResolveEnvSuppliesAllFlatValues(t *testing.T) {
 	}
 	if env["API_TOKEN"] != "api-secret" {
 		t.Fatalf("env = %#v, want flat API_TOKEN", env)
-	}
-}
-
-func TestServiceRevealsMigratedLegacyScopedValueWithExistingHostKey(t *testing.T) {
-	// Given
-	ctx := context.Background()
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "legacy.db")
-	keyPath := filepath.Join(dir, "config.key")
-	key, err := LoadOrCreateHostKey(keyPath)
-	if err != nil {
-		t.Fatalf("LoadOrCreateHostKey: %v", err)
-	}
-	ref := ConfigRef{AppID: "my-app", Name: "API_TOKEN"}
-	aead, err := newAEAD(key)
-	if err != nil {
-		t.Fatalf("newAEAD: %v", err)
-	}
-	nonce := bytes.Repeat([]byte{0x03}, aead.NonceSize())
-	legacyCiphertext := aead.Seal(nil, nonce, []byte("legacy-secret"), additionalData(ref, "worker", currentKeyVersion))
-
-	legacy, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open legacy database: %v", err)
-	}
-	statements := []struct {
-		query string
-		args  []any
-	}{
-		{query: `create table apps (id text primary key, name text not null, node_id text not null, repo_path text not null, worktree_path text not null, compose_path text not null, status text not null, created_at text not null, updated_at text not null)`},
-		{query: `create table app_config_values (app_id text not null, name text not null, scope text not null default '', ciphertext blob not null, nonce blob not null, key_version integer not null, created_at text not null, updated_at text not null, mutated_by text not null, primary key (app_id, name, scope))`},
-		{query: `insert into apps values ('my-app', 'my-app', 'local', '/apps/my-app/repo.git', '/apps/my-app/worktree', 'compose.yml', 'created', '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z')`},
-		{query: `insert into app_config_values values ('my-app', 'API_TOKEN', 'worker', ?, ?, 1, '2026-07-14T09:00:00Z', '2026-07-14T09:00:00Z', 'dashboard')`, args: []any{legacyCiphertext, nonce}},
-	}
-	for _, statement := range statements {
-		if _, err := legacy.ExecContext(ctx, statement.query, statement.args...); err != nil {
-			t.Fatalf("prepare legacy database: %v\n%s", err, statement.query)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatalf("close legacy database: %v", err)
-	}
-
-	// When
-	sqlite, err := store.OpenSQLite(ctx, dbPath)
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := sqlite.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-	})
-	service := NewService(sqlite, keyPath)
-	value, err := service.Reveal(ctx, ref)
-
-	// Then
-	if err != nil {
-		t.Fatalf("Reveal migrated value: %v", err)
-	}
-	if value != "legacy-secret" {
-		t.Fatalf("Reveal migrated value = %q", value)
-	}
-	database, err := os.ReadFile(dbPath)
-	if err != nil {
-		t.Fatalf("ReadFile database: %v", err)
-	}
-	if bytes.Contains(database, []byte("legacy-secret")) {
-		t.Fatal("migrated database contains plaintext config value")
 	}
 }
 

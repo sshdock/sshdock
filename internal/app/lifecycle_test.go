@@ -17,7 +17,7 @@ func TestServiceStartAndStopUseCurrentWorktreeComposeEntryAndRecordEvents(t *tes
 	now := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
 	worktreePath, composePath := writeCurrentCompose(t)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
+	store.apps["app_1"] = App{ID: "app_1", RepoPath: writeRuntimeRepository(t, strings.Repeat("a", 40)), WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/historical/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}
@@ -32,7 +32,7 @@ func TestServiceStartAndStopUseCurrentWorktreeComposeEntryAndRecordEvents(t *tes
 	}
 
 	// Then
-	wantRequest := compose.LifecycleRequest{AppName: "app_1", ProjectDir: worktreePath, ComposePath: composePath, Env: resolver.env}
+	wantRequest := compose.LifecycleRequest{AppName: "app_1", ProjectDir: worktreePath, ComposePath: composePath, Env: compose.WithGitSHA(resolver.env, strings.Repeat("a", 40))}
 	if len(runner.StopRequests) != 1 || !reflect.DeepEqual(runner.StopRequests[0], wantRequest) {
 		t.Fatalf("StopRequests = %#v, want %#v", runner.StopRequests, wantRequest)
 	}
@@ -76,7 +76,7 @@ func TestServiceRestartPassesResolvedConfigEnvironment(t *testing.T) {
 	now := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
 	store := newFakeServiceStore()
 	worktreePath, _ := writeCurrentCompose(t)
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
+	store.apps["app_1"] = App{ID: "app_1", RepoPath: writeRuntimeRepository(t, strings.Repeat("a", 40)), WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/apps/app_1/worktree/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}
@@ -85,7 +85,7 @@ func TestServiceRestartPassesResolvedConfigEnvironment(t *testing.T) {
 	if err := service.RestartApp(ctx, "app_1"); err != nil {
 		t.Fatalf("RestartApp: %v", err)
 	}
-	if len(runner.RestartRequests) != 1 || runner.RestartRequests[0].Env["APP_MESSAGE"] != "configured" {
+	if len(runner.RestartRequests) != 1 || runner.RestartRequests[0].Env["APP_MESSAGE"] != "configured" || runner.RestartRequests[0].Env[compose.GitSHAEnv] != strings.Repeat("a", 40) {
 		t.Fatalf("RestartRequests = %#v, want stored config environment", runner.RestartRequests)
 	}
 }

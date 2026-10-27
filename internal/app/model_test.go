@@ -121,14 +121,6 @@ func TestReleaseModelFields(t *testing.T) {
 func TestRuntimeModelsExist(t *testing.T) {
 	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 
-	node := Node{
-		ID:        "node_123",
-		Name:      "local",
-		Address:   "127.0.0.1",
-		Status:    "ready",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
 	deployment := Deployment{
 		ID:           "dep_123",
 		AppID:        "app_123",
@@ -156,7 +148,7 @@ func TestRuntimeModelsExist(t *testing.T) {
 		CreatedAt: now,
 	}
 
-	if node.ID == "" || deployment.ID == "" || domain.ID == "" || event.ID == "" {
+	if deployment.ID == "" || domain.ID == "" || event.ID == "" {
 		t.Fatal("expected runtime models to retain IDs")
 	}
 }
@@ -174,7 +166,6 @@ func TestStatusConstants(t *testing.T) {
 		ReleaseStatusDeploying,
 		ReleaseStatusSucceeded,
 		ReleaseStatusFailed,
-		ReleaseStatusRolledBack,
 	}
 	deploymentStatuses := []DeploymentStatus{
 		DeploymentStatusPending,

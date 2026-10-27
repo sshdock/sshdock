@@ -12,47 +12,10 @@ import (
 	"github.com/sshdock/sshdock/internal/store"
 )
 
-func (b *MemoryBackend) CreateApp(name string) (App, string, error) {
-	if err := validateAppName(name, b.gitHost); err != nil {
-		return App{}, "", err
-	}
-	existingNames := make([]string, 0, len(b.apps))
-	for existingName := range b.apps {
-		existingNames = append(existingNames, existingName)
-	}
-	if err := domaincfg.ValidateAppIsolation(name, existingNames); err != nil {
-		return App{}, "", err
-	}
-	if _, ok := b.apps[name]; ok {
-		return App{}, "", fmt.Errorf("app %q already exists", name)
-	}
-
-	model := App{Name: name, Status: "created", NodeID: "local"}
-	if b.baseDomain != "" {
-		if appHost, err := domaincfg.AppHost(name, b.baseDomain); err == nil {
-			model.DefaultURL = "https://" + appHost
-		}
-	}
-	b.apps[name] = model
-
-	return model, fmt.Sprintf("git@%s:%s.git", b.gitHost, name), nil
-}
-
 func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 	ctx := context.Background()
 	gitHost := b.currentGitHost(ctx)
 	if err := validateAppName(name, gitHost); err != nil {
-		return App{}, "", err
-	}
-	existingApps, err := b.store.ListApps(ctx)
-	if err != nil {
-		return App{}, "", fmt.Errorf("list apps before creating %q: %w", name, err)
-	}
-	existingNames := make([]string, 0, len(existingApps))
-	for _, existingApp := range existingApps {
-		existingNames = append(existingNames, existingApp.Name)
-	}
-	if err := domaincfg.ValidateAppIsolation(name, existingNames); err != nil {
 		return App{}, "", err
 	}
 	if _, err := b.store.GetApp(ctx, name); err == nil {
@@ -108,15 +71,5 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 }
 
 func validateAppName(name string, gitHost string) error {
-	err := domaincfg.ValidateAppName(name)
-	if err == nil {
-		return nil
-	}
-
-	var nameError *domaincfg.InvalidAppNameError
-	if !errors.As(err, &nameError) {
-		return err
-	}
-	remoteURL := fmt.Sprintf("git@%s:%s.git", gitHost, nameError.Suggestion)
-	return fmt.Errorf("%w\nrun: git remote set-url sshdock %s", err, remoteURL)
+	return gitrecv.WithAppNameGuidance(domaincfg.ValidateAppName(name), gitHost)
 }

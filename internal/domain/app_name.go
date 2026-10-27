@@ -45,38 +45,3 @@ func SuggestAppName(name string) string {
 	}
 	return value
 }
-
-func AppIsolationName(name string) string {
-	name = strings.ToLower(name)
-	var normalized strings.Builder
-	for _, char := range name {
-		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' || char == '_' {
-			normalized.WriteRune(char)
-			continue
-		}
-		normalized.WriteByte('-')
-	}
-
-	value := strings.Trim(normalized.String(), "-_")
-	if value == "" {
-		value = "app"
-	}
-	return "sshdock_" + value
-}
-
-func ValidateAppIsolation(name string, existingNames []string) error {
-	isolationName := AppIsolationName(name)
-	collision := ""
-	for _, existingName := range existingNames {
-		if existingName == name || AppIsolationName(existingName) != isolationName {
-			continue
-		}
-		if collision == "" || existingName < collision {
-			collision = existingName
-		}
-	}
-	if collision == "" {
-		return nil
-	}
-	return fmt.Errorf("app name %q conflicts with existing app %q because both use runtime identity %q; choose another app name", name, collision, isolationName)
-}

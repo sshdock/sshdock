@@ -10,7 +10,7 @@ import (
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
-	domaincfg "github.com/sshdock/sshdock/internal/domain"
+	"github.com/sshdock/sshdock/internal/deployment"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -52,56 +52,13 @@ func (b *StoreBackend) RedeployApp(name string) error {
 	if err != nil {
 		return fmt.Errorf("create redeploy attempt for app %q: %w", name, err)
 	}
-	if b.recoveryRunner == nil {
-		if _, err := b.recoveryService().RedeployCurrentMain(ctx, name, deploymentID); err != nil {
-			return fmt.Errorf("redeploy app %q: %w", name, err)
-		}
-		return nil
-	}
-	runner := &redeployResultRunner{Runner: b.recoveryRunner}
-	if _, err := b.recoveryServiceWithRunner(runner).RedeployCurrentMain(ctx, name, deploymentID); err != nil {
+	redeployer := deployment.NewRedeployer(deployment.RedeployConfig{
+		Store: b.store, Now: b.now, CurrentMainResolver: b.currentMainResolver,
+	})
+	if err := redeployer.RedeployCurrentMain(ctx, name, deploymentID); err != nil {
 		return fmt.Errorf("redeploy app %q: %w", name, err)
 	}
-	if err := b.attachInitialRedeployRoute(ctx, name, runner.result); err != nil {
-		return fmt.Errorf("attach initial route after redeploy %q: %w", name, err)
-	}
 	return nil
-}
-
-type redeployResultRunner struct {
-	compose.Runner
-	result compose.DeployResult
-}
-
-func (r *redeployResultRunner) Deploy(ctx context.Context, request compose.DeployRequest) (compose.DeployResult, error) {
-	result, err := r.Runner.Deploy(ctx, request)
-	r.result = result
-	return result, err
-}
-
-func (b *StoreBackend) attachInitialRedeployRoute(ctx context.Context, appName string, result compose.DeployResult) error {
-	if !result.RouteFound {
-		return nil
-	}
-	domains, err := b.store.ListDomainsByApp(ctx, appName)
-	if err != nil {
-		return fmt.Errorf("list existing domains: %w", err)
-	}
-	if len(domains) != 0 {
-		return nil
-	}
-	config, err := b.store.GetServerConfig(ctx)
-	if errors.Is(err, store.ErrNotFound) || config.BaseDomain == "" {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("load server domain config: %w", err)
-	}
-	host, err := domaincfg.AppHost(appName, config.BaseDomain)
-	if err != nil {
-		return fmt.Errorf("derive app hostname: %w", err)
-	}
-	return b.AttachDomain(Domain{AppName: appName, ServiceName: result.RouteTarget.ServiceName, DomainName: host, Port: result.RouteTarget.Port, HTTPS: true})
 }
 
 func (b *StoreBackend) RemoveApp(name string) error {
@@ -126,7 +83,7 @@ func (b *StoreBackend) RemoveApp(name string) error {
 		if err != nil {
 			return audit.fail("resolve current Compose entry", err)
 		}
-		env, err := b.configEnv(ctx, name, projectDir)
+		env, err := appmodel.ResolveRuntimeEnv(ctx, model, b.configManager)
 		if err != nil {
 			return audit.fail("load app config", err)
 		}
@@ -155,11 +112,8 @@ func (b *StoreBackend) RemoveApp(name string) error {
 	if err := b.store.DeleteApp(ctx, name); err != nil {
 		return audit.fail("delete app state", err)
 	}
-	if err := b.syncRoutesFromStore(ctx); err != nil {
+	if err := b.routingService().Reconcile(ctx); err != nil {
 		return audit.fail("reload Caddy routes", err)
-	}
-	if err := b.store.ClearRouteApplyFailures(ctx); err != nil {
-		return audit.fail("clear resolved route failures", err)
 	}
 
 	return audit.succeed()
@@ -183,29 +137,17 @@ func (b *StoreBackend) resumeRemoval(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := b.syncRoutesFromStore(ctx); err != nil {
+	if err := b.routingService().Reconcile(ctx); err != nil {
 		return audit.fail("reload Caddy routes", err)
-	}
-	if err := b.store.ClearRouteApplyFailures(ctx); err != nil {
-		return audit.fail("clear resolved route failures", err)
 	}
 	return audit.succeed()
 }
 
 func (b *StoreBackend) recoveryService() *appmodel.Service {
-	return b.recoveryServiceWithRunner(b.recoveryRunner)
-}
-
-func (b *StoreBackend) recoveryServiceWithRunner(runner compose.Runner) *appmodel.Service {
+	runner := b.recoveryRunner
 	options := []appmodel.ServiceOption{appmodel.WithClock(b.now)}
 	if runner != nil {
 		options = append(options, appmodel.WithRecoveryRunner(runner))
-	}
-	if b.recoveryCheckout != nil {
-		options = append(options, appmodel.WithWorktreeCheckout(b.recoveryCheckout))
-	}
-	if b.currentMainResolver != nil {
-		options = append(options, appmodel.WithCurrentMainResolver(b.currentMainResolver))
 	}
 	if b.configManager != nil {
 		options = append(options, appmodel.WithConfigResolver(b.configManager))

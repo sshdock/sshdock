@@ -55,9 +55,9 @@ func TestServerPushCurrentMainSemanticsEndToEnd(t *testing.T) {
 	dbPath := filepath.Join(paths.dataDir, "sshdock.db")
 	beforeRedeploy := currentMainAttemptCount(t, dbPath, appName, featureCommit)
 	cliEnv := append(os.Environ(),
-		"PATH="+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"SSHDOCK_TEST_DOCKER_SERVICES=[]",
+		"PATH="+filepath.Join(paths.tmp, "fake-bin")+string(os.PathListSeparator)+paths.installBinDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+paths.dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
 	redeployOutput := runCommand(t, filepath.Join("..", ".."), cliEnv, filepath.Join(paths.installBinDir, "sshdock"), "apps", "redeploy", appName)
 

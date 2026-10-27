@@ -3,14 +3,18 @@ package harness
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/cli"
+	"github.com/sshdock/sshdock/internal/store"
 )
 
 func TestAgentSkillReadExamplesMatchShippedCLI(t *testing.T) {
@@ -19,15 +23,29 @@ func TestAgentSkillReadExamplesMatchShippedCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend := cli.NewMemoryBackend("sshdock.example.com")
-	fixtureApp, _, err := backend.CreateApp("my-app")
+	ctx := context.Background()
+	sqlite, err := store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "sshdock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixtureDomain := cli.Domain{AppName: "my-app", DomainName: "my-app.example.com", ServiceName: "web", Port: 3000, HTTPS: true}
-	if err := backend.AttachDomain(fixtureDomain); err != nil {
+	defer sqlite.Close()
+	fixtureApp := cli.App{Name: "my-app", Status: "created", NodeID: "local"}
+	now := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	if err := sqlite.CreateApp(ctx, app.App{
+		ID: fixtureApp.Name, Name: fixtureApp.Name, NodeID: fixtureApp.NodeID,
+		Status: app.AppStatusCreated, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
 		t.Fatal(err)
 	}
+	fixtureDomain := cli.Domain{AppName: "my-app", DomainName: "my-app.example.com", ServiceName: "web", Port: 3000, HTTPS: true}
+	if err := sqlite.AttachDomain(ctx, app.Domain{
+		ID: fixtureDomain.DomainName, AppID: fixtureDomain.AppName,
+		DomainName: fixtureDomain.DomainName, ServiceName: fixtureDomain.ServiceName,
+		Port: fixtureDomain.Port, HTTPS: fixtureDomain.HTTPS, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{GitHost: "sshdock.example.com"})
 	runner := cli.NewRunner(backend, "skill-contract-test")
 	commands := agentSkillReadCommands(t, string(skill))
 	surfaces := map[string]bool{}

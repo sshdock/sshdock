@@ -38,10 +38,6 @@ type CreateResult struct {
 	VolumeCount int
 }
 
-type RestoreResult struct {
-	DataDir string
-}
-
 type Inspection struct {
 	Path        string
 	Manifest    Manifest
@@ -224,65 +220,56 @@ func Inspect(_ context.Context, archivePath string) (Inspection, error) {
 }
 
 func Restore(_ context.Context, request RestoreRequest) error {
-	result, err := restore(request)
-	if err != nil {
+	if err := request.Config.Validate(); err != nil {
 		return err
 	}
-	_ = result
-	return nil
-}
-
-func restore(request RestoreRequest) (RestoreResult, error) {
-	if err := request.Config.Validate(); err != nil {
-		return RestoreResult{}, err
-	}
 	if strings.TrimSpace(request.ArchivePath) == "" {
-		return RestoreResult{}, fmt.Errorf("backup archive path is required")
+		return fmt.Errorf("backup archive path is required")
 	}
 	parent := filepath.Dir(request.Config.DataDir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return RestoreResult{}, fmt.Errorf("create data dir parent: %w", err)
+		return fmt.Errorf("create data dir parent: %w", err)
 	}
 	tempDir, err := os.MkdirTemp(parent, ".sshdock-restore-*")
 	if err != nil {
-		return RestoreResult{}, fmt.Errorf("create restore temp dir: %w", err)
+		return fmt.Errorf("create restore temp dir: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
 
 	if err := extractArchive(request.ArchivePath, tempDir); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 	manifest, err := readManifestFile(filepath.Join(tempDir, "manifest.json"))
 	if err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 	if manifest.FormatVersion != FormatVersion {
-		return RestoreResult{}, fmt.Errorf("unsupported backup format %q", manifest.FormatVersion)
+		return fmt.Errorf("unsupported backup format %q", manifest.FormatVersion)
 	}
 	dataRoot := filepath.Join(tempDir, "data")
 	if err := requireRegularFile(filepath.Join(dataRoot, "sshdock.db"), "missing required archive entry data/sshdock.db"); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 	if err := validateConfigKey(filepath.Join(dataRoot, "config.key")); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 	if err := validateRestoreTargetPaths(request.Config); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 
 	if err := os.RemoveAll(request.Config.DataDir); err != nil {
-		return RestoreResult{}, fmt.Errorf("replace data dir: %w", err)
+		return fmt.Errorf("replace data dir: %w", err)
 	}
 	if err := os.Rename(dataRoot, request.Config.DataDir); err != nil {
-		return RestoreResult{}, fmt.Errorf("restore data dir: %w", err)
+		return fmt.Errorf("restore data dir: %w", err)
 	}
 	if err := restoreOptionalFile(filepath.Join(tempDir, "caddy", "generated.caddyfile"), request.Config.CaddyConfigPath); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
 	if err := restoreOptionalFile(filepath.Join(tempDir, "caddy", "main.Caddyfile"), request.Config.CaddyMainConfigPath); err != nil {
-		return RestoreResult{}, err
+		return err
 	}
-	return RestoreResult{DataDir: request.Config.DataDir}, nil
+	return nil
 }
 
 func DefaultArchivePath(cfg config.Config, now time.Time) string {

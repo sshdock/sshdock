@@ -12,7 +12,9 @@ import (
 	appmodel "github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/appconfig"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployment"
 	"github.com/sshdock/sshdock/internal/gitrecv"
+	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -25,13 +27,12 @@ func TestRunDashboardConfigCommandFeedsGitPushDeploy(t *testing.T) {
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 	t.Setenv("SSHDOCK_SQLITE_DB_PATH", dbPath)
 	t.Setenv("SSHDOCK_CONFIG_KEY_PATH", keyPath)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	sqlite, err := store.OpenSQLite(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
-	if err := sqlite.CreateApp(ctx, appmodel.App{ID: "my-app", Name: "my-app", NodeID: "local", Status: appmodel.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := sqlite.CreateApp(ctx, appmodel.App{ID: "my-app", Name: "my-app", NodeID: "local", RepoPath: filepath.Join(dataDir, "apps", "my-app", "repo.git"), WorktreePath: filepath.Join(dataDir, "apps", "my-app", "worktree"), Status: appmodel.AppStatusCreated, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
 	if err := sqlite.Close(); err != nil {
@@ -87,24 +88,44 @@ func TestRunDashboardConfigCommandFeedsGitPushDeploy(t *testing.T) {
 
 	runner := &compose.FakeRunner{}
 	worktreePath := filepath.Join(dataDir, "apps", "my-app", "worktree")
-	handler := gitrecv.NewPostReceiveHandler(gitrecv.PostReceiveHandlerConfig{
+	handler := deployment.NewExecutor(deployment.Config{
 		Store:          sqlite,
+		Routing:        router.NewService(router.ServiceConfig{Store: sqlite, Router: router.NewFakeRouter(), LocksDir: t.TempDir()}),
 		Runner:         runner,
 		ConfigResolver: configService,
-		Checkout: gitrecv.WorktreeCheckoutFunc(func(_ context.Context, _ string, path string, _ string) error {
+		Checkout: configWorkflowCheckoutFunc(func(_ context.Context, _ string, path string, _ string) error {
 			if err := os.MkdirAll(path, 0o755); err != nil {
 				return err
 			}
 			return os.WriteFile(filepath.Join(path, "compose.yml"), []byte("services:\n  web:\n    image: nginx:alpine\n    environment:\n      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}\n"), 0o644)
 		}),
 	})
-	if err := handler.Handle(ctx, "my-app", filepath.Join(dataDir, "apps", "my-app", "repo.git"), worktreePath, strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
-		t.Fatalf("Handle Git push: %v", err)
+	queue := gitrecv.NewPushQueueHandler(gitrecv.PushQueueHandlerConfig{Store: sqlite, NewDeploymentID: func() (string, error) { return "dep_config", nil }})
+	if _, err := queue.Queue(ctx, "my-app", strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
+		t.Fatal(err)
 	}
+	postReceive := gitrecv.NewPostReceiveQueueHandler(gitrecv.PostReceiveQueueHandlerConfig{Store: sqlite})
+	if err := postReceive.Handle(ctx, "my-app", filepath.Join(filepath.Dir(worktreePath), "repo.git"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
+		t.Fatal(err)
+	}
+	attempt, found, err := sqlite.ClaimNextPendingDeployment(ctx)
+	if err != nil || !found {
+		t.Fatalf("claim deployment: found=%v err=%v", found, err)
+	}
+	if err := handler.Execute(ctx, attempt); err != nil {
+		t.Fatalf("Execute Git attempt: %v", err)
+	}
+
 	if len(runner.DeployRequests) != 1 || runner.DeployRequests[0].Env["DATABASE_URL"] != secret {
 		t.Fatalf("DeployRequests = %#v", runner.DeployRequests)
 	}
 	if _, err := os.Stat(filepath.Join(worktreePath, ".sshdock.yml")); !os.IsNotExist(err) {
 		t.Fatalf("legacy manifest unexpectedly exists: %v", err)
 	}
+}
+
+type configWorkflowCheckoutFunc func(context.Context, string, string, string) error
+
+func (f configWorkflowCheckoutFunc) Checkout(ctx context.Context, repo, worktree, commit string) error {
+	return f(ctx, repo, worktree, commit)
 }

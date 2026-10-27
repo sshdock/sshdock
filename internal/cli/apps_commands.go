@@ -9,6 +9,9 @@ import (
 
 func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "check" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		report, err := r.appPreflight(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -25,6 +28,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "create" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		app, remoteURL, err := r.backend.CreateApp(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -41,6 +47,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 1 && args[0] == "list" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		apps, err := r.backend.ListApps()
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -58,6 +67,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "info" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		app, err := r.backend.GetApp(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -71,6 +83,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "health" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		report, err := r.backend.AppHealth(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -81,6 +96,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "start" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.StartApp(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -90,6 +108,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "stop" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.StopApp(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -99,6 +120,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 3 && args[0] == "restart" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.RestartService(args[1], args[2]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -108,6 +132,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "restart" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.RestartApp(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -117,6 +144,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if request, action, ok := parseServiceCommandArgs(args); ok {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		request.Interactive = r.interactiveTerminal
 		request.Stdin = stdin
 		request.Stdout = stdout
@@ -139,6 +169,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 		if !ok {
 			printInvalidUsage(stderr, "apps")
 			return 2
+		}
+		if !r.requireBackend(stderr) {
+			return 1
 		}
 		if !force {
 			if stdin == nil {
@@ -165,6 +198,9 @@ func (r *Runner) runApps(args []string, stdin io.Reader, stdout io.Writer, stder
 	}
 
 	if len(args) == 2 && args[0] == "redeploy" {
+		if !r.requireBackend(stderr) {
+			return 1
+		}
 		if err := r.backend.RedeployApp(args[1]); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1

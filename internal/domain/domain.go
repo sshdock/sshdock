@@ -28,8 +28,8 @@ func ControlHost(baseDomain string) string {
 }
 
 func AppHost(appName string, baseDomain string) (string, error) {
-	if !IsDNSLabelSafe(appName) {
-		return "", fmt.Errorf("app name %q is not a DNS label; use lowercase letters, numbers, and hyphens for automatic routing", appName)
+	if err := ValidateAppName(appName); err != nil {
+		return "", err
 	}
 	baseDomain = strings.TrimSpace(baseDomain)
 	if baseDomain == "" {

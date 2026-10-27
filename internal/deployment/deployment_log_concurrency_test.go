@@ -1,4 +1,4 @@
-package gitrecv
+package deployment
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func TestDeploymentStdoutSurvivesConcurrentOperatorQueries(t *testing.T) {
 			defer cancel()
 			dir := t.TempDir()
 			dbPath := filepath.Join(dir, "sshdock.db")
-			db := newHookTestStore(t, ctx, dbPath)
+			db := newExecutorTestStore(t, ctx, dbPath)
 			now := time.Now()
 			deployment := app.Deployment{ID: "dep_stdout", AppID: "my-app", CommitSHA: "abc123", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
 			if err := db.QueueDeployment(ctx, deployment, ""); err != nil {
@@ -34,7 +34,7 @@ func TestDeploymentStdoutSurvivesConcurrentOperatorQueries(t *testing.T) {
 			if err := db.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, strings.Repeat("x", prefill), now); err != nil {
 				t.Fatal(err)
 			}
-			writeHookComposeFixture(t, dir)
+			writeExecutorComposeFixture(t, dir)
 			secret := "stdout-secret-value"
 			chunk := "stdout-chunk " + strings.Repeat("x", 1000) + secret + "\n"
 			outputPath := filepath.Join(dir, "build-output")

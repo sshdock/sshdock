@@ -79,7 +79,10 @@ func TestDockerRunnerComposeHealthSemanticsEndToEnd(t *testing.T) {
 				t.Fatalf("WriteFile compose: %v", err)
 			}
 			appName := "health-e2e-" + string(rune('a'+index))
-			projectName := compose.ProjectName(appName)
+			projectName, projectErr := compose.ProjectName(appName)
+			if projectErr != nil {
+				t.Fatal(projectErr)
+			}
 			t.Cleanup(func() {
 				_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-f", composePath, "-p", projectName, "down", "-v", "--remove-orphans")
 			})

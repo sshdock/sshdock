@@ -30,6 +30,7 @@ func TestStoreBackendRemoveRetainsStartedAndSucceededAuditEvents(t *testing.T) {
 	currentTime := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	seedRecoveryApp(t, ctx, sqlite, appsDir, currentTime)
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir:       t.TempDir(),
 		AppsDir:        appsDir,
 		RecoveryRunner: &compose.FakeRunner{},
 		Router:         &fakeRoutePublisher{},
@@ -71,6 +72,7 @@ func TestStoreBackendRemoveFailureRetainsActionableAuditEvent(t *testing.T) {
 	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
 	failure := errors.New("compose down failed")
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir: t.TempDir(), Router: &fakeRoutePublisher{},
 		AppsDir:        appsDir,
 		RecoveryRunner: &compose.FakeRunner{RemoveErr: failure},
 		Now:            func() time.Time { return now },
@@ -110,7 +112,7 @@ func TestStoreBackendRemovePersistsRedactedEventsBeforeDeletingConfig(t *testing
 		t.Fatalf("CreateEvent: %v", err)
 	}
 	runner := &compose.FakeRunner{}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, ConfigManager: configService, RecoveryRunner: runner, Router: &fakeRoutePublisher{}})
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{LocksDir: t.TempDir(), AppsDir: appsDir, ConfigManager: configService, RecoveryRunner: runner, Router: &fakeRoutePublisher{}})
 
 	if err := backend.RemoveApp("my-app"); err != nil {
 		t.Fatalf("RemoveApp: %v", err)
@@ -146,10 +148,16 @@ func TestStoreBackendRemoveCanResumeAfterPostDeleteRouteFailure(t *testing.T) {
 	seedRecoveryApp(t, ctx, sqlite, appsDir, now)
 	routeFailure := errors.New("Caddy unavailable")
 	router := &fakeRoutePublisher{Err: routeFailure}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{AppsDir: appsDir, Router: router})
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{LocksDir: t.TempDir(), AppsDir: appsDir, Router: router})
 
 	if err := backend.RemoveApp("my-app"); !errors.Is(err, routeFailure) {
 		t.Fatalf("RemoveApp error = %v, want wrapped %v", err, routeFailure)
+	}
+	if _, err := sqlite.GetApp(ctx, "my-app"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("app after route failure = %v, want deleted before retry", err)
+	}
+	if len(router.Syncs) != 1 || len(router.Syncs[0]) != 0 {
+		t.Fatalf("first route rebuild = %#v, want removal's empty intent", router.Syncs)
 	}
 	router.Err = nil
 	if err := backend.RemoveApp("my-app"); err != nil {
@@ -179,7 +187,7 @@ func TestStoreBackendRemoveScrubsEventsBeforeDestructiveWork(t *testing.T) {
 		t.Fatalf("CreateEvent: %v", err)
 	}
 	runner := &compose.FakeRunner{}
-	backend := NewStoreBackend(failingEventUpdateStore{Store: sqlite}, StoreBackendConfig{AppsDir: appsDir, ConfigManager: configService, RecoveryRunner: runner})
+	backend := NewStoreBackend(failingEventUpdateStore{Store: sqlite}, StoreBackendConfig{LocksDir: t.TempDir(), Router: &fakeRoutePublisher{}, AppsDir: appsDir, ConfigManager: configService, RecoveryRunner: runner})
 
 	err := backend.RemoveApp("my-app")
 	if err == nil || !strings.Contains(err.Error(), "redact retained events") {

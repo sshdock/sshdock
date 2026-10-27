@@ -34,7 +34,11 @@ func TestDockerLifecyclePreservesExistingConfigAndNamedVolume(t *testing.T) {
 	if _, err := runner.Deploy(ctx, deployRequest); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
-	volumeName := compose.ProjectName(appName) + "_data"
+	projectName, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
+	volumeName := projectName + "_data"
 	t.Cleanup(func() {
 		_ = runner.Remove(context.Background(), compose.RemoveRequest{AppName: appName, ProjectDir: projectDir, ComposePath: composePath, Env: map[string]string{"VALUE": "new"}})
 		_ = exec.Command("docker", "volume", "rm", "-f", volumeName).Run()

@@ -20,7 +20,7 @@ type DashboardStore interface {
 }
 
 type DashboardConfigResolver interface {
-	ResolveAppConfig(ctx context.Context, appID string) (map[string]string, error)
+	ResolveEnv(ctx context.Context, appID string) (map[string]string, error)
 }
 
 type DashboardHealthProvider interface {

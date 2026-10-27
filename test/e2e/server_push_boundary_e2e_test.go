@@ -49,9 +49,13 @@ func TestServerPushComposeBoundaryEndToEnd(t *testing.T) {
 
 	t.Run("missing compose lists every expected name", func(t *testing.T) {
 		output, _ := pushFilesThroughBootstrappedSSH(t, paths, "missing-compose", map[string]string{"README.md": "missing compose\n"})
+		if !strings.Contains(output, "deploy: failed stage=detect compose") {
+			t.Fatalf("missing detection failure: %s", output)
+		}
+		detail := queryString(t, dbPath, `select failure_detail from deployments where app_id = ?`, "missing-compose")
 		for _, want := range []string{"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"} {
-			if !strings.Contains(output, want) {
-				t.Fatalf("git push output missing %q:\n%s", want, output)
+			if !strings.Contains(detail, want) {
+				t.Fatalf("stored failure detail missing %q: %s", want, detail)
 			}
 		}
 	})
@@ -61,9 +65,13 @@ func TestServerPushComposeBoundaryEndToEnd(t *testing.T) {
 			"compose.yaml": "services: {}\n",
 			"compose.yml":  "services: {}\n",
 		})
+		if !strings.Contains(output, "deploy: failed stage=detect compose") {
+			t.Fatalf("missing detection failure: %s", output)
+		}
+		detail := queryString(t, dbPath, `select failure_detail from deployments where app_id = ?`, "multiple-compose")
 		for _, want := range []string{"conflicting files", "compose.yaml", "compose.yml"} {
-			if !strings.Contains(output, want) {
-				t.Fatalf("git push output missing %q:\n%s", want, output)
+			if !strings.Contains(detail, want) {
+				t.Fatalf("stored failure detail missing %q: %s", want, detail)
 			}
 		}
 	})
@@ -115,13 +123,13 @@ func TestServerPushComposeBoundaryEndToEnd(t *testing.T) {
 		}
 	})
 
-	t.Run("valid app cannot collide with legacy runtime identity", func(t *testing.T) {
+	t.Run("canonical app is distinct from rejected stored invalid name", func(t *testing.T) {
 		database, openErr := store.OpenSQLite(ctx, dbPath)
 		if openErr != nil {
 			t.Fatalf("OpenSQLite: %v", openErr)
 		}
 		now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-		if createErr := database.CreateApp(ctx, app.App{
+		invalid := app.App{
 			ID:           "foo.bar",
 			Name:         "foo.bar",
 			NodeID:       "local",
@@ -130,7 +138,8 @@ func TestServerPushComposeBoundaryEndToEnd(t *testing.T) {
 			Status:       app.AppStatusCreated,
 			CreatedAt:    now,
 			UpdatedAt:    now,
-		}); createErr != nil {
+		}
+		if createErr := database.CreateApp(ctx, invalid); createErr != nil {
 			t.Fatalf("CreateApp(foo.bar): %v", createErr)
 		}
 		if closeErr := database.Close(); closeErr != nil {
@@ -140,12 +149,50 @@ func TestServerPushComposeBoundaryEndToEnd(t *testing.T) {
 		output, pushErr := pushFilesThroughBootstrappedSSH(t, paths, "foo-bar", map[string]string{
 			"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 		})
-		if pushErr == nil {
-			t.Fatalf("git push succeeded, want runtime identity collision rejection:\n%s", output)
+		if pushErr != nil {
+			t.Fatalf("canonical app rejected because an invalid row exists: %v\n%s", pushErr, output)
 		}
-		want := `app name "foo-bar" conflicts with existing app "foo.bar" because both use runtime identity "sshdock_foo-bar"; choose another app name`
-		if !strings.Contains(output, want) {
-			t.Fatalf("git push output missing %q:\n%s", want, output)
+		database, openErr = store.OpenSQLite(ctx, dbPath)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		t.Cleanup(func() { _ = database.Close() })
+		canonical, getErr := database.GetApp(ctx, "foo-bar")
+		if getErr != nil || canonical.ID != "foo-bar" || canonical.Name != "foo-bar" || canonical.Status != app.AppStatusHealthy {
+			t.Fatalf("canonical app = %#v, %v", canonical, getErr)
+		}
+		mainBefore := strings.TrimSpace(runGitOutput(t, "", nil, "--git-dir", canonical.RepoPath, "rev-parse", "refs/heads/main"))
+		output, pushErr = pushFilesThroughBootstrappedSSH(t, paths, invalid.ID, map[string]string{
+			"compose.yml": "services:\n  web:\n    image: example/web:changed\n",
+		})
+		if pushErr == nil {
+			t.Fatalf("push to existing invalid app succeeded:\n%s", output)
+		}
+		for _, want := range []string{`app name "foo.bar" is not a normalized DNS label; use "foo-bar"`, "git remote set-url sshdock git@sshdock.example.com:foo-bar.git"} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("invalid app rejection missing %q:\n%s", want, output)
+			}
+		}
+		if got, err := database.GetApp(ctx, invalid.ID); err != nil || got != invalid {
+			t.Fatalf("invalid app row changed: %#v, %v", got, err)
+		}
+		if got, err := database.GetApp(ctx, canonical.ID); err != nil || got != canonical {
+			t.Fatalf("invalid request changed canonical app: %#v, %v", got, err)
+		}
+		mainAfter := strings.TrimSpace(runGitOutput(t, "", nil, "--git-dir", canonical.RepoPath, "rev-parse", "refs/heads/main"))
+		if mainAfter != mainBefore {
+			t.Fatalf("invalid request changed canonical main: %s -> %s", mainBefore, mainAfter)
+		}
+		for _, path := range []string{filepath.Dir(invalid.RepoPath), filepath.Join(paths.dataDir, "locks", "apps", invalid.ID+".lock")} {
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("invalid request created app or lock path %q: %v", path, err)
+			}
+		}
+		if attempts, err := database.ListDeploymentsByApp(ctx, invalid.ID); err != nil || len(attempts) != 0 {
+			t.Fatalf("invalid request created attempts: %#v, %v", attempts, err)
+		}
+		if events, err := database.ListEventsByApp(ctx, invalid.ID); err != nil || len(events) != 0 {
+			t.Fatalf("invalid request created events: %#v, %v", events, err)
 		}
 	})
 }

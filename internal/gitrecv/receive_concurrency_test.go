@@ -6,12 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
-	"github.com/sshdock/sshdock/internal/deploycoord"
 )
 
 func TestReceivePackServiceRejectsSecondPushWhenSameAppIsReceiving(t *testing.T) {
@@ -84,16 +82,26 @@ func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T
 	rootDir := t.TempDir()
 	appsDir := filepath.Join(rootDir, "apps")
 	locksDir := filepath.Join(rootDir, "locks")
-	manager := deploycoord.NewManager(locksDir)
-	active, err := manager.AcquireDeployment(ctx, nil)
-	if err != nil {
-		t.Fatalf("AcquireDeployment: %v", err)
+	sqlite := newReceiveTestStore(t, ctx)
+	if err := sqlite.CreateApp(ctx, app.App{ID: "active-app", Name: "active-app", NodeID: "local", Status: app.AppStatusCreated}); err != nil {
+		t.Fatal(err)
+	}
+	deployment := reservePendingRecovery(t, sqlite, "active-app", "dep_active", "abc123")
+	if err := sqlite.RecordDeploymentQueued(ctx,
+		app.Event{ID: EventID(deployment.ID, "git_ref_accepted"), AppID: deployment.AppID, Type: "git.ref_accepted"},
+		app.Event{ID: EventID(deployment.ID, "queued"), AppID: deployment.AppID, Type: "deploy.queued"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	active, found, err := sqlite.ClaimNextPendingDeployment(ctx)
+	if err != nil || !found || active.ID != deployment.ID || active.Status != app.DeploymentStatusDeploying {
+		t.Fatalf("active deployment = %#v, %v, %v; want claimed deployment", active, found, err)
 	}
 	service := NewReceivePackService(ReceivePackServiceConfig{
-		Store:             newReceiveTestStore(t, ctx),
+		Store:             sqlite,
 		AppsDir:           appsDir,
 		LocksDir:          locksDir,
-		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir}),
+		RepoManager:       NewRepoManager(RepoManagerConfig{AppsDir: appsDir, Executor: &recordingGitExecutor{}}),
 		ReceivePackRunner: &recordingReceivePackRunner{},
 	})
 	// When
@@ -105,8 +113,9 @@ func TestReceivePackServiceStartsReceivePackWhileDeploymentIsActive(t *testing.T
 	if err != nil {
 		t.Fatalf("Receive while another deployment is active: %v", err)
 	}
-	if err := active.Release(); err != nil {
-		t.Fatalf("release active deployment: %v", err)
+	deployments, err := sqlite.ListDeploymentsByApp(ctx, active.AppID)
+	if err != nil || len(deployments) != 1 || deployments[0] != active {
+		t.Fatalf("active deployments after receive = %#v, %v; want unchanged active attempt", deployments, err)
 	}
 	if _, err := os.Stat(filepath.Join(appsDir, "waiting-app", "repo.git")); err != nil {
 		t.Fatalf("repo stat: %v", err)
@@ -192,21 +201,4 @@ func (r *blockingReceivePackRunner) RunReceivePack(_ context.Context, _ string, 
 	close(r.started)
 	<-r.release
 	return nil
-}
-
-type receiveWaitSignalWriter struct {
-	want     string
-	notified chan struct{}
-	once     sync.Once
-}
-
-func newReceiveWaitSignalWriter(want string) *receiveWaitSignalWriter {
-	return &receiveWaitSignalWriter{want: want, notified: make(chan struct{})}
-}
-
-func (w *receiveWaitSignalWriter) Write(data []byte) (int, error) {
-	if strings.Contains(string(data), w.want) {
-		w.once.Do(func() { close(w.notified) })
-	}
-	return len(data), nil
 }

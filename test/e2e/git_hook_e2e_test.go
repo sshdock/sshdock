@@ -32,10 +32,11 @@ func TestGitHookEndToEnd(t *testing.T) {
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockPath, "./cmd/sshdock")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 
+	commandLog := filepath.Join(tmp, "docker-commands.log")
 	dataDir := filepath.Join(tmp, "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -44,7 +45,7 @@ func TestGitHookEndToEnd(t *testing.T) {
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
+		"SSHDOCK_TEST_DOCKER_RECORD="+commandLog,
 	)
 	runCommand(t, root, env, sshdockPath, "apps", "create", "my-app")
 
@@ -115,6 +116,12 @@ func TestGitHookEndToEnd(t *testing.T) {
 	if status != string(app.DeploymentStatusSucceeded) {
 		t.Fatalf("deployment status = %q", status)
 	}
+	commands := readFile(t, commandLog)
+	for _, operation := range []string{"config --format json", "pull --ignore-buildable", "build", "up -d --wait --wait-timeout 120"} {
+		if !strings.Contains(commands, operation) {
+			t.Fatalf("ordinary daemon skipped Docker operation %q:\n%s", operation, commands)
+		}
+	}
 }
 
 func TestGitReceivePushToCreateEndToEnd(t *testing.T) {
@@ -130,6 +137,7 @@ func TestGitReceivePushToCreateEndToEnd(t *testing.T) {
 
 	sshdockdPath := filepath.Join(binDir, "sshdockd")
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
+	writeDockerFixture(t, binDir)
 
 	fakeSSHPath := filepath.Join(binDir, "fake-ssh")
 	if err := os.WriteFile(fakeSSHPath, []byte(`#!/bin/sh
@@ -160,7 +168,6 @@ SSH_ORIGINAL_COMMAND="$*" exec sshdockd git-receive
 	appName := "push-app"
 	dataDir := filepath.Join(tmp, "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -186,7 +193,6 @@ SSH_ORIGINAL_COMMAND="$*" exec sshdockd git-receive
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GIT_SSH="+fakeSSHPath,
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=fake",
 	)
 	startDeploymentDaemon(t, sshdockdPath, env)
 	runGit(t, sourceDir, env, "push", "sshdock", "main")
@@ -251,10 +257,12 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 	runCommand(t, root, nil, "go", "build", "-o", sshdockdPath, "./cmd/sshdockd")
 
 	appName := "docker-app"
-	projectName := compose.ProjectName(appName)
+	projectName, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	dataDir := filepath.Join(tmp, "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "docker")
 	cfg := config.LoadFromEnv()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll data dir: %v", err)
@@ -269,7 +277,6 @@ func TestGitHookDockerComposeEndToEnd(t *testing.T) {
 	env := append(os.Environ(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SSHDOCK_DATA_DIR="+dataDir,
-		"SSHDOCK_COMPOSE_RUNNER=docker",
 	)
 	runCommand(t, root, env, sshdockPath, "apps", "create", appName)
 

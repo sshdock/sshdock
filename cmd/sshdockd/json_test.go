@@ -73,7 +73,6 @@ func TestOperatorJSONDispatchAndEarlyErrors(t *testing.T) {
 			t.Setenv("SSHDOCK_DATA_DIR", dataDir)
 			t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(dataDir, "sshdock.db"))
 			t.Setenv("SSHDOCK_GIT_HOST", test.host)
-			t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
 			t.Setenv("SSH_ORIGINAL_COMMAND", test.command)
 			var stdout, stderr bytes.Buffer
 			if code := runDashboard(nil, &stdout, &stderr); code != test.wantCode {

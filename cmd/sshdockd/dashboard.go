@@ -73,10 +73,7 @@ func runDashboard(stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer sqlite.Close()
 
-	composeRunner, err := dashboardRunnerFromEnv()
-	if err != nil {
-		return fail(err, 1)
-	}
+	composeRunner := compose.NewDockerRunner(compose.LocalCommandExecutor{})
 
 	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
 	backend := newDashboardBackend(sqlite, cfg, composeRunner, configService)
@@ -141,6 +138,7 @@ func newDashboardBackend(persistentStore store.Store, cfg config.Config, runner 
 	return cli.NewStoreBackend(persistentStore, cli.StoreBackendConfig{
 		NodeID:                     cfg.NodeID,
 		AppsDir:                    cfg.AppsDir,
+		LocksDir:                   cfg.LocksDir,
 		GitHost:                    cfg.GitHost,
 		AuthorizedKeysPath:         cfg.GitAuthorizedKeysPath,
 		GitReceiveCommand:          cfg.GitReceiveCommand,
@@ -154,7 +152,6 @@ func newDashboardBackend(persistentStore store.Store, cfg config.Config, runner 
 			UpstreamHost:   "127.0.0.1",
 		}),
 		RecoveryRunner:      runner,
-		RecoveryCheckout:    gitrecv.LocalWorktreeCheckout{},
 		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
 		ConfigManager:       configService,
 	})

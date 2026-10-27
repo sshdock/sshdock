@@ -18,7 +18,6 @@ func TestVolumeInspectIsOfflineAndDoesNotInitializeHostState(t *testing.T) {
 	root := t.TempDir()
 	dataDir := filepath.Join(root, "absent", "data")
 	t.Setenv("SSHDOCK_DATA_DIR", dataDir)
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "invalid")
 	t.Setenv("PATH", root)
 	archive := filepath.Join(root, "volume.tar.gz")
 	writeCLIVolumeArchive(t, archive)

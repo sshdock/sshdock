@@ -8,6 +8,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 )
 
 type GitCommand struct {
@@ -65,6 +67,9 @@ func NewRepoManager(config RepoManagerConfig) *RepoManager {
 }
 
 func (m *RepoManager) SetupBareRepo(ctx context.Context, appName string) (BareRepo, error) {
+	if err := domaincfg.ValidateAppName(appName); err != nil {
+		return BareRepo{}, err
+	}
 	repoPath := BareRepoPath(m.appsDir, appName)
 	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
 		return BareRepo{}, err

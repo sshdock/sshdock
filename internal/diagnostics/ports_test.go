@@ -37,6 +37,9 @@ func TestRunHTTPSListenerFollowsStoredRoutes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
+			if err := db.CreateApp(context.Background(), app.App{ID: "my-app", Name: "my-app", CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
 			for index, domain := range test.domains {
 				domain.ID = fmt.Sprintf("domain_%d", index)
 				domain.AppID = "my-app"

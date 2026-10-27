@@ -82,7 +82,10 @@ func TestFrameworkQuickstartsDockerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Abs %s example directory: %v", test.name, err)
 			}
-			projectName := compose.ProjectName(test.projectName)
+			projectName, projectErr := compose.ProjectName(test.projectName)
+			if projectErr != nil {
+				t.Fatal(projectErr)
+			}
 			t.Cleanup(func() {
 				_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
 			})

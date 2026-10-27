@@ -16,7 +16,7 @@ type queuedDeploymentStore interface {
 }
 
 type queuedDeploymentExecutor interface {
-	DeployQueued(ctx context.Context, event PushEvent, worktreePath string, deployment app.Deployment) error
+	Execute(ctx context.Context, deployment app.Deployment) error
 }
 
 type QueuedDeploymentWorkerConfig struct {
@@ -58,12 +58,7 @@ func (w *QueuedDeploymentWorker) RunOne(ctx context.Context) (bool, error) {
 	if err != nil || !found {
 		return found, errors.Join(recoveryErr, err)
 	}
-	model, err := w.store.GetApp(ctx, deployment.AppID)
-	if err != nil {
-		return true, errors.Join(recoveryErr, fmt.Errorf("load app %q for queued deployment %q: %w", deployment.AppID, deployment.ID, err))
-	}
-	event := PushEvent{AppName: deployment.AppID, RepoPath: model.RepoPath, Branch: "main", CommitSHA: deployment.CommitSHA}
-	if err := w.executor.DeployQueued(ctx, event, model.WorktreePath, deployment); err != nil {
+	if err := w.executor.Execute(ctx, deployment); err != nil {
 		return true, errors.Join(recoveryErr, fmt.Errorf("run queued deployment %q: %w", deployment.ID, err))
 	}
 	return true, recoveryErr

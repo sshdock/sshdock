@@ -49,7 +49,10 @@ func TestWordPressSoftwareRecipeDockerEndToEnd(t *testing.T) {
 	if err := os.WriteFile(composePath, []byte(previousCompose), 0o644); err != nil {
 		t.Fatalf("WriteFile previous WordPress compose: %v", err)
 	}
-	projectName := compose.ProjectName("wordpress-recipe-e2e")
+	projectName, projectErr := compose.ProjectName("wordpress-recipe-e2e")
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	t.Cleanup(func() {
 		_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
 	})

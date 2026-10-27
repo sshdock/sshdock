@@ -27,7 +27,7 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 	if len(queued) != 2 {
 		t.Fatalf("push output missing queued deployment ID:\n%s", output)
 	}
-	for _, want := range []string{"deploy: following " + queued[1], "deploy: daemon started", "deploy: succeeded"} {
+	for _, want := range []string{"deploy: following " + queued[1], "deploy: execution started", "deploy: succeeded"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("push output missing %q:\n%s", want, output)
 		}
@@ -47,14 +47,14 @@ func TestServerPushImageServiceEndToEnd(t *testing.T) {
 }
 
 func TestServerPushClientDisconnectDoesNotInterruptDeployment(t *testing.T) {
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_DEPLOY_DELAY", "2s")
+	t.Setenv("SSHDOCK_TEST_DOCKER_DEPLOY_DELAY", "2")
 	paths := setupBootstrappedServerPush(t, "fake")
 
 	appName := "server-detached-client-app"
 	push := prepareComposeAppPush(t, paths, composePushRequest{AppName: appName, Files: map[string]string{
 		"compose.yml": "services:\n  web:\n    image: example/web:latest\n",
 	}})
-	output := newPushCommandSignalWriter("deploy: daemon started")
+	output := newPushCommandSignalWriter("deploy: execution started")
 	command := exec.Command("git", "push", "sshdock", "main")
 	command.Dir = push.sourceDir
 	command.Env = push.env
@@ -106,7 +106,10 @@ func TestServerPushBuildServiceDockerEndToEnd(t *testing.T) {
 	paths := setupBootstrappedServerPush(t, "docker")
 
 	appName := "server-build-app"
-	projectName := compose.ProjectName(appName)
+	projectName, projectErr := compose.ProjectName(appName)
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	hostPort := freeLocalPort(t)
 	releaseImagePrefix := "sshdock/" + appName + "/"
 	legacyImagesBefore := countImageRepositoriesWithPrefix(

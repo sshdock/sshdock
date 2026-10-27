@@ -16,6 +16,13 @@ type postReceiveQueueStore interface {
 	RecordDeploymentQueued(ctx context.Context, accepted app.Event, queued app.Event) error
 }
 
+// StatusOutputError reports that queue state was persisted but the Git client
+// could not receive its status lines.
+type StatusOutputError struct{ Err error }
+
+func (e *StatusOutputError) Error() string { return e.Err.Error() }
+func (e *StatusOutputError) Unwrap() error { return e.Err }
+
 type PostReceiveQueueHandlerConfig struct {
 	Store             postReceiveQueueStore
 	Output            io.Writer

@@ -41,7 +41,7 @@ func (b *StoreBackend) Preflight(name string) (compose.PreflightReport, error) {
 	if err != nil {
 		return compose.PreflightReport{}, err
 	}
-	env, err := b.configEnv(ctx, name, projectDir)
+	env, err := appmodel.ResolveRuntimeEnv(ctx, model, b.configManager)
 	if err != nil {
 		return compose.PreflightReport{}, compose.RedactError(err, redactionValues)
 	}

@@ -10,6 +10,8 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployment"
+	"github.com/sshdock/sshdock/internal/router"
 )
 
 func TestPushQueueHandlerQueuesPendingDeploymentBeforeRefUpdate(t *testing.T) {
@@ -47,7 +49,6 @@ func TestPostReceiveHandlerDeploysClaimedQueuedDeployment(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	sqlite := newHookTestStore(t, ctx, filepath.Join(t.TempDir(), "sshdock.db"))
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	queue := NewPushQueueHandler(PushQueueHandlerConfig{
 		Store:           sqlite,
 		NewDeploymentID: func() (string, error) { return "dep_queued", nil },
@@ -68,17 +69,18 @@ func TestPostReceiveHandlerDeploysClaimedQueuedDeployment(t *testing.T) {
 	if !found {
 		t.Fatal("ClaimNextPendingDeployment found = false, want true")
 	}
-	handler := NewPostReceiveHandler(PostReceiveHandlerConfig{
-		Store:  sqlite,
-		Runner: &compose.FakeRunner{},
-		Checkout: WorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
+	handler := deployment.NewExecutor(deployment.Config{
+		Store:   sqlite,
+		Routing: router.NewService(router.ServiceConfig{Store: sqlite, Router: router.NewFakeRouter(), LocksDir: t.TempDir()}),
+		Runner:  &compose.FakeRunner{},
+		Checkout: testWorktreeCheckoutFunc(func(_ context.Context, _ string, gotWorktreePath string, _ string) error {
 			writeHookComposeFixture(t, gotWorktreePath)
 			return nil
 		}),
 	})
 
 	// When
-	err = handler.DeployQueued(ctx, PushEvent{AppName: "my-app", RepoPath: "/apps/my-app/repo.git", CommitSHA: "abc123"}, worktreePath, claimed)
+	err = handler.Execute(ctx, claimed)
 
 	// Then
 	if err != nil {
@@ -126,4 +128,10 @@ func TestPostReceiveQueueHandlerRecordsAcceptedRefAndReportsQueuedDeployment(t *
 	if len(events) != 2 || events[0].Type != "git.ref_accepted" || events[1].Type != "deploy.queued" {
 		t.Fatalf("events = %#v, want accepted-ref and queued events", events)
 	}
+}
+
+type testWorktreeCheckoutFunc func(context.Context, string, string, string) error
+
+func (f testWorktreeCheckoutFunc) Checkout(ctx context.Context, repo, worktree, commit string) error {
+	return f(ctx, repo, worktree, commit)
 }

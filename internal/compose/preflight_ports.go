@@ -57,7 +57,7 @@ func (r *PreflightReport) preflightPublishedPorts(model composeModel) []prefligh
 	return ports
 }
 
-func (r *DockerRunner) preflightServerPorts(ctx context.Context, request PreflightRequest, ports []preflightPort, runtimeAvailable bool, report *PreflightReport) {
+func (r *DockerRunner) preflightServerPorts(ctx context.Context, request PreflightRequest, projectName string, ports []preflightPort, runtimeAvailable bool, report *PreflightReport) {
 	if len(ports) == 0 {
 		return
 	}
@@ -89,7 +89,7 @@ func (r *DockerRunner) preflightServerPorts(ctx context.Context, request Preflig
 			if !overlap {
 				continue
 			}
-			if binding.project == ProjectName(request.AppName) {
+			if binding.project == projectName {
 				if binding.port.service == port.service {
 					own = append(own, binding.port)
 				} else if status == "ok" {

@@ -14,16 +14,12 @@ Git-push acceptance runs a deployment daemon alongside the Git receiver. A bare-
 
 The default e2e test uses real local Git commands, a fake SSH transport script, and a real bare repository.
 
-The default e2e still uses fake runtime adapters for:
-
-- Docker Compose deployment
-- Caddy routing
-- SSH dashboard sessions
+The default e2e runs ordinary binaries against a test-only Docker executable. Caddy and SSH transport are also stubbed in that tier.
 
 This keeps the default real pass focused on Git receive and release recording. Real OpenSSH is covered by `make ssh-e2e`; real Docker is covered by the opt-in Docker tier; Caddy routing is covered by `make route-e2e`.
 The SSH dashboard is covered by `make tui-e2e`. Failed-deploy persistence and Git-main recovery are covered by `make recovery-e2e`. Production hardening checks are covered by `make hardening-e2e`. Backup archive restore is covered by `make backup-restore-e2e`.
 
-The portable [agent skill](AGENT_OPERATIONS.md) has executable read-command examples checked against fake-backed CLI handlers in `make ci`. Agent discovery and deploy/diagnose/recover/backup behavior require a separate real VPS journey; command parsing and mocked status alone do not establish that acceptance.
+The portable [agent skill](AGENT_OPERATIONS.md) has executable read-command examples checked against temporary SQLite-backed CLI handlers in `make ci`. Agent discovery and deploy/diagnose/recover/backup behavior require a separate real VPS journey; command parsing and mocked status alone do not establish that acceptance.
 
 ## Internal Dogfood Readiness
 
@@ -121,7 +117,7 @@ Run:
 make wildcard-domain-e2e
 ```
 
-This tier uses fake Compose and fake Caddy runners so it does not need public DNS. It configures `sshdock server domain set example.com`, pushes a Compose app with `web` publishing `127.0.0.1:<port>:80`, and verifies:
+This tier runs ordinary binaries with test-only Docker and Caddy executables, so it does not need Docker or public DNS. It configures `sshdock server domain set example.com`, pushes a Compose app with `web` publishing `127.0.0.1:<port>:80`, and verifies:
 
 1. `apps create` prints `git@sshdock.example.com:<app>.git`.
 2. The successful push persists `<app>.example.com` in SQLite.
@@ -149,7 +145,7 @@ The dashboard test:
 8. Runs restricted non-PTY `apps exec` and `apps run`, plus PTY-backed `apps exec`, and verifies attached output and events.
 9. Verifies the dashboard includes the app list, app detail, service status, route, release, deployment, event, and service log views.
 
-This test uses the fake Compose runner for dashboard service status/log output so it does not require the deployed app to be running in Docker.
+This test uses a test-only Docker executable for service status and log fixtures, so it does not require a running Docker daemon.
 
 TUI app action coverage is separate:
 
@@ -222,7 +218,7 @@ This target uses the same real dashboard path as `make tui-e2e`:
    - `compact-actions/`: 60-column action-menu captures proving the selected row stays visible
    - `manifest.json`: command, terminal size, and artifact index
 
-The capture uses the fake Compose runner for service status/log data, but the operator access path is real OpenSSH forced-command access.
+The capture uses ordinary binaries with a test-only Docker executable for service status and log data. Operator access uses real OpenSSH forced commands.
 
 To capture a real external server instead of the local e2e harness, run:
 
@@ -257,7 +253,7 @@ The recovery test:
 4. Force-pushes the saved good commit back to remote `main`.
 5. Verifies app, release, deployment, event, and failure-detail state reflect the failed deploy followed by a successful Git-selected deployment, with no SSHDock rollback attempt.
 
-This test uses the fake Compose runner so it does not mutate Docker, Caddy, or host SSH state.
+This test uses ordinary binaries with a test-only Docker executable, so it does not mutate Docker, Caddy, or host SSH state.
 
 Focused unit tests for deploy failure classification, redaction, route inference, Caddy reload failure, release-list failure detail, and dashboard failure rendering live in:
 
@@ -320,7 +316,7 @@ For this first real pass, the command should:
 5. Enforce SSHDock's external-file policy and let Docker Compose validate the application model.
 6. Create a release record.
 7. Create a deployment record.
-8. Run the fake Compose deploy adapter.
+8. Run the production Docker Compose adapter against a test-only `docker` executable.
 9. Mark the deployment succeeded or failed.
 
 ## Environment
@@ -329,10 +325,9 @@ The e2e test uses:
 
 ```text
 SSHDOCK_DATA_DIR=<temporary-data-dir>
-SSHDOCK_COMPOSE_RUNNER=fake
 ```
 
-`SSHDOCK_COMPOSE_RUNNER=fake` is intentional. It makes this test a real Git/hook/store pass without requiring Docker.
+The harness builds ordinary binaries and places a strict test-only `docker` executable on their `PATH`. It returns explicit effective-model and status fixtures, rejects unknown commands, and never calls the host Docker daemon. This covers the real Git, hook, queue, store and Docker command paths.
 
 ## Config Harness
 
@@ -359,11 +354,7 @@ The Docker e2e target:
 3. Create a temporary SSHDock data directory.
 4. Run `sshdock apps create my-app`.
 5. Push a Compose app to the created bare repository.
-6. Run the hook with:
-
-```text
-SSHDOCK_COMPOSE_RUNNER=docker
-```
+6. Use the host Docker executable without the hermetic fixture.
 
 7. Verify SQLite contains a succeeded deployment.
 8. Verify image-only and build-based apps use native Compose images without SSHDock release overrides or tags.

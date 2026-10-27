@@ -42,20 +42,14 @@ func TestQueuedDeploymentWorkerClaimsPendingDeploymentForExecution(t *testing.T)
 	if executor.deployment.ID != "dep_queued" || executor.deployment.Status != app.DeploymentStatusDeploying {
 		t.Fatalf("executor deployment = %#v, want claimed deployment", executor.deployment)
 	}
-	if executor.event.AppName != "my-app" || executor.event.CommitSHA != "abc123" || executor.event.RepoPath != "/apps/my-app/repo.git" || executor.worktreePath != "/apps/my-app/worktree" {
-		t.Fatalf("executor input = %#v, %q", executor.event, executor.worktreePath)
-	}
+
 }
 
 type recordingQueuedDeploymentExecutor struct {
-	event        PushEvent
-	worktreePath string
-	deployment   app.Deployment
+	deployment app.Deployment
 }
 
-func (e *recordingQueuedDeploymentExecutor) DeployQueued(_ context.Context, event PushEvent, worktreePath string, deployment app.Deployment) error {
-	e.event = event
-	e.worktreePath = worktreePath
+func (e *recordingQueuedDeploymentExecutor) Execute(_ context.Context, deployment app.Deployment) error {
 	e.deployment = deployment
 	return nil
 }

@@ -19,8 +19,9 @@ func TestStoreBackendDomainsCheckReportsFailedAttach(t *testing.T) {
 	createDomainTestApp(t, sqlite, now)
 	routePublisher := &fakeRoutePublisher{Err: errors.New("caddy reload failed")}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		Router: routePublisher,
-		Now:    func() time.Time { return now },
+		LocksDir: t.TempDir(),
+		Router:   routePublisher,
+		Now:      func() time.Time { return now },
 	})
 	runner := NewRunner(backend, "dev")
 	var stdout bytes.Buffer
@@ -58,6 +59,7 @@ func TestStoreBackendDomainsCheckReportsFailedDetachStillActiveInCaddy(t *testin
 		Port: domain.Port, HTTPS: domain.HTTPS,
 	}
 	backend := NewStoreBackend(sqlite, StoreBackendConfig{
+		LocksDir: t.TempDir(),
 		Router: &fakeRoutePublisher{
 			StoredRoutes: []router.Route{activeRoute},
 			Err:          errors.New("caddy reload failed"),
@@ -79,57 +81,6 @@ func TestStoreBackendDomainsCheckReportsFailedDetachStillActiveInCaddy(t *testin
 	want := "my-app.example.com\tweb\t3000\ttrue\tfailed\tdetach failed to apply: caddy reload failed"
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("domains check stdout missing %q:\n%s", want, stdout.String())
-	}
-}
-
-func TestStoreBackendDomainAttachRecordsEveryReloadFailure(t *testing.T) {
-	ctx := context.Background()
-	sqlite := newStoreBackendTestStore(t, ctx)
-	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
-	createDomainTestApp(t, sqlite, now)
-	routePublisher := &fakeRoutePublisher{Err: errors.New("caddy reload failed")}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{
-		Router: routePublisher,
-		Now:    func() time.Time { return now },
-	})
-	runner := NewRunner(backend, "dev")
-
-	for range 2 {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		if code := runner.Run([]string{"domains", "attach", "my-app", "web", "my-app.example.com", "--port", "3000"}, &stdout, &stderr); code != 1 {
-			t.Fatalf("domains attach exit code = %d, want 1", code)
-		}
-	}
-	events, err := sqlite.ListEventsByApp(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("ListEventsByApp: %v", err)
-	}
-	var attached int
-	var reloadFailed int
-	for _, event := range events {
-		switch event.Type {
-		case "domain.attached":
-			attached++
-		case "router.reload_failed":
-			reloadFailed++
-		}
-	}
-	if attached != 2 || reloadFailed != 2 {
-		t.Fatalf("event counts attached=%d reload_failed=%d, want 2 each", attached, reloadFailed)
-	}
-	routePublisher.Err = nil
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if code := runner.Run([]string{"domains", "attach", "my-app", "web", "my-app.example.com", "--port", "3000"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("successful domains attach exit code = %d, stderr = %q", code, stderr.String())
-	}
-	failures, err := sqlite.ListRouteApplyFailuresByApp(ctx, "my-app")
-	if err != nil {
-		t.Fatalf("ListRouteApplyFailuresByApp: %v", err)
-	}
-	if len(failures) != 0 {
-		t.Fatalf("route apply failures after successful sync = %#v, want none", failures)
 	}
 }
 

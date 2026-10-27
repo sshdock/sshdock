@@ -403,7 +403,7 @@ func (f *fakeDashboardHealthProvider) AppHealth(appName string) (app.HealthRepor
 	return f.reports[appName], nil
 }
 
-func (f *fakeDashboardConfigResolver) ResolveAppConfig(_ context.Context, _ string) (map[string]string, error) {
+func (f *fakeDashboardConfigResolver) ResolveEnv(_ context.Context, _ string) (map[string]string, error) {
 	result := make(map[string]string, len(f.env))
 	for key, value := range f.env {
 		result[key] = value

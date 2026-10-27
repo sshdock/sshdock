@@ -54,7 +54,10 @@ func TestGiteaSoftwareRecipeDockerEndToEnd(t *testing.T) {
 	if err := os.WriteFile(composePath, []byte(previousCompose), 0o644); err != nil {
 		t.Fatalf("WriteFile previous Gitea compose: %v", err)
 	}
-	projectName := compose.ProjectName("gitea-recipe-e2e")
+	projectName, projectErr := compose.ProjectName("gitea-recipe-e2e")
+	if projectErr != nil {
+		t.Fatal(projectErr)
+	}
 	t.Cleanup(func() {
 		_ = runCommandNoFail(projectDir, nil, "docker", "compose", "-p", projectName, "down", "-v", "--remove-orphans")
 	})

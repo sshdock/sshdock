@@ -8,8 +8,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-
-	"github.com/sshdock/sshdock/internal/appconfig/legacycipher"
 )
 
 const currentKeyVersion = 1
@@ -37,7 +35,7 @@ func Encrypt(ref ConfigRef, key []byte, plaintext []byte) (Box, error) {
 
 	keyVersion := currentKeyVersion
 	return Box{
-		Ciphertext: aead.Seal(nil, nonce, plaintext, additionalData(ref, "", keyVersion)),
+		Ciphertext: aead.Seal(nil, nonce, plaintext, additionalData(ref, keyVersion)),
 		Nonce:      nonce,
 		KeyVersion: keyVersion,
 	}, nil
@@ -52,11 +50,7 @@ func Decrypt(ref ConfigRef, key []byte, box Box) ([]byte, error) {
 		return nil, fmt.Errorf("config nonce is %d bytes, want %d", len(box.Nonce), aead.NonceSize())
 	}
 
-	legacyScope, ciphertext, _, err := legacycipher.Unwrap(box.Ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt config value %s: %w", ref.display(), err)
-	}
-	plaintext, err := aead.Open(nil, box.Nonce, ciphertext, additionalData(ref, legacyScope, box.KeyVersion))
+	plaintext, err := aead.Open(nil, box.Nonce, box.Ciphertext, additionalData(ref, box.KeyVersion))
 	if err != nil {
 		return nil, fmt.Errorf("decrypt config value %s: authentication failed", ref.display())
 	}
@@ -74,8 +68,9 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
-func additionalData(ref ConfigRef, legacyScope string, keyVersion int) []byte {
-	parts := []string{"sshdock-config-v1", ref.AppID, legacyScope, ref.Name, strconv.Itoa(keyVersion)}
+func additionalData(ref ConfigRef, keyVersion int) []byte {
+	// The empty field is part of the stored flat ciphertext format.
+	parts := []string{"sshdock-config-v1", ref.AppID, "", ref.Name, strconv.Itoa(keyVersion)}
 	return []byte(strings.Join(parts, "\x00"))
 }
 

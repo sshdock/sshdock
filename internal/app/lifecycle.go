@@ -45,7 +45,7 @@ func (s *Service) runAppLifecycle(ctx context.Context, appID string, action life
 		return fmt.Errorf("record %s start for app %q: %w", action, appID, err)
 	}
 
-	env, operationErr := s.resolveDeployEnv(ctx, appID, target.projectDir)
+	env, operationErr := ResolveRuntimeEnv(ctx, target.model, s.configResolver)
 	if operationErr != nil {
 		operationErr = fmt.Errorf("resolve app config: %w", operationErr)
 	} else {

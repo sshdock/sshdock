@@ -22,6 +22,7 @@ type ReceiveRepoSetupper interface {
 type StoreBackendConfig struct {
 	NodeID                     string
 	AppsDir                    string
+	LocksDir                   string
 	GitHost                    string
 	AuthorizedKeysPath         string
 	GitReceiveCommand          string
@@ -30,7 +31,6 @@ type StoreBackendConfig struct {
 	RepoSetupper               ReceiveRepoSetupper
 	Router                     routeSyncer
 	RecoveryRunner             compose.Runner
-	RecoveryCheckout           appmodel.WorktreeCheckout
 	CurrentMainResolver        appmodel.CurrentMainResolver
 	ConfigManager              configManager
 	Now                        func() time.Time
@@ -53,6 +53,7 @@ type StoreBackend struct {
 	store                      store.Store
 	nodeID                     string
 	appsDir                    string
+	locksDir                   string
 	gitHost                    string
 	authorizedKeysPath         string
 	gitReceiveCommand          string
@@ -61,7 +62,6 @@ type StoreBackend struct {
 	repoSetupper               ReceiveRepoSetupper
 	router                     routeSyncer
 	recoveryRunner             compose.Runner
-	recoveryCheckout           appmodel.WorktreeCheckout
 	currentMainResolver        appmodel.CurrentMainResolver
 	configManager              configManager
 	now                        func() time.Time
@@ -86,6 +86,7 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		store:                      persistentStore,
 		nodeID:                     cfg.NodeID,
 		appsDir:                    cfg.AppsDir,
+		locksDir:                   cfg.LocksDir,
 		gitHost:                    cfg.GitHost,
 		authorizedKeysPath:         cfg.AuthorizedKeysPath,
 		gitReceiveCommand:          cfg.GitReceiveCommand,
@@ -94,7 +95,6 @@ func NewStoreBackend(persistentStore store.Store, cfg StoreBackendConfig) *Store
 		repoSetupper:               cfg.RepoSetupper,
 		router:                     cfg.Router,
 		recoveryRunner:             cfg.RecoveryRunner,
-		recoveryCheckout:           cfg.RecoveryCheckout,
 		currentMainResolver:        cfg.CurrentMainResolver,
 		configManager:              cfg.ConfigManager,
 		now:                        cfg.Now,

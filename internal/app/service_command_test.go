@@ -18,7 +18,7 @@ func TestServiceExecAndRunUseCurrentWorktreeComposeEntryAndRecordEvents(t *testi
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	worktreePath, composePath := writeCurrentCompose(t)
 	store := newFakeServiceStore()
-	store.apps["app_1"] = App{ID: "app_1", WorktreePath: worktreePath}
+	store.apps["app_1"] = App{ID: "app_1", RepoPath: writeRuntimeRepository(t, strings.Repeat("a", 40)), WorktreePath: worktreePath}
 	store.releases["rel_1"] = Release{ID: "rel_1", AppID: "app_1", ComposePath: "/historical/compose.yml", Status: ReleaseStatusSucceeded, CreatedAt: now}
 	runner := &compose.FakeRunner{}
 	resolver := &fakeConfigResolver{env: map[string]string{"APP_MESSAGE": "configured"}}
@@ -39,7 +39,7 @@ func TestServiceExecAndRunUseCurrentWorktreeComposeEntryAndRecordEvents(t *testi
 	wantRequest := request
 	wantRequest.ProjectDir = worktreePath
 	wantRequest.ComposePath = composePath
-	wantRequest.Env = resolver.env
+	wantRequest.Env = compose.WithGitSHA(resolver.env, strings.Repeat("a", 40))
 	if len(runner.ExecRequests) != 1 {
 		t.Fatalf("ExecRequests = %#v", runner.ExecRequests)
 	}
@@ -79,4 +79,17 @@ func TestServiceCommandFailureIsRedactedInErrorAndEvent(t *testing.T) {
 	if events[1].Message != "Exec failed for service app_1/web" {
 		t.Fatalf("failure event message = %q", events[1].Message)
 	}
+}
+
+type allValueConfigResolver struct {
+	env             map[string]string
+	redactionValues map[string]string
+}
+
+func (r allValueConfigResolver) ResolveEnv(context.Context, string) (map[string]string, error) {
+	return r.env, nil
+}
+
+func (r allValueConfigResolver) RedactionValues(context.Context, string) (map[string]string, error) {
+	return r.redactionValues, nil
 }

@@ -20,7 +20,6 @@ type receivePackStore interface {
 	pendingDeploymentStore
 	CreateApp(ctx context.Context, model app.App) error
 	GetApp(ctx context.Context, id string) (app.App, error)
-	ListApps(ctx context.Context) ([]app.App, error)
 	ListDeploymentsByApp(ctx context.Context, appID string) ([]app.Deployment, error)
 	ListEventsByApp(ctx context.Context, appID string) ([]app.Event, error)
 	DeploymentLog(ctx context.Context, appID string, deploymentID string) (app.DeploymentLog, error)
@@ -124,7 +123,7 @@ func ParseReceivePackCommand(originalCommand string) (string, error) {
 	}
 
 	appName := strings.TrimSuffix(repoPath, ".git")
-	if err := validateFlatAppName(appName); err != nil {
+	if err := domaincfg.ValidateAppName(appName); err != nil {
 		return "", err
 	}
 
@@ -144,7 +143,7 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 
 	appName, err := ParseReceivePackCommand(request.OriginalCommand)
 	if err != nil {
-		return s.withAppNameGuidance(err)
+		return WithAppNameGuidance(err, s.repoManager.gitHost)
 	}
 	guard, err := s.coordination.AcquireApp(ctx, appName)
 	if err != nil {
@@ -158,20 +157,6 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	}()
 	model, err := s.store.GetApp(ctx, appName)
 	if errors.Is(err, store.ErrNotFound) {
-		if nameErr := domaincfg.ValidateAppName(appName); nameErr != nil {
-			return s.withAppNameGuidance(nameErr)
-		}
-		existingApps, listErr := s.store.ListApps(ctx)
-		if listErr != nil {
-			return fmt.Errorf("list apps before creating %q: %w", appName, listErr)
-		}
-		existingNames := make([]string, 0, len(existingApps))
-		for _, existingApp := range existingApps {
-			existingNames = append(existingNames, existingApp.Name)
-		}
-		if isolationErr := domaincfg.ValidateAppIsolation(appName, existingNames); isolationErr != nil {
-			return isolationErr
-		}
 		model, err = s.createApp(ctx, appName)
 	}
 	if err != nil {
@@ -212,12 +197,13 @@ func (s *ReceivePackService) Receive(ctx context.Context, request ReceivePackReq
 	return nil
 }
 
-func (s *ReceivePackService) withAppNameGuidance(err error) error {
+// WithAppNameGuidance adds the Git remote update command for a rejected name.
+func WithAppNameGuidance(err error, gitHost string) error {
 	var invalidName *domaincfg.InvalidAppNameError
 	if !errors.As(err, &invalidName) {
 		return err
 	}
-	return fmt.Errorf("%w\nrun: git remote set-url sshdock %s", err, s.repoManager.RemoteURL(invalidName.Suggestion))
+	return fmt.Errorf("%w\nrun: git remote set-url sshdock git@%s:%s.git", err, gitHost, invalidName.Suggestion)
 }
 
 func (s *ReceivePackService) createApp(ctx context.Context, appName string) (app.App, error) {
@@ -242,14 +228,6 @@ func (s *ReceivePackService) createApp(ctx context.Context, appName string) (app
 	}
 
 	return model, nil
-}
-
-func validateFlatAppName(appName string) error {
-	if appName == "" || appName == "." || appName == ".." || strings.ContainsAny(appName, `/\`) {
-		return domaincfg.ValidateAppName(appName)
-	}
-
-	return nil
 }
 
 type LocalReceivePackRunner struct{}

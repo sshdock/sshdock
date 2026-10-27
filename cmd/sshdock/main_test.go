@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/appconfig"
-	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/store"
 )
 
@@ -20,7 +19,7 @@ func TestRunVersion(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := run([]string{"version"}, &stdout, &stderr)
+	code := runWithEnv([]string{"version"}, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("run(version) exit code = %d, want 0; stderr = %q", code, stderr.String())
@@ -89,6 +88,43 @@ func TestRunWithEnvPersistsAppAcrossInvocations(t *testing.T) {
 	if code := runWithEnv([]string{"domains", "attach", "my-app", "web", "example.com", "--port", "3000"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("domains attach exit code = %d, stderr = %q", code, stderr.String())
 	}
+
+	worktree := filepath.Join(dataDir, "apps", "my-app", "worktree")
+	if err := os.MkdirAll(worktree, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(worktree, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx:alpine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dockerCalls := filepath.Join(t.TempDir(), "docker-calls")
+	t.Setenv("SSHDOCK_TEST_COMPOSE_PATH", composePath)
+	t.Setenv("SSHDOCK_TEST_DOCKER_CALLS", dockerCalls)
+	script := `#!/bin/sh
+set -eu
+[ "$#" -eq 7 ] && [ "$1" = compose ] && [ "$2" = -f ] && [ "$3" = "$SSHDOCK_TEST_COMPOSE_PATH" ] && [ "$4" = -p ] && [ "$5" = sshdock_my-app ] && [ "$6" = down ] && [ "$7" = --remove-orphans ] || exit 91
+printf '%s\n' "$*" >> "$SSHDOCK_TEST_DOCKER_CALLS"
+`
+	if err := os.WriteFile(filepath.Join(fakeBinDir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithEnv([]string{"apps", "remove", "my-app", "--force", "--force"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "removed app my-app") || stderr.Len() != 0 {
+		t.Fatalf("repeated --force: exit=%d stdout=%q stderr=%q", code, &stdout, &stderr)
+	}
+	ctx := context.Background()
+	db, err := store.OpenSQLiteReadOnly(ctx, filepath.Join(dataDir, "sshdock.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.GetApp(ctx, "my-app"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("repeated --force left persisted app: %v", err)
+	}
+	if calls, err := os.ReadFile(dockerCalls); err != nil || !strings.Contains(string(calls), "down --remove-orphans") {
+		t.Fatalf("Compose removal calls = %q, %v", calls, err)
+	}
 }
 
 func TestRunWithEnvUsesPersistedBaseDomainForCreatedAppRemote(t *testing.T) {
@@ -144,7 +180,7 @@ func TestRunWithEnvReadsPersistedDeploymentLogs(t *testing.T) {
 	if err := sqlite.UpdateDeploymentStatus(ctx, "dep_1", app.DeploymentStatusSucceeded, now, ""); err != nil {
 		t.Fatal(err)
 	}
-	for _, suffix := range [][]string{nil, {"dep_1"}, {"-f"}, {"dep_1", "-f"}} {
+	for _, suffix := range [][]string{nil, {"dep_1"}, {"-f"}, {"dep_1", "-f"}, {"-f", "-f", "--follow"}, {"-f", "dep_1", "-f", "--follow"}} {
 		args := append([]string{"deployments", "logs", "my-app"}, suffix...)
 		var stdout, stderr bytes.Buffer
 		if code := runWithEnv(args, &stdout, &stderr); code != 0 {
@@ -347,18 +383,6 @@ func TestRunWithEnvBackupCreateInspectAndRestore(t *testing.T) {
 	}
 }
 
-func TestCLIRunnerFromEnvDefaultsToDocker(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "")
-
-	runner, err := cliRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("cliRunnerFromEnv: %v", err)
-	}
-	if got := fmt.Sprintf("%T", runner); got != "*compose.DockerRunner" {
-		t.Fatalf("runner type = %s, want *compose.DockerRunner", got)
-	}
-}
-
 func writeFakeDockerVolumeCommand(t *testing.T, path string) {
 	t.Helper()
 	script := `#!/bin/sh
@@ -379,37 +403,25 @@ exit 1
 	}
 }
 
-func TestCLIRunnerFromEnvCanSelectFakeForTests(t *testing.T) {
-	t.Setenv("SSHDOCK_COMPOSE_RUNNER", "fake")
-	t.Setenv("SSHDOCK_FAKE_COMPOSE_SERVICES", "web:running,worker:exited")
-
-	runner, err := cliRunnerFromEnv()
-	if err != nil {
-		t.Fatalf("cliRunnerFromEnv: %v", err)
-	}
-	if got := fmt.Sprintf("%T", runner); got != "*compose.FakeRunner" {
-		t.Fatalf("runner type = %s, want *compose.FakeRunner", got)
-	}
-	fake := runner.(*compose.FakeRunner)
-	if len(fake.Services) != 2 || fake.Services[0].Name != "web" || fake.Services[0].State != "running" || fake.Services[1].Name != "worker" || fake.Services[1].State != "exited" {
-		t.Fatalf("fake services = %#v", fake.Services)
-	}
-}
-
-func TestCommandNeedsStoreForRecoveryCommands(t *testing.T) {
-	tests := [][]string{
-		{"apps", "health", "my-app"},
-		{"apps", "start", "my-app"},
-		{"apps", "stop", "my-app"},
-		{"apps", "restart", "my-app"},
-		{"apps", "restart", "my-app", "web"},
-		{"apps", "redeploy", "my-app"},
-		{"deployments", "list", "my-app"},
-	}
-
-	for _, args := range tests {
-		if !commandNeedsStore(args) {
-			t.Fatalf("commandNeedsStore(%v) = false, want true", args)
-		}
+func TestRunWithEnvHelpAndInvalidArgumentsDoNotInitializeState(t *testing.T) {
+	for _, command := range []string{
+		"", "help", "--help", "help config", "apps --help", "version",
+		"unknown", "help apps extra", "apps list extra", "apps remove app other --force", "config", "config set app", "domains attach app web example.com --port bad",
+		"deployments logs app dep_1 extra", "logs app --tail bad", "events list", "releases list", "server domain set example.com extra", "ssh-keys remove",
+		"apps list extra --json", "apps remove app --force --json",
+	} {
+		t.Run(command, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("SSHDOCK_DATA_DIR", filepath.Join(root, "data"))
+			t.Setenv("SSHDOCK_SQLITE_DB_PATH", filepath.Join(root, "external", "sshdock.db"))
+			t.Setenv("SSHDOCK_GIT_HOST", " ")
+			var stdout, stderr bytes.Buffer
+			if code := runWithEnv(strings.Fields(command), &stdout, &stderr); code != 0 && code != 2 {
+				t.Fatalf("command inspected invalid host config: exit=%d stdout=%q stderr=%q", code, &stdout, &stderr)
+			}
+			if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+				t.Fatalf("help/invalid arguments initialized state: %v, %v", entries, err)
+			}
+		})
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/sshdock/sshdock/internal/compose"
 	"github.com/sshdock/sshdock/internal/config"
 	"github.com/sshdock/sshdock/internal/diagnostics"
+	domaincfg "github.com/sshdock/sshdock/internal/domain"
 	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
@@ -23,11 +24,6 @@ import (
 
 func main() {
 	os.Exit(runWithEnv(os.Args[1:], os.Stdout, os.Stderr))
-}
-
-func run(args []string, stdout io.Writer, stderr io.Writer) int {
-	runner := cli.NewRunner(cli.NewMemoryBackend("server"), version.String())
-	return runner.Run(args, stdout, stderr)
 }
 
 func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -56,74 +52,91 @@ func runWithEnv(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) >= 1 && args[0] == "backup" {
 		return runBackup(args[1:], stdout, stderr)
 	}
-	if !commandNeedsStore(args) {
-		return run(originalArgs, stdout, stderr)
-	}
-
-	cfg := config.LoadFromEnv()
-	if err := cfg.Validate(); err != nil {
-		return fail(err, 1)
-	}
-	readOnlyCheck := len(args) == 3 && args[0] == "apps" && args[1] == "check"
-	if !readOnlyCheck {
-		if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-			return fail(fmt.Errorf("create data dir: %w", err), 1)
-		}
-		if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
-			return fail(fmt.Errorf("create database dir: %w", err), 1)
-		}
-	}
-
 	var sqlite *store.SQLiteStore
-	var err error
-	if readOnlyCheck {
-		sqlite, err = store.OpenSQLiteReadOnly(context.Background(), cfg.SQLiteDBPath)
-	} else {
-		sqlite, err = store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
-	}
+	defer func() {
+		if sqlite != nil {
+			_ = sqlite.Close()
+		}
+	}()
+	runner := cli.NewRunnerWithBackendFactory(func() (cli.Backend, error) {
+		cfg := config.LoadFromEnv()
+		if args[0] == "apps" && args[1] == "create" {
+			if err := domaincfg.ValidateAppName(args[2]); err != nil {
+				return nil, gitrecv.WithAppNameGuidance(err, readOnlyAppCreationHost(cfg))
+			}
+		}
+		if err := cfg.Validate(); err != nil {
+			return nil, err
+		}
+		readOnlyCheck := args[0] == "apps" && args[1] == "check"
+		if !readOnlyCheck {
+			if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+				return nil, fmt.Errorf("create data dir: %w", err)
+			}
+			if err := os.MkdirAll(filepath.Dir(cfg.SQLiteDBPath), 0o755); err != nil {
+				return nil, fmt.Errorf("create database dir: %w", err)
+			}
+		}
+
+		var err error
+		if readOnlyCheck {
+			sqlite, err = store.OpenSQLiteReadOnly(context.Background(), cfg.SQLiteDBPath)
+		} else {
+			sqlite, err = store.OpenSQLite(context.Background(), cfg.SQLiteDBPath)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("open store: %w", err)
+		}
+
+		configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
+
+		return cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
+			NodeID:                     cfg.NodeID,
+			AppsDir:                    cfg.AppsDir,
+			LocksDir:                   cfg.LocksDir,
+			GitHost:                    cfg.GitHost,
+			AuthorizedKeysPath:         cfg.GitAuthorizedKeysPath,
+			GitReceiveCommand:          cfg.GitReceiveCommand,
+			OperatorAuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
+			OperatorCommand:            cfg.OperatorCommand,
+			Router: router.NewCaddyRouter(router.CaddyRouterConfig{
+				ConfigPath:     cfg.CaddyConfigPath,
+				MainConfigPath: cfg.CaddyMainConfigPath,
+				Executor:       router.LocalCommandExecutor{},
+				AdminAddress:   cfg.CaddyAdminAddress,
+				UpstreamHost:   "127.0.0.1",
+			}),
+			RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
+				AppsDir:   cfg.AppsDir,
+				GitHost:   cfg.GitHost,
+				Executor:  gitrecv.LocalGitExecutor{},
+				OwnerUser: cfg.OperatorUser,
+			}),
+			RecoveryRunner:      compose.NewDockerRunner(compose.LocalCommandExecutor{}),
+			CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
+			ConfigManager:       configService,
+		}), nil
+	}, version.String())
+	return runner.RunWithInput(originalArgs, os.Stdin, stdout, stderr)
+}
+
+func readOnlyAppCreationHost(cfg config.Config) string {
+	ctx := context.Background()
+	sqlite, err := store.OpenSQLiteReadOnly(ctx, cfg.SQLiteDBPath)
 	if err != nil {
-		return fail(fmt.Errorf("open store: %w", err), 1)
+		return cfg.GitHost
 	}
 	defer sqlite.Close()
-
-	configService := appconfig.NewService(sqlite, cfg.ConfigKeyPath)
-
-	var recoveryRunner compose.Runner
-	if commandNeedsRecoveryRunner(args) {
-		recoveryRunner, err = cliRunnerFromEnv()
-		if err != nil {
-			return fail(err, 1)
+	serverConfig, err := sqlite.GetServerConfig(ctx)
+	if err == nil {
+		if serverConfig.BaseDomain != "" {
+			return domaincfg.ControlHost(serverConfig.BaseDomain)
+		}
+		if serverConfig.GitHost != "" {
+			return serverConfig.GitHost
 		}
 	}
-
-	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
-		NodeID:                     cfg.NodeID,
-		AppsDir:                    cfg.AppsDir,
-		GitHost:                    cfg.GitHost,
-		AuthorizedKeysPath:         cfg.GitAuthorizedKeysPath,
-		GitReceiveCommand:          cfg.GitReceiveCommand,
-		OperatorAuthorizedKeysPath: cfg.OperatorAuthorizedKeysPath,
-		OperatorCommand:            cfg.OperatorCommand,
-		Router: router.NewCaddyRouter(router.CaddyRouterConfig{
-			ConfigPath:     cfg.CaddyConfigPath,
-			MainConfigPath: cfg.CaddyMainConfigPath,
-			Executor:       router.LocalCommandExecutor{},
-			AdminAddress:   cfg.CaddyAdminAddress,
-			UpstreamHost:   "127.0.0.1",
-		}),
-		RepoSetupper: gitrecv.NewRepoManager(gitrecv.RepoManagerConfig{
-			AppsDir:   cfg.AppsDir,
-			GitHost:   cfg.GitHost,
-			Executor:  gitrecv.LocalGitExecutor{},
-			OwnerUser: cfg.OperatorUser,
-		}),
-		RecoveryRunner:      recoveryRunner,
-		RecoveryCheckout:    gitrecv.LocalWorktreeCheckout{},
-		CurrentMainResolver: gitrecv.LocalCurrentMainResolver{},
-		ConfigManager:       configService,
-	})
-	runner := cli.NewRunner(backend, version.String())
-	return runner.RunWithInput(originalArgs, os.Stdin, stdout, stderr)
+	return cfg.GitHost
 }
 
 func runBackup(args []string, stdout io.Writer, stderr io.Writer) int {

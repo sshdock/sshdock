@@ -162,3 +162,25 @@ func (r *recordingGitExecutor) Run(_ context.Context, command GitCommand) error 
 	r.Commands = append(r.Commands, command)
 	return r.Err
 }
+
+func TestRepoManagerRejectsInvalidNameBeforeFilesystemGitAndOwnership(t *testing.T) {
+	for _, name := range []string{"", "My_App", "my.app", "my app", "-app", "app-", strings.Repeat("a", 64), "應用", "../app", `one\app`} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			executor := &recordingGitExecutor{}
+			manager := NewRepoManager(RepoManagerConfig{AppsDir: filepath.Join(root, "apps"), Executor: executor, OwnerUser: "sshdock"})
+			manager.isRoot = func() bool { t.Fatal("invalid name reached ownership check"); return false }
+			manager.lookupOwner = func(string) (repoOwner, error) { t.Fatal("invalid name reached owner lookup"); return repoOwner{}, nil }
+			manager.chown = func(string, repoOwner) error { t.Fatal("invalid name reached chown"); return nil }
+			if repo, err := manager.SetupBareRepo(context.Background(), name); err == nil || repo != (BareRepo{}) {
+				t.Fatalf("SetupBareRepo(%q) = %#v, %v", name, repo, err)
+			}
+			if len(executor.Commands) != 0 {
+				t.Fatalf("invalid name reached Git: %#v", executor.Commands)
+			}
+			if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+				t.Fatalf("invalid name created repository or hooks: %v, %v", entries, err)
+			}
+		})
+	}
+}

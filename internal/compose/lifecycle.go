@@ -11,11 +11,11 @@ func (r *DockerRunner) Stop(ctx context.Context, request LifecycleRequest) error
 }
 
 func (r *DockerRunner) runLifecycle(ctx context.Context, request LifecycleRequest, operation string) error {
-	args := commandArgs(composeArgs([]string{request.ComposePath}, request.projectName()), operation)
-	_, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
+	projectName, err := ProjectName(request.AppName)
+	if err != nil {
+		return err
+	}
+	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), operation)
+	_, err = r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
-}
-
-func (r LifecycleRequest) projectName() string {
-	return ProjectName(r.AppName)
 }

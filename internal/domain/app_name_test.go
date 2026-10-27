@@ -8,6 +8,8 @@ import (
 
 func TestValidateAppNameAcceptsOnlyNormalizedDNSLabels(t *testing.T) {
 	validNames := []string{
+		"a",
+		"0",
 		"app",
 		"my-app",
 		"app1",
@@ -30,10 +32,18 @@ func TestValidateAppNameReturnsDeterministicSuggestionForInvalidInputs(t *testin
 		suggestion string
 	}{
 		{name: "empty", input: "", suggestion: "app"},
+		{name: "uppercase", input: "App", suggestion: "app"},
+		{name: "underscore", input: "my_app", suggestion: "my-app"},
+		{name: "dot", input: "my.app", suggestion: "my-app"},
+		{name: "space", input: "my app", suggestion: "my-app"},
+		{name: "leading hyphen", input: "-app", suggestion: "app"},
+		{name: "trailing hyphen", input: "app-", suggestion: "app"},
+		{name: "only hyphen", input: "-", suggestion: "app"},
 		{name: "uppercase and space", input: "MY APP", suggestion: "my-app"},
 		{name: "punctuation at boundaries", input: "-my.app_", suggestion: "my-app"},
 		{name: "surrounding whitespace", input: " my-app ", suggestion: "my-app"},
-		{name: "too long", input: strings.Repeat("A", 64), suggestion: strings.Repeat("a", 63)},
+		{name: "too long lowercase", input: strings.Repeat("a", 64), suggestion: strings.Repeat("a", 63)},
+		{name: "too long uppercase", input: strings.Repeat("A", 64), suggestion: strings.Repeat("a", 63)},
 		{name: "non ASCII", input: "應用", suggestion: "app"},
 	}
 	for _, test := range tests {
@@ -45,6 +55,9 @@ func TestValidateAppNameReturnsDeterministicSuggestionForInvalidInputs(t *testin
 			var nameError *InvalidAppNameError
 			if !errors.As(err, &nameError) {
 				t.Fatalf("ValidateAppName(%q) error = %v, want *InvalidAppNameError", test.input, err)
+			}
+			if err := ValidateAppName(nameError.Suggestion); err != nil {
+				t.Fatalf("suggestion %q is invalid: %v", nameError.Suggestion, err)
 			}
 			if nameError.Suggestion != test.suggestion {
 				t.Fatalf("ValidateAppName(%q) suggestion = %q, want %q", test.input, nameError.Suggestion, test.suggestion)
@@ -73,13 +86,13 @@ func TestValidateAppNameSuggestsNormalizedDNSLabelWhenInvalid(t *testing.T) {
 	}
 }
 
-func TestValidateAppIsolationRejectsLegacyNameCollision(t *testing.T) {
-	// When
-	err := ValidateAppIsolation("foo-bar", []string{"z-app", "foo.bar", "a-app"})
-
-	// Then
-	want := `app name "foo-bar" conflicts with existing app "foo.bar" because both use runtime identity "sshdock_foo-bar"; choose another app name`
-	if err == nil || err.Error() != want {
-		t.Fatalf("ValidateAppIsolation error = %q, want %q", err, want)
+func TestAppHostUsesCanonicalAppNameBoundary(t *testing.T) {
+	if host, err := AppHost("my-app", "example.com"); err != nil || host != "my-app.example.com" {
+		t.Fatalf("AppHost = %q, %v", host, err)
+	}
+	host, err := AppHost("My_App", "example.com")
+	var invalid *InvalidAppNameError
+	if host != "" || !errors.As(err, &invalid) || invalid.Suggestion != "my-app" {
+		t.Fatalf("AppHost invalid name = %q, %v", host, err)
 	}
 }

@@ -398,7 +398,7 @@ func TestRunGitHookReportsAcceptedMainBeforeSetupFailure(t *testing.T) {
 	var stderr bytes.Buffer
 	input := strings.NewReader("oldsha newsha refs/heads/main\n")
 
-	code := runWithInput([]string{"git-hook", "--app", "my-app", "--repo", "/apps/my-app/repo.git"}, input, &stdout, &stderr)
+	code := runWithInput([]string{"git-hook", "--app", "my-app", "--repo", "/apps/my-app/repo.git", "--worktree", "/apps/my-app/worktree"}, input, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())

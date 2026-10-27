@@ -35,13 +35,13 @@ type DashboardHandler struct {
 }
 
 type DashboardSnapshot struct {
-	Apps     AppListScreen
+	Apps     AppListView
 	AppOrder []string
 	AppsByID map[string]DashboardAppSnapshot
 }
 
 type DashboardAppSnapshot struct {
-	Detail    AppDetailScreen
+	Detail    AppDetailView
 	Logs      map[string]LogsView
 	LogsError error
 }
@@ -61,7 +61,7 @@ func (h *DashboardHandler) Render(ctx context.Context, writer io.Writer) error {
 	}
 	for _, appID := range snapshot.AppOrder {
 		selected := snapshot.AppsByID[appID]
-		selected.Logs, selected.LogsError = h.Logs(ctx, appID, selected.Detail.Services())
+		selected.Logs, selected.LogsError = h.Logs(ctx, appID, selected.Detail.Services)
 		snapshot.AppsByID[appID] = selected
 	}
 	return RenderDashboardSnapshot(writer, snapshot)
@@ -113,12 +113,12 @@ func (h *DashboardHandler) Snapshot(ctx context.Context) (DashboardSnapshot, err
 		latestDeployments[model.ID] = report.LatestDeploymentStatus
 		view := NewAppDetailView(model, report, domains, releases, deployments, events)
 		appsByID[model.ID] = DashboardAppSnapshot{
-			Detail: NewAppDetailScreen(view),
+			Detail: view,
 		}
 	}
 
 	return DashboardSnapshot{
-		Apps:     NewAppListScreen(NewAppListView(apps, latestDeployments, domainsByApp)),
+		Apps:     NewAppListView(apps, latestDeployments, domainsByApp),
 		AppOrder: appOrder,
 		AppsByID: appsByID,
 	}, nil
@@ -142,19 +142,19 @@ func RenderDashboardSnapshot(writer io.Writer, snapshot DashboardSnapshot) error
 	return nil
 }
 
-func renderAppList(writer io.Writer, screen AppListScreen) error {
+func renderAppList(writer io.Writer, view AppListView) error {
 	if _, err := fmt.Fprintln(writer); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(writer, "Apps"); err != nil {
 		return err
 	}
-	if screen.Empty() {
-		_, err := fmt.Fprintln(writer, screen.EmptyMessage())
+	if len(view.Items) == 0 {
+		_, err := fmt.Fprintln(writer, "No apps")
 		return err
 	}
 
-	for _, row := range screen.Rows() {
+	for _, row := range view.Items {
 		if _, err := fmt.Fprintf(writer, "- %s status=%s node=%s deploy=%s domains=%d\n", row.Name, row.Status, row.NodeID, valueOrDash(row.LatestDeploymentStatus), row.DomainCount); err != nil {
 			return err
 		}
@@ -162,15 +162,15 @@ func renderAppList(writer io.Writer, screen AppListScreen) error {
 	return nil
 }
 
-func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map[string]LogsView, logsError error) error {
-	metadata := screen.Metadata()
+func renderAppDetail(writer io.Writer, view AppDetailView, logsByService map[string]LogsView, logsError error) error {
+	metadata := view.App
 	if _, err := fmt.Fprintf(writer, "\nApp %s\n", metadata.Name); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(writer, "Status: %s\nNode: %s\n", metadata.Status, metadata.NodeID); err != nil {
 		return err
 	}
-	health := screen.Health()
+	health := view.Health
 	if _, err := fmt.Fprintf(writer, "Health: %s\nCurrent main: %s\nRoute: %s\nLatest deploy: %s\nService status: %s\n", valueOrDash(health.OverallStatus), valueOrDash(health.CurrentMainCommit), valueOrDash(health.RouteStatus), latestDeploymentHealthValue(health), valueOrDash(health.ServiceStatus)); err != nil {
 		return err
 	}
@@ -191,19 +191,19 @@ func renderAppDetail(writer io.Writer, screen AppDetailScreen, logsByService map
 		return err
 	}
 
-	if err := renderServices(writer, screen.Services()); err != nil {
+	if err := renderServices(writer, view.Services); err != nil {
 		return err
 	}
-	if err := renderDomains(writer, screen.Domains()); err != nil {
+	if err := renderDomains(writer, view.Domains); err != nil {
 		return err
 	}
-	if err := renderReleases(writer, screen.Releases()); err != nil {
+	if err := renderReleases(writer, view.Releases); err != nil {
 		return err
 	}
-	if err := renderDeployments(writer, screen.LatestDeployments(5)); err != nil {
+	if err := renderDeployments(writer, view.LatestDeployments(5)); err != nil {
 		return err
 	}
-	if err := renderEvents(writer, screen.Events()); err != nil {
+	if err := renderEvents(writer, view.Events); err != nil {
 		return err
 	}
 	if logsError != nil {

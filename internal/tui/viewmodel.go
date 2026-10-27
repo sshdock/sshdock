@@ -31,6 +31,14 @@ type AppDetailView struct {
 	Health      HealthSummary
 }
 
+func (v AppDetailView) LatestDeployments(limit int) []DeploymentView {
+	if limit <= 0 || limit >= len(v.Deployments) {
+		return v.Deployments
+	}
+
+	return v.Deployments[len(v.Deployments)-limit:]
+}
+
 type AppSummary struct {
 	ID     string
 	Name   string

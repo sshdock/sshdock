@@ -436,7 +436,7 @@ func (m *InteractiveDashboardModel) loadSelectedLogs(follow bool) tea.Cmd {
 	requestID := m.logsRequestID
 	loadLogs := m.loadLogs
 	return func() tea.Msg {
-		logs, err := loadLogs(context.Background(), appID, selected.Detail.Services())
+		logs, err := loadLogs(context.Background(), appID, selected.Detail.Services)
 		return dashboardLogsMsg{appID: appID, requestID: requestID, logs: logs, err: err, follow: follow}
 	}
 }
@@ -495,7 +495,7 @@ func (m InteractiveDashboardModel) titleBar() string {
 	width := m.terminalWidth()
 	selected := "No apps"
 	if detail, ok := m.selectedApp(); ok {
-		metadata := detail.Detail.Metadata()
+		metadata := detail.Detail.App
 		selected = fmt.Sprintf("%s %s on %s", metadata.Name, metadata.Status, metadata.NodeID)
 	}
 	line := fmt.Sprintf("SSHDock Dashboard | %s | %s", selected, dashboardTabs[m.tab])
@@ -615,9 +615,9 @@ func (m InteractiveDashboardModel) detailTitle() string {
 		return "Detail"
 	}
 	if m.mode != dashboardModeNormal {
-		return "Actions " + selected.Detail.Metadata().Name
+		return "Actions " + selected.Detail.App.Name
 	}
-	return "App " + selected.Detail.Metadata().Name
+	return "App " + selected.Detail.App.Name
 }
 
 func (m InteractiveDashboardModel) detailContent(width int) string {
@@ -627,7 +627,7 @@ func (m InteractiveDashboardModel) detailContent(width int) string {
 	}
 
 	var builder strings.Builder
-	metadata := selected.Detail.Metadata()
+	metadata := selected.Detail.App
 	fmt.Fprintf(&builder, "Status: %s | Node: %s\n", metadata.Status, metadata.NodeID)
 	if m.mode != dashboardModeNormal {
 		builder.WriteString(m.actionContent(width))
@@ -640,15 +640,15 @@ func (m InteractiveDashboardModel) detailContent(width int) string {
 	case "Summary":
 		builder.WriteString(renderSummaryTable(width, selected.Detail))
 	case "Services":
-		builder.WriteString(renderServiceTable(width, selected.Detail.Services()))
+		builder.WriteString(renderServiceTable(width, selected.Detail.Services))
 	case "Routes":
-		builder.WriteString(renderRouteTable(width, selected.Detail.Domains()))
+		builder.WriteString(renderRouteTable(width, selected.Detail.Domains))
 	case "Releases":
-		builder.WriteString(renderReleaseTable(width, selected.Detail.Releases()))
+		builder.WriteString(renderReleaseTable(width, selected.Detail.Releases))
 	case "Deploys":
 		builder.WriteString(renderDeployTable(width, selected.Detail.LatestDeployments(5)))
 	case "Events":
-		builder.WriteString(renderEventTable(width, selected.Detail.Events()))
+		builder.WriteString(renderEventTable(width, selected.Detail.Events))
 	case "Logs":
 		builder.WriteString(m.logsBlock())
 	}
@@ -904,7 +904,7 @@ func (m InteractiveDashboardModel) appOrder() []string {
 	if len(m.snapshot.AppOrder) > 0 {
 		return append([]string(nil), m.snapshot.AppOrder...)
 	}
-	items := m.snapshot.Apps.view.Items
+	items := m.snapshot.Apps.Items
 	order := make([]string, 0, len(items))
 	for _, item := range items {
 		id := item.ID
@@ -938,8 +938,8 @@ func (m InteractiveDashboardModel) filteredAppOrder() []string {
 }
 
 func (m InteractiveDashboardModel) appItemsByID() map[string]AppListItem {
-	items := make(map[string]AppListItem, len(m.snapshot.Apps.view.Items))
-	for _, item := range m.snapshot.Apps.view.Items {
+	items := make(map[string]AppListItem, len(m.snapshot.Apps.Items))
+	for _, item := range m.snapshot.Apps.Items {
 		id := item.ID
 		if id == "" {
 			id = item.Name
@@ -1051,9 +1051,9 @@ type dashboardTableColumn struct {
 	Priority int
 }
 
-func renderSummaryTable(width int, detail AppDetailScreen) string {
-	metadata := detail.Metadata()
-	health := detail.Health()
+func renderSummaryTable(width int, detail AppDetailView) string {
+	metadata := detail.App
+	health := detail.Health
 	rows := [][]string{
 		{"App", metadata.Name},
 		{"State", metadata.Status},
@@ -1063,11 +1063,11 @@ func renderSummaryTable(width int, detail AppDetailScreen) string {
 		{"Route", valueOrDash(health.RouteStatus)},
 		{"Latest deploy", latestDeploymentHealthValue(health)},
 		{"Service status", valueOrDash(health.ServiceStatus)},
-		{"Services", fmt.Sprintf("%d", len(detail.Services()))},
-		{"Routes", fmt.Sprintf("%d", len(detail.Domains()))},
-		{"Releases", fmt.Sprintf("%d", len(detail.Releases()))},
+		{"Services", fmt.Sprintf("%d", len(detail.Services))},
+		{"Routes", fmt.Sprintf("%d", len(detail.Domains))},
+		{"Releases", fmt.Sprintf("%d", len(detail.Releases))},
 		{"Deploys", fmt.Sprintf("%d", len(detail.LatestDeployments(5)))},
-		{"Events", fmt.Sprintf("%d", len(detail.Events()))},
+		{"Events", fmt.Sprintf("%d", len(detail.Events))},
 	}
 	if health.LastFailure != "" {
 		failure := health.LastFailure

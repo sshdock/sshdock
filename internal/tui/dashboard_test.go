@@ -268,16 +268,16 @@ func TestDashboardHandlerBuildsReusableSnapshot(t *testing.T) {
 		t.Fatalf("Snapshot: %v", err)
 	}
 
-	if len(snapshot.Apps.Rows()) != 1 {
-		t.Fatalf("snapshot apps = %#v", snapshot.Apps.Rows())
+	if len(snapshot.Apps.Items) != 1 {
+		t.Fatalf("snapshot apps = %#v", snapshot.Apps.Items)
 	}
-	if len(snapshot.AppsByID["my-app"].Detail.Services()) != 1 {
-		t.Fatalf("snapshot detail services = %#v", snapshot.AppsByID["my-app"].Detail.Services())
+	if len(snapshot.AppsByID["my-app"].Detail.Services) != 1 {
+		t.Fatalf("snapshot detail services = %#v", snapshot.AppsByID["my-app"].Detail.Services)
 	}
 	if len(snapshot.AppsByID["my-app"].Logs) != 0 || len(runner.LogsRequests) != 0 {
 		t.Fatalf("snapshot eagerly loaded logs: %#v", runner.LogsRequests)
 	}
-	if got := snapshot.AppsByID["my-app"].Detail.Events(); len(got) != 1 || got[0].Type != "deploy.succeeded" {
+	if got := snapshot.AppsByID["my-app"].Detail.Events; len(got) != 1 || got[0].Type != "deploy.succeeded" {
 		t.Fatalf("snapshot events = %#v", got)
 	}
 }
@@ -372,10 +372,10 @@ func TestDashboardAppListUsesAttemptAfterGitRecoveryAndFailedRetry(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := snapshot.Apps.Rows()[0].LatestDeploymentStatus; got != string(status) {
+			if got := snapshot.Apps.Items[0].LatestDeploymentStatus; got != string(status) {
 				t.Fatalf("app list deploy=%s, want %s for A despite newer failed release B", got, status)
 			}
-			if got := snapshot.AppsByID["my-app"].Detail.Releases(); len(got) != 2 {
+			if got := snapshot.AppsByID["my-app"].Detail.Releases; len(got) != 2 {
 				t.Fatalf("historical releases were lost: %#v", got)
 			}
 		})

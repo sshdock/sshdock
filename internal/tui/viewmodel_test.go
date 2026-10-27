@@ -80,6 +80,29 @@ func TestNewAppDetailView(t *testing.T) {
 	}
 }
 
+func TestAppDetailViewLatestDeployments(t *testing.T) {
+	deployments := []DeploymentView{{ID: "dep_1"}, {ID: "dep_2"}, {ID: "dep_3"}}
+	for _, tt := range []struct {
+		name  string
+		view  AppDetailView
+		limit int
+		want  []DeploymentView
+	}{
+		{name: "empty", view: AppDetailView{}, limit: 2},
+		{name: "zero means all", view: AppDetailView{Deployments: deployments}, limit: 0, want: deployments},
+		{name: "negative means all", view: AppDetailView{Deployments: deployments}, limit: -1, want: deployments},
+		{name: "exact count", view: AppDetailView{Deployments: deployments}, limit: 3, want: deployments},
+		{name: "larger than count", view: AppDetailView{Deployments: deployments}, limit: 4, want: deployments},
+		{name: "latest in original order", view: AppDetailView{Deployments: deployments}, limit: 2, want: deployments[1:]},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.view.LatestDeployments(tt.limit); !slices.Equal(got, tt.want) {
+				t.Fatalf("LatestDeployments(%d) = %#v, want %#v", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNewAppDetailViewUsesSharedHealthReportSemantics(t *testing.T) {
 	// Given
 	report := app.HealthReport{

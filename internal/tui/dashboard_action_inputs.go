@@ -15,14 +15,14 @@ func (m InteractiveDashboardModel) actionChoices() []dashboardActionChoice {
 	}
 	switch m.pendingAction {
 	case dashboardActionRestartService:
-		services := selected.Detail.Services()
+		services := selected.Detail.Services
 		choices := make([]dashboardActionChoice, 0, len(services))
 		for _, service := range services {
 			choices = append(choices, dashboardActionChoice{label: service.Name + " " + valueOrDash(service.State), value: service.Name})
 		}
 		return choices
 	case dashboardActionDetachDomain:
-		domains := selected.Detail.Domains()
+		domains := selected.Detail.Domains
 		choices := make([]dashboardActionChoice, 0, len(domains))
 		for _, domain := range domains {
 			choices = append(choices, dashboardActionChoice{label: domain.DomainName + " -> " + valueOrDash(domain.Target), value: domain.DomainName})

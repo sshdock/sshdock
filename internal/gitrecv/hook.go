@@ -5,28 +5,13 @@ import (
 	"strings"
 )
 
-func ParsePostReceiveLine(appName string, repoPath string, line string) (PushEvent, error) {
+func ParsePostReceiveLine(line string) (string, error) {
 	fields := strings.Fields(line)
 	if len(fields) != 3 {
-		return PushEvent{}, fmt.Errorf("post-receive line must contain old sha, new sha, and ref")
+		return "", fmt.Errorf("post-receive line must contain old sha, new sha, and ref")
 	}
-
-	branch, err := branchFromRef(fields[2])
-	if err != nil {
-		return PushEvent{}, err
+	if fields[2] != mainRef {
+		return "", fmt.Errorf("unsupported destination %q: only remote %s is deployable", fields[2], mainRef)
 	}
-
-	return PushEvent{
-		AppName:   appName,
-		RepoPath:  repoPath,
-		Branch:    branch,
-		CommitSHA: fields[1],
-	}, nil
-}
-
-func branchFromRef(ref string) (string, error) {
-	if ref != mainRef {
-		return "", fmt.Errorf("unsupported destination %q: only remote %s is deployable", ref, mainRef)
-	}
-	return "main", nil
+	return fields[1], nil
 }

@@ -48,12 +48,12 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		if line == "" {
 			continue
 		}
-		event, parseErr := gitrecv.ParsePostReceiveLine(*appName, *repoPath, line)
+		commitSHA, parseErr := gitrecv.ParsePostReceiveLine(line)
 		if parseErr != nil {
 			fmt.Fprintln(stderr, "deploy: setup failed after remote main update:", parseErr)
 			return 1
 		}
-		if _, writeErr := fmt.Fprintf(stderr, "git: remote main updated to %s\n", event.CommitSHA); writeErr == nil {
+		if _, writeErr := fmt.Fprintf(stderr, "git: remote main updated to %s\n", commitSHA); writeErr == nil {
 			gitUpdateReported = true
 		}
 	}
@@ -70,7 +70,7 @@ func runGitHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	defer sqlite.Close()
 
 	handler := gitrecv.NewPostReceiveQueueHandler(gitrecv.PostReceiveQueueHandlerConfig{Store: sqlite, Output: stderr, GitUpdateReported: gitUpdateReported})
-	if err := handler.Handle(context.Background(), *appName, *repoPath, bytes.NewReader(input)); err != nil {
+	if err := handler.Handle(context.Background(), *appName, bytes.NewReader(input)); err != nil {
 		var outputErr *gitrecv.StatusOutputError
 		if errors.As(err, &outputErr) {
 			fmt.Fprintln(stderr, "deploy: succeeded, but status output failed:", err)

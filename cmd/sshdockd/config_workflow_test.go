@@ -105,7 +105,7 @@ func TestRunDashboardConfigCommandFeedsGitPushDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 	postReceive := gitrecv.NewPostReceiveQueueHandler(gitrecv.PostReceiveQueueHandlerConfig{Store: sqlite})
-	if err := postReceive.Handle(ctx, "my-app", filepath.Join(filepath.Dir(worktreePath), "repo.git"), strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
+	if err := postReceive.Handle(ctx, "my-app", strings.NewReader("old abc123 refs/heads/main\n")); err != nil {
 		t.Fatal(err)
 	}
 	attempt, found, err := sqlite.ClaimNextPendingDeployment(ctx)

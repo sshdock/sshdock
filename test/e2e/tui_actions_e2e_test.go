@@ -17,13 +17,16 @@ import (
 	"github.com/sshdock/sshdock/internal/app"
 	"github.com/sshdock/sshdock/internal/cli"
 	"github.com/sshdock/sshdock/internal/compose"
+	"github.com/sshdock/sshdock/internal/deployment"
+	"github.com/sshdock/sshdock/internal/gitrecv"
 	"github.com/sshdock/sshdock/internal/router"
 	"github.com/sshdock/sshdock/internal/store"
 	"github.com/sshdock/sshdock/internal/tui"
 )
 
 func TestTUIActionsEndToEnd(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	tmp := t.TempDir()
 	dbPath := filepath.Join(tmp, "sshdock.db")
 	sqlite, err := store.OpenSQLite(ctx, dbPath)
@@ -58,18 +61,17 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		LogOutput: "web log\n",
 	}
 	fakeRouter := router.NewFakeRouter()
-	currentTime := now.Add(time.Hour)
+	locksDir := t.TempDir()
+	clock := func() time.Time { return now.Add(time.Hour) }
+	currentMain := app.CurrentMainResolverFunc(func(context.Context, string) (string, error) { return "new", nil })
 	backend := cli.NewStoreBackend(sqlite, cli.StoreBackendConfig{
 		NodeID:              "local",
 		AppsDir:             appsDir,
+		LocksDir:            locksDir,
 		Router:              fakeRouter,
 		RecoveryRunner:      composeRunner,
-		CurrentMainResolver: app.CurrentMainResolverFunc(func(context.Context, string) (string, error) { return "new", nil }),
-		Now: func() time.Time {
-			value := currentTime
-			currentTime = currentTime.Add(time.Second)
-			return value
-		},
+		CurrentMainResolver: currentMain,
+		Now:                 clock,
 	})
 	actions := tuiCLIActionAdapter{backend: backend}
 	handler := tui.NewDashboardHandler(sqlite, composeRunner, backend)
@@ -107,7 +109,37 @@ func TestTUIActionsEndToEnd(t *testing.T) {
 		t.Fatalf("restart service request = %#v", got)
 	}
 
+	executor := deployment.NewExecutor(deployment.Config{
+		Store: sqlite, Runner: composeRunner, Checkout: tuiActionCheckout{}, Now: clock,
+		Routing: router.NewService(router.ServiceConfig{Store: sqlite, Router: fakeRouter, LocksDir: locksDir, Now: clock}),
+	})
+	worker := gitrecv.NewQueuedDeploymentWorker(gitrecv.QueuedDeploymentWorkerConfig{
+		Store: sqlite, Executor: executor, LocksDir: locksDir, CurrentMainResolver: currentMain,
+	})
+	workerDone := make(chan error, 1)
+	go func() {
+		defer close(workerDone)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			worked, err := worker.RunOne(ctx)
+			if err != nil || worked {
+				workerDone <- err
+				return
+			}
+			select {
+			case <-ctx.Done():
+				workerDone <- ctx.Err()
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() { cancel(); <-workerDone }()
 	model = runTUIAction(t, model, []string{"a", "down", "down", "down", "down", "enter"})
+	if err := <-workerDone; err != nil {
+		t.Fatalf("run deployment worker: %v", err)
+	}
 	if len(composeRunner.DeployRequests) != 1 || composeRunner.DeployRequests[0].CommitSHA != "new" {
 		t.Fatalf("redeploy requests = %#v", composeRunner.DeployRequests)
 	}
@@ -199,8 +231,22 @@ func runTUIAction(t *testing.T, model tui.InteractiveDashboardModel, keys []stri
 	if cmd == nil {
 		t.Fatalf("keys %v returned nil command", keys)
 	}
-	return updateTUIActionsModel(t, model, cmd())
+	result := make(chan tea.Msg, 1)
+	go func() { result <- cmd() }()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case msg := <-result:
+		return updateTUIActionsModel(t, model, msg)
+	case <-timer.C:
+		t.Fatalf("action keys %v did not finish", keys)
+		return model
+	}
 }
+
+type tuiActionCheckout struct{}
+
+func (tuiActionCheckout) Checkout(context.Context, string, string, string) error { return nil }
 
 func pressTUIActionsKey(t *testing.T, model tui.InteractiveDashboardModel, key string) tui.InteractiveDashboardModel {
 	t.Helper()

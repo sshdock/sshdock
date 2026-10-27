@@ -61,17 +61,17 @@ func TestDashboardWithStoreHealthKeepsRedactedHistoryWhenCheckoutHEADIsInvalid(t
 		t.Fatalf("invalid HEAD hid safely redacted history: %v", err)
 	}
 	selected, found := snapshot.AppsByID[model.ID]
-	if !found || len(selected.Detail.LatestDeployments(5)) != 1 || len(selected.Detail.Events()) != 2 {
+	if !found || len(selected.Detail.LatestDeployments(5)) != 1 || len(selected.Detail.Events) != 2 {
 		t.Fatalf("snapshot lost app history: %#v", snapshot)
 	}
 	warned := false
-	for _, check := range selected.Detail.Health().Checks {
+	for _, check := range selected.Detail.Health.Checks {
 		if check.Name == "services" && check.Status == "warn" && strings.Contains(check.Detail, "repository HEAD") && strings.Contains(check.Detail, "redeploy current remote main") {
 			warned = true
 		}
 	}
 	if !warned || len(runner.StatusRequests) != 0 {
-		t.Fatalf("services warning missing or runtime status ran: checks=%#v, requests=%#v", selected.Detail.Health().Checks, runner.StatusRequests)
+		t.Fatalf("services warning missing or runtime status ran: checks=%#v, requests=%#v", selected.Detail.Health.Checks, runner.StatusRequests)
 	}
 	var rendered bytes.Buffer
 	if err := RenderDashboardSnapshot(&rendered, snapshot); err != nil {

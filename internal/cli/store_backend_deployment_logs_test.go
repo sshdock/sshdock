@@ -3,11 +3,15 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sshdock/sshdock/internal/app"
+	"github.com/sshdock/sshdock/internal/appconfig"
 )
 
 func TestStoreBackendDeploymentLogsReadsLatestAndRejectsUnknownAttempt(t *testing.T) {
@@ -48,6 +52,15 @@ func TestStoreBackendDeploymentLogsReadsLatestAndRejectsUnknownAttempt(t *testin
 	if err == nil || !strings.Contains(err.Error(), `deployment "dep_missing" not found for app "my-app"`) {
 		t.Fatalf("unknown deployment error = %v", err)
 	}
+	readEnd, writeEnd := io.Pipe()
+	t.Cleanup(func() { _ = writeEnd.Close() })
+	writeErr := errors.New("output closed")
+	if err := readEnd.CloseWithError(writeErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.DeploymentLogs(DeploymentLogRequest{AppName: "my-app"}, writeEnd); !errors.Is(err, writeErr) {
+		t.Fatalf("writer error = %v, want %v", err, writeErr)
+	}
 }
 
 func TestStoreBackendDeploymentLogsFollowReadsTerminalOutput(t *testing.T) {
@@ -56,14 +69,18 @@ func TestStoreBackendDeploymentLogsFollowReadsTerminalOutput(t *testing.T) {
 	sqlite := newStoreBackendTestStore(t, ctx)
 	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 	seedRecoveryApp(t, ctx, sqlite, t.TempDir(), now)
+	configService := appconfig.NewService(sqlite, filepath.Join(t.TempDir(), "config.key"))
+	if err := configService.Set(ctx, appconfig.SetRequest{AppID: "my-app", Name: "TOKEN", Value: []byte("deploy-secret")}); err != nil {
+		t.Fatalf("Set config: %v", err)
+	}
 	deployment := app.Deployment{ID: "dep_follow", AppID: "my-app", ReleaseID: "rel_follow", CommitSHA: "follow", Trigger: app.DeploymentTriggerPush, Status: app.DeploymentStatusPending, StartedAt: now}
 	if err := sqlite.QueueDeployment(ctx, deployment, "previous"); err != nil {
 		t.Fatalf("QueueDeployment: %v", err)
 	}
-	if err := sqlite.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: started\n", now); err != nil {
+	if err := sqlite.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: started deploy-secret\n", now); err != nil {
 		t.Fatalf("AppendDeploymentLog start: %v", err)
 	}
-	backend := NewStoreBackend(sqlite, StoreBackendConfig{})
+	backend := NewStoreBackend(sqlite, StoreBackendConfig{ConfigManager: configService})
 	output := &notifyingBuffer{firstWrite: make(chan struct{}, 1)}
 	done := make(chan error, 1)
 
@@ -72,7 +89,7 @@ func TestStoreBackendDeploymentLogsFollowReadsTerminalOutput(t *testing.T) {
 		done <- backend.DeploymentLogs(DeploymentLogRequest{AppName: "my-app", DeploymentID: deployment.ID, Follow: true}, output)
 	}()
 	<-output.firstWrite
-	if err := sqlite.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: succeeded\n", now.Add(time.Second)); err != nil {
+	if err := sqlite.AppendDeploymentLog(ctx, deployment.AppID, deployment.ID, "deploy: succeeded deploy-secret\n", now.Add(time.Second)); err != nil {
 		t.Fatalf("AppendDeploymentLog terminal: %v", err)
 	}
 	if err := sqlite.UpdateDeploymentStatus(ctx, deployment.ID, app.DeploymentStatusSucceeded, now.Add(time.Second), ""); err != nil {
@@ -88,7 +105,7 @@ func TestStoreBackendDeploymentLogsFollowReadsTerminalOutput(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("DeploymentLogs follow did not finish after the terminal status")
 	}
-	if output.String() != "deploy: started\ndeploy: succeeded\n" {
+	if output.String() != "deploy: started <redacted>\ndeploy: succeeded <redacted>\n" {
 		t.Fatalf("follow output = %q", output.String())
 	}
 }

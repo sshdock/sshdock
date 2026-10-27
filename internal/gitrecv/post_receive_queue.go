@@ -49,7 +49,7 @@ func NewPostReceiveQueueHandler(config PostReceiveQueueHandlerConfig) *PostRecei
 	return &PostReceiveQueueHandler{store: config.Store, output: output, now: now, gitUpdateReported: config.GitUpdateReported}
 }
 
-func (h *PostReceiveQueueHandler) Handle(ctx context.Context, appName string, repoPath string, input io.Reader) error {
+func (h *PostReceiveQueueHandler) Handle(ctx context.Context, appName string, input io.Reader) error {
 	if h.store == nil {
 		return fmt.Errorf("post-receive queue store is not configured")
 	}
@@ -60,27 +60,27 @@ func (h *PostReceiveQueueHandler) Handle(ctx context.Context, appName string, re
 		if line == "" {
 			continue
 		}
-		event, err := ParsePostReceiveLine(appName, repoPath, line)
+		commitSHA, err := ParsePostReceiveLine(line)
 		if err != nil {
 			return err
 		}
-		deployment, err := h.store.FindDeploymentByAppCommit(ctx, event.AppName, event.CommitSHA)
+		deployment, err := h.store.FindDeploymentByAppCommit(ctx, appName, commitSHA)
 		if err != nil {
-			return fmt.Errorf("find queued deployment for current main %s: %w", event.CommitSHA, err)
+			return fmt.Errorf("find queued deployment for current main %s: %w", commitSHA, err)
 		}
 		recordedAt := h.now()
 		if err := h.store.RecordDeploymentQueued(ctx,
-			app.Event{ID: EventID(deployment.ID, "git_ref_accepted"), AppID: event.AppName, Type: "git.ref_accepted", Message: "Remote main accepted at " + event.CommitSHA, CreatedAt: recordedAt},
-			app.Event{ID: EventID(deployment.ID, "queued"), AppID: event.AppName, Type: "deploy.queued", Message: "Deploy queued for release " + deployment.ReleaseID, CreatedAt: recordedAt},
+			app.Event{ID: EventID(deployment.ID, "git_ref_accepted"), AppID: appName, Type: "git.ref_accepted", Message: "Remote main accepted at " + commitSHA, CreatedAt: recordedAt},
+			app.Event{ID: EventID(deployment.ID, "queued"), AppID: appName, Type: "deploy.queued", Message: "Deploy queued for release " + deployment.ReleaseID, CreatedAt: recordedAt},
 		); err != nil {
 			return fmt.Errorf("record accepted queued deployment %q: %w", deployment.ID, err)
 		}
 		if !h.gitUpdateReported {
-			if _, err := fmt.Fprintf(h.output, "git: remote main updated to %s\n", event.CommitSHA); err != nil {
+			if _, err := fmt.Fprintf(h.output, "git: remote main updated to %s\n", commitSHA); err != nil {
 				outputErr = errors.Join(outputErr, fmt.Errorf("write Git ref status: %w", err))
 			}
 		}
-		if _, err := fmt.Fprintf(h.output, "deploy: queued %s for current main %s\n", deployment.ID, event.CommitSHA); err != nil {
+		if _, err := fmt.Fprintf(h.output, "deploy: queued %s for current main %s\n", deployment.ID, commitSHA); err != nil {
 			outputErr = errors.Join(outputErr, fmt.Errorf("write queued deploy status: %w", err))
 		}
 	}

@@ -51,10 +51,10 @@ func TestInteractiveDashboardModelTabsScrollRefreshAndQuit(t *testing.T) {
 	refreshCount := 0
 	refreshed := testDashboardSnapshot()
 	refreshed.AppsByID["one"] = DashboardAppSnapshot{
-		Detail: NewAppDetailScreen(AppDetailView{
+		Detail: AppDetailView{
 			App:      AppSummary{ID: "one", Name: "one", NodeID: "local", Status: "healthy"},
 			Services: []ServiceView{{Name: "web", State: "restarted"}},
-		}),
+		},
 		Logs: map[string]LogsView{"web": NewLogsView("refreshed log\n")},
 	}
 
@@ -440,14 +440,14 @@ func TestInteractiveDashboardRemoveRequiresExactAppName(t *testing.T) {
 func TestInteractiveDashboardRemoveConfirmationAcceptsQInAppName(t *testing.T) {
 	snapshot := testDashboardSnapshot()
 	quick := snapshot.AppsByID["one"]
-	quick.Detail = NewAppDetailScreen(AppDetailView{
+	quick.Detail = AppDetailView{
 		App: AppSummary{ID: "quick-app", Name: "quick-app", NodeID: "local", Status: "healthy"},
-	})
+	}
 	delete(snapshot.AppsByID, "one")
 	snapshot.AppsByID["quick-app"] = quick
 	snapshot.AppOrder[0] = "quick-app"
-	snapshot.Apps.view.Items[0].ID = "quick-app"
-	snapshot.Apps.view.Items[0].Name = "quick-app"
+	snapshot.Apps.Items[0].ID = "quick-app"
+	snapshot.Apps.Items[0].Name = "quick-app"
 
 	actions := &fakeDashboardActions{}
 	model := NewInteractiveDashboardModelWithActions(snapshot, nil, actions)
@@ -651,14 +651,14 @@ func TestInteractiveDashboardIgnoresOlderLogsForSameApp(t *testing.T) {
 
 func testDashboardSnapshot() DashboardSnapshot {
 	return DashboardSnapshot{
-		Apps: NewAppListScreen(AppListView{Items: []AppListItem{
+		Apps: AppListView{Items: []AppListItem{
 			{ID: "one", Name: "one", Status: "healthy", NodeID: "local", LatestDeploymentStatus: "succeeded", DomainCount: 1},
 			{ID: "two", Name: "two", Status: "healthy", NodeID: "local", LatestDeploymentStatus: "succeeded", DomainCount: 0},
-		}}),
+		}},
 		AppOrder: []string{"one", "two"},
 		AppsByID: map[string]DashboardAppSnapshot{
 			"one": {
-				Detail: NewAppDetailScreen(AppDetailView{
+				Detail: AppDetailView{
 					App:         AppSummary{ID: "one", Name: "one", NodeID: "local", Status: "healthy"},
 					Services:    []ServiceView{{Name: "web", State: "running"}},
 					Domains:     []DomainView{{DomainName: "one.example.com", ServiceName: "web", Target: "web:3000", HTTPS: true}},
@@ -666,15 +666,15 @@ func testDashboardSnapshot() DashboardSnapshot {
 					Deployments: []DeploymentView{{ID: "dep_one", Status: "succeeded", ReleaseID: "rel_one"}},
 					Events:      []EventView{{Type: "deploy.succeeded", Message: "Deploy succeeded"}},
 					Health:      HealthSummary{RouteStatus: "routed", LatestDeploymentStatus: "succeeded", ServiceStatus: "1 running"},
-				}),
+				},
 				Logs: map[string]LogsView{"web": NewLogsView("first log\nsecond log\nthird log\nfourth log\nfifth log\nsixth log\n")},
 			},
 			"two": {
-				Detail: NewAppDetailScreen(AppDetailView{
+				Detail: AppDetailView{
 					App:      AppSummary{ID: "two", Name: "two", NodeID: "local", Status: "healthy"},
 					Services: []ServiceView{{Name: "worker", State: "running"}},
 					Health:   HealthSummary{RouteStatus: "unrouted", LatestDeploymentStatus: "-", ServiceStatus: "1 running"},
-				}),
+				},
 				Logs: map[string]LogsView{"worker": NewLogsView("worker log\n")},
 			},
 		},
@@ -683,14 +683,14 @@ func testDashboardSnapshot() DashboardSnapshot {
 
 func actionRefreshedSnapshot() DashboardSnapshot {
 	snapshot := testDashboardSnapshot()
-	item := snapshot.Apps.view.Items[0]
+	item := snapshot.Apps.Items[0]
 	item.Status = "healthy after action"
-	snapshot.Apps.view.Items[0] = item
+	snapshot.Apps.Items[0] = item
 	appSnapshot := snapshot.AppsByID["one"]
-	appSnapshot.Detail = NewAppDetailScreen(AppDetailView{
+	appSnapshot.Detail = AppDetailView{
 		App:      AppSummary{ID: "one", Name: "one", NodeID: "local", Status: "healthy after action"},
 		Services: []ServiceView{{Name: "web", State: "running"}},
-	})
+	}
 	snapshot.AppsByID["one"] = appSnapshot
 	return snapshot
 }

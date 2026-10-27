@@ -110,7 +110,7 @@ func TestPostReceiveQueueHandlerRecordsAcceptedRefAndReportsQueuedDeployment(t *
 	handler := NewPostReceiveQueueHandler(PostReceiveQueueHandlerConfig{Store: sqlite, Output: &output})
 
 	// When
-	err := handler.Handle(ctx, "my-app", "/apps/my-app/repo.git", strings.NewReader("oldsha abc123 refs/heads/main\n"))
+	err := handler.Handle(ctx, "my-app", strings.NewReader("oldsha abc123 refs/heads/main\n"))
 
 	// Then
 	if err != nil {

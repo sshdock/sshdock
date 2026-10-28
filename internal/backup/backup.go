@@ -123,44 +123,32 @@ func Create(ctx context.Context, request CreateRequest) (CreateResult, error) {
 	}
 	removeTemp := true
 	defer func() {
+		_ = file.Close()
 		if removeTemp {
 			_ = os.Remove(tempPath)
 		}
 	}()
 
 	gzipWriter := gzip.NewWriter(file)
+	defer gzipWriter.Close()
 	tarWriter := tar.NewWriter(gzipWriter)
+	defer tarWriter.Close()
 	writer := archiveWriter{tar: tarWriter}
 
 	if err := addTree(&writer, request.Config.DataDir, "data", createExcludes(request.Config, destination)); err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, err
 	}
 	if err := addOptionalFile(&writer, request.Config.CaddyConfigPath, "caddy/generated.caddyfile"); err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, err
 	}
 	if err := addOptionalFile(&writer, request.Config.CaddyMainConfigPath, "caddy/main.Caddyfile"); err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, err
 	}
 	volumeData, err := json.MarshalIndent(volumes, "", "  ")
 	if err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, fmt.Errorf("encode Docker volume inventory: %w", err)
 	}
 	if err := writer.addBytes("docker/volumes.json", volumeData, 0o644, request.Now()); err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, err
 	}
 
@@ -173,25 +161,16 @@ func Create(ctx context.Context, request CreateRequest) (CreateResult, error) {
 	}
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, fmt.Errorf("encode backup manifest: %w", err)
 	}
 	if err := writer.addBytes("manifest.json", manifestData, 0o644, request.Now()); err != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, err
 	}
 
 	if err := tarWriter.Close(); err != nil {
-		_ = gzipWriter.Close()
-		_ = file.Close()
 		return CreateResult{}, fmt.Errorf("finish backup tar: %w", err)
 	}
 	if err := gzipWriter.Close(); err != nil {
-		_ = file.Close()
 		return CreateResult{}, fmt.Errorf("finish backup gzip: %w", err)
 	}
 	if err := file.Close(); err != nil {

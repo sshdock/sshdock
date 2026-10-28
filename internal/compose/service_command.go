@@ -41,7 +41,7 @@ func (r *DockerRunner) runServiceCommand(ctx context.Context, action serviceComm
 		return fmt.Errorf("attached Compose command execution is not configured")
 	}
 
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), string(action))
+	args := commandArgs(composeArgs(request.ComposePath, projectName), string(action))
 	if action == serviceCommandRun {
 		args = append(args, "--rm")
 	}

@@ -15,7 +15,7 @@ func (r *DockerRunner) runLifecycle(ctx context.Context, request LifecycleReques
 	if err != nil {
 		return err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), operation)
+	args := commandArgs(composeArgs(request.ComposePath, projectName), operation)
 	_, err = r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }

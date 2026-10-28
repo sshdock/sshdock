@@ -49,10 +49,10 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 		}
 	}
 	latestDeployment, hasLatestDeployment := latestAppDeployment(deployments)
-	release, hasRelease := latestAppRelease(releases)
+	var release appmodel.Release
+	hasRelease := false
 	if hasLatestDeployment {
 		report.AttemptReleaseID = latestDeployment.ReleaseID
-		hasRelease = false
 		for _, candidate := range releases {
 			if candidate.ID == latestDeployment.ReleaseID {
 				release = candidate
@@ -60,6 +60,8 @@ func (b *StoreBackend) AppHealth(name string) (AppHealth, error) {
 				break
 			}
 		}
+	} else {
+		release, hasRelease = latestAppRelease(releases)
 	}
 	if hasRelease {
 		report.AttemptReleaseID = release.ID

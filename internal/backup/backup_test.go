@@ -118,6 +118,35 @@ func TestCreateRejectsVolumeContentBackupFlag(t *testing.T) {
 	}
 }
 
+func TestCreateFailureCleansTemporaryArchiveAndPreservesDestination(t *testing.T) {
+	cfg := backupTestConfig(t)
+	writeBackupFixture(t, cfg)
+	archivePath := filepath.Join(t.TempDir(), "sshdock-backup.tar.gz")
+	if err := os.WriteFile(archivePath, []byte("previous backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(cfg.CaddyMainConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(cfg.CaddyMainConfigPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Create(context.Background(), CreateRequest{
+		Config: cfg, Destination: archivePath, VolumeLister: fakeVolumeLister{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not a regular file") {
+		t.Fatalf("Create error = %v, want invalid Caddy source", err)
+	}
+	if _, err := os.Stat(archivePath + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temporary archive remains after failure: %v", err)
+	}
+	content, err := os.ReadFile(archivePath)
+	if err != nil || string(content) != "previous backup" {
+		t.Fatalf("previous archive changed: content=%q error=%v", content, err)
+	}
+}
+
 func TestInspectArchiveReportsManifestAndInventory(t *testing.T) {
 	ctx := context.Background()
 	cfg := backupTestConfig(t)

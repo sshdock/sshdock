@@ -20,7 +20,7 @@ func (r *DockerRunner) NonRestartingServices(ctx context.Context, request Status
 	if err != nil {
 		return nil, err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "config", "--format", "json")
+	args := commandArgs(composeArgs(request.ComposePath, projectName), "config", "--format", "json")
 	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	if err != nil {
 		return nil, fmt.Errorf("load effective Compose restart policies: %w", err)

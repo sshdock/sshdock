@@ -133,7 +133,7 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 		report.add("native Compose validation", status, "Docker Compose is unavailable; native configuration validation was not completed: "+versionErr.Error(), "Install or repair the Docker Compose plugin; run docker compose version.", blocking)
 		return report, ctx.Err()
 	}
-	command := Command{Name: "docker", Dir: request.ProjectDir, Env: request.Env, Args: commandArgs(composeArgs([]string{path}, projectName), "config", "--format", "json")}
+	command := Command{Name: "docker", Dir: request.ProjectDir, Env: request.Env, Args: commandArgs(composeArgs(path, projectName), "config", "--format", "json")}
 	output, warnings, configErr := r.preflightCommand(ctx, command)
 	if configErr != nil {
 		report.add("native Compose validation", "fail", configErr.Error(), "Run docker compose -f '"+strings.ReplaceAll(path, "'", "'\\''")+"' config on this host and fix the reported configuration.", true)

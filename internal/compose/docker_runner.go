@@ -51,7 +51,7 @@ func (r *DockerRunner) deploy(ctx context.Context, request DeployRequest, stdout
 		return DeployResult{}, NewDeployError(DeployStageValidateCompose, err)
 	}
 	request.Env = WithGitSHA(request.Env, request.CommitSHA)
-	baseArgs := composeArgs([]string{request.ComposePath}, projectName)
+	baseArgs := composeArgs(request.ComposePath, projectName)
 
 	if _, err := fmt.Fprintln(stdout, "stage: validate compose"); err != nil {
 		return DeployResult{}, NewDeployError(DeployStageValidateCompose, err)
@@ -128,7 +128,7 @@ func (r *DockerRunner) Restart(ctx context.Context, request RestartRequest) erro
 	if err != nil {
 		return err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "restart")
+	args := commandArgs(composeArgs(request.ComposePath, projectName), "restart")
 	if request.ServiceName != "" {
 		args = append(args, request.ServiceName)
 	}
@@ -142,7 +142,7 @@ func (r *DockerRunner) Remove(ctx context.Context, request RemoveRequest) error 
 	if err != nil {
 		return err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "down", "--remove-orphans")
+	args := commandArgs(composeArgs(request.ComposePath, projectName), "down", "--remove-orphans")
 	_, err = r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	return err
 }
@@ -152,7 +152,7 @@ func (r *DockerRunner) Status(ctx context.Context, request StatusRequest) ([]Ser
 	if err != nil {
 		return nil, err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "ps", "--all", "--format", "json")
+	args := commandArgs(composeArgs(request.ComposePath, projectName), "ps", "--all", "--format", "json")
 	output, err := r.executor.Run(ctx, Command{Name: "docker", Dir: request.ProjectDir, Args: args, Env: request.Env})
 	if err != nil {
 		return nil, err
@@ -186,15 +186,8 @@ func (r *DockerRunner) StreamLogs(ctx context.Context, request LogsRequest, stdo
 	return err
 }
 
-func composeArgs(composeFiles []string, projectName string) []string {
-	args := []string{"compose"}
-	for _, composeFile := range composeFiles {
-		args = append(args, "-f", composeFile)
-	}
-	if projectName != "" {
-		args = append(args, "-p", projectName)
-	}
-	return args
+func composeArgs(composePath string, projectName string) []string {
+	return []string{"compose", "-f", composePath, "-p", projectName}
 }
 
 func deployCommand(request DeployRequest, args []string) Command {
@@ -211,7 +204,7 @@ func logsArgs(request LogsRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	args := commandArgs(composeArgs([]string{request.ComposePath}, projectName), "logs")
+	args := commandArgs(composeArgs(request.ComposePath, projectName), "logs")
 	if request.Follow {
 		args = append(args, "--follow")
 	}

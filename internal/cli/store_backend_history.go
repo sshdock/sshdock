@@ -32,12 +32,16 @@ func (b *StoreBackend) ListReleases(appName string) ([]Release, error) {
 	failuresByRelease := map[string]string{}
 	for _, deployment := range deployments {
 		if deployment.Status == appmodel.DeploymentStatusFailed && deployment.ErrorMessage != "" {
-			failuresByRelease[deployment.ReleaseID] = compose.RedactValues(deployment.ErrorMessage, redactionValues)
+			failuresByRelease[deployment.ReleaseID] = deployment.ErrorMessage
 		}
 	}
 	releases := make([]Release, 0, len(models))
 	for _, model := range models {
-		releases = append(releases, Release{ID: model.ID, AppName: model.AppID, CommitSHA: model.CommitSHA, ComposePath: model.ComposePath, Status: string(model.Status), Failure: failuresByRelease[model.ID], CreatedAt: model.CreatedAt, UpdatedAt: model.UpdatedAt})
+		failure := failuresByRelease[model.ID]
+		if failure != "" {
+			failure = compose.RedactValues(failure, redactionValues)
+		}
+		releases = append(releases, Release{ID: model.ID, AppName: model.AppID, CommitSHA: model.CommitSHA, ComposePath: model.ComposePath, Status: string(model.Status), Failure: failure, CreatedAt: model.CreatedAt, UpdatedAt: model.UpdatedAt})
 	}
 	return releases, nil
 }

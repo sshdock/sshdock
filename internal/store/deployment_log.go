@@ -52,7 +52,7 @@ func (s *SQLiteStore) AppendDeploymentLog(ctx context.Context, appID string, dep
 	}()
 
 	row := tx.QueryRowContext(ctx, `
-		select deployment_id, app_id, content, truncated, created_at, updated_at
+		select deployment_id, app_id, case when truncated = 0 then content else '' end, truncated, created_at, updated_at
 		from deployment_logs
 		where app_id = ? and deployment_id = ?`, appID, deploymentID)
 	log, err := scanDeploymentLog(row)
@@ -63,11 +63,16 @@ func (s *SQLiteStore) AppendDeploymentLog(ctx context.Context, appID string, dep
 		return fmt.Errorf("load deployment log %q: %w", deploymentID, err)
 	}
 
-	content, truncated := appendDeploymentLogContent(log.Content, log.Truncated, output)
-	if _, err := tx.ExecContext(ctx, `
-		update deployment_logs
-		set content = ?, truncated = ?, updated_at = ?
-		where deployment_id = ?`, content, truncated, formatTime(updatedAt), deploymentID); err != nil {
+	if log.Truncated {
+		_, err = tx.ExecContext(ctx, `update deployment_logs set updated_at = ? where deployment_id = ?`, formatTime(updatedAt), deploymentID)
+	} else {
+		content, truncated := appendDeploymentLogContent(log.Content, output)
+		_, err = tx.ExecContext(ctx, `
+			update deployment_logs
+			set content = ?, truncated = ?, updated_at = ?
+			where deployment_id = ?`, content, truncated, formatTime(updatedAt), deploymentID)
+	}
+	if err != nil {
 		return fmt.Errorf("append deployment log %q: %w", deploymentID, err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -104,10 +109,7 @@ func retainRecentDeploymentLogs(ctx context.Context, executor deploymentLogExecu
 	return nil
 }
 
-func appendDeploymentLogContent(existing string, truncated bool, output string) (string, bool) {
-	if truncated {
-		return existing, true
-	}
+func appendDeploymentLogContent(existing string, output string) (string, bool) {
 	maximumContentBytes := deploymentLogLimitBytes - len(deploymentLogTruncationMarker)
 	if len(existing) >= maximumContentBytes {
 		return existing[:maximumContentBytes] + deploymentLogTruncationMarker, true

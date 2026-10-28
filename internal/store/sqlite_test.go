@@ -933,7 +933,7 @@ func TestAppendDeploymentLogContentCapsOutputWithMarker(t *testing.T) {
 	existing := strings.Repeat("x", deploymentLogLimitBytes)
 
 	// When
-	content, truncated := appendDeploymentLogContent(existing, false, "more output")
+	content, truncated := appendDeploymentLogContent(existing, "more output")
 
 	// Then
 	if !truncated {

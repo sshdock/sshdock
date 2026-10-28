@@ -24,11 +24,15 @@ type preflightExecutor struct {
 	t         *testing.T
 	commands  []Command
 	responses map[string]preflightResponse
+	onCommand func(Command)
 }
 
 func (e *preflightExecutor) response(ctx context.Context, command Command) preflightResponse {
 	e.t.Helper()
 	e.commands = append(e.commands, command)
+	if e.onCommand != nil {
+		e.onCommand(command)
+	}
 	if _, deadline := ctx.Deadline(); !deadline {
 		e.t.Error("preflight command has no deadline")
 	}
@@ -167,6 +171,29 @@ func TestPreflightRejectsMissingMultipleInvalidAndRequiredConfig(t *testing.T) {
 				t.Fatalf("report=%#v commands=%#v error=%v", report, executor.commands, err)
 			}
 		})
+	}
+}
+
+func TestPreflightPolicyUsesInitiallyLoadedComposeModel(t *testing.T) {
+	request, executor := preflightFixture(t, "local")
+	path := filepath.Join(request.ProjectDir, "compose.yml")
+	writeFile(t, path, "services:\n  web:\n    extends:\n      file: ${PREFLIGHT_EXTERNAL_PATH}\n      service: base\n")
+	request.Env["PREFLIGHT_EXTERNAL_PATH"] = "secret-external.yml"
+	executor.onCommand = func(command Command) {
+		if command.Name == "env" {
+			writeFile(t, path, "services: {}\n")
+		}
+	}
+	report, err := NewDockerRunner(executor).Preflight(context.Background(), request)
+	if err != nil || report.OK {
+		t.Fatalf("report=%#v error=%v", report, err)
+	}
+	check := findPreflightCheck(t, report, "Compose policy", "fail")
+	if !check.Blocking || !strings.Contains(check.Detail, "PREFLIGHT_EXTERNAL_PATH") || strings.Contains(check.Detail, "secret-external.yml") {
+		t.Fatalf("policy check = %#v", check)
+	}
+	if len(executor.commands) != 1 {
+		t.Fatalf("commands after rejected policy = %#v", executor.commands)
 	}
 }
 

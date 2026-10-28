@@ -120,7 +120,7 @@ func (r *DockerRunner) Preflight(ctx context.Context, request PreflightRequest) 
 			redactions["interpolation:"+name] = environment[name]
 		}
 	}
-	if _, validationErr := ValidateFileWithEnv(path, request.Env); validationErr != nil {
+	if _, validationErr := validateResolvedComposeModel(path, rawModel, environment); validationErr != nil {
 		report.add("Compose policy", "fail", validationErr.Error(), "Fix the named interpolation variable or single-file Compose policy; configure server values with sshdock config set.", true)
 		return report, nil
 	}

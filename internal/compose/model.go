@@ -30,14 +30,14 @@ func loadInterpolatedComposeModel(path string, env map[string]string) (composeMo
 	if err != nil {
 		return nil, err
 	}
-	return interpolateComposeModel(path, model, env)
-}
-
-func interpolateComposeModel(path string, model composeModel, env map[string]string) (composeModel, error) {
 	environment, err := interpolationEnvironment(path, env)
 	if err != nil {
 		return nil, err
 	}
+	return interpolateComposeModel(path, model, environment)
+}
+
+func interpolateComposeModel(path string, model composeModel, environment map[string]string) (composeModel, error) {
 	plainModel := plainComposeValue(model).(map[string]any)
 	interpolated, err := interpolation.Interpolate(plainModel, interpolation.Options{
 		LookupValue: func(name string) (string, bool) {

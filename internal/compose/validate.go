@@ -20,11 +20,12 @@ func ValidateFileWithEnv(path string, env map[string]string) (ValidationResult, 
 	if err != nil {
 		return ValidationResult{}, err
 	}
-	model, err := interpolateComposeModel(path, rawModel, env)
+	environment, err := interpolationEnvironment(path, env)
 	if err != nil {
 		return ValidationResult{}, err
 	}
-	if err := validateExternalFilePolicy(path, model, rawModel); err != nil {
+	model, err := validateResolvedComposeModel(path, rawModel, environment)
+	if err != nil {
 		return ValidationResult{}, err
 	}
 
@@ -35,6 +36,17 @@ func ValidateFileWithEnv(path string, env map[string]string) (ValidationResult, 
 	}
 	sort.Strings(services)
 	return ValidationResult{Services: services}, nil
+}
+
+func validateResolvedComposeModel(path string, rawModel composeModel, environment map[string]string) (composeModel, error) {
+	model, err := interpolateComposeModel(path, rawModel, environment)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateExternalFilePolicy(path, model, rawModel); err != nil {
+		return nil, err
+	}
+	return model, nil
 }
 
 func validateExternalFilePolicy(composePath string, model composeModel, rawModel composeModel) error {

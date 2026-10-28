@@ -102,9 +102,8 @@ func publishedPorts(value any, tcpOnly bool) []effectivePort {
 
 func effectiveModelWarnings(model composeModel, projectName string) []string {
 	var warnings []string
-	services := modelServices(model)
-	for _, serviceName := range sortedKeys(services) {
-		service := modelMapping(services[serviceName])
+	for serviceName, serviceValue := range modelServices(model) {
+		service := modelMapping(serviceValue)
 		for _, port := range publishedPorts(service["ports"], false) {
 			if isAllInterfaces(port.hostIP) {
 				hostIP := port.hostIP
@@ -123,8 +122,8 @@ func effectiveModelWarnings(model composeModel, projectName string) []string {
 		warnings = append(warnings, serviceVolumeWarnings(serviceName, service["volumes"])...)
 	}
 
-	for _, volumeName := range sortedKeys(modelMapping(model["volumes"])) {
-		volume := modelMapping(modelMapping(model["volumes"])[volumeName])
+	for volumeName, volumeValue := range modelMapping(model["volumes"]) {
+		volume := modelMapping(volumeValue)
 		name, _ := modelString(volume["name"])
 		external, _ := volume["external"].(bool)
 		if external {

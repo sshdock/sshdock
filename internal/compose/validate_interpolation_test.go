@@ -97,6 +97,37 @@ services:
 	}
 }
 
+func TestValidateResolvedComposeModelUsesLoadedFileAndEnvironment(t *testing.T) {
+	const variable = "SSHDOCK_PREFLIGHT_SNAPSHOT_TEST_PATH"
+	t.Setenv(variable, "")
+	if err := os.Unsetenv(variable); err != nil {
+		t.Fatal(err)
+	}
+	path := writeValidationCompose(t, "services:\n  web:\n    extends:\n      file: ${"+variable+"}\n      service: base\n")
+	envPath := filepath.Join(filepath.Dir(path), ".env")
+	if err := os.WriteFile(envPath, []byte(variable+"=shared-secret.yml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawModel, err := loadComposeModel(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := interpolationEnvironment(path, map[string]string{"COMPOSE_ENV_FILES": ".env", "COMPOSE_DISABLE_ENV_FILE": "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envPath, []byte(variable+"=compose.yml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = validateResolvedComposeModel(path, rawModel, environment)
+	if err == nil || !strings.Contains(err.Error(), variable) || strings.Contains(err.Error(), "shared-secret.yml") {
+		t.Fatalf("validation error = %v, want original raw reference without its resolved value", err)
+	}
+}
+
 func TestValidateFileWithEnvDoesNotDiscloseInterpolatedConfigValue(t *testing.T) {
 	// Given
 	path := writeValidationCompose(t, `

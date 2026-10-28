@@ -87,7 +87,7 @@ func TestInteractiveDashboardModelTabsScrollRefreshAndQuit(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	model = updated.(InteractiveDashboardModel)
-	if model.LogOffset() == 0 {
+	if model.logs.YOffset == 0 {
 		t.Fatalf("d key did not scroll logs")
 	}
 

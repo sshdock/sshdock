@@ -25,7 +25,7 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 	}
 
 	repo := gitrecv.BareRepo{
-		Path:      filepath.Join(b.appsDir, name, "repo.git"),
+		Path:      gitrecv.BareRepoPath(b.appsDir, name),
 		RemoteURL: fmt.Sprintf("git@%s:%s.git", gitHost, name),
 	}
 	if b.repoSetupper != nil {
@@ -36,7 +36,7 @@ func (b *StoreBackend) CreateApp(name string) (App, string, error) {
 			return App{}, "", fmt.Errorf("set up receive repo for app %q: %w", name, err)
 		}
 		if repo.Path == "" {
-			repo.Path = filepath.Join(b.appsDir, name, "repo.git")
+			repo.Path = gitrecv.BareRepoPath(b.appsDir, name)
 		}
 		if hasPersistedGitHost {
 			repo.RemoteURL = fmt.Sprintf("git@%s:%s.git", persistedGitHost, name)

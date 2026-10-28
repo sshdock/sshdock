@@ -441,10 +441,6 @@ func (m *InteractiveDashboardModel) loadSelectedLogs(follow bool) tea.Cmd {
 	}
 }
 
-func (m InteractiveDashboardModel) LogOffset() int {
-	return m.logs.YOffset
-}
-
 func (m *InteractiveDashboardModel) moveSelection(delta int) {
 	order := m.filteredAppOrder()
 	if len(order) == 0 {

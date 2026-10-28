@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"sort"
 	"strings"
 
 	appmodel "github.com/sshdock/sshdock/internal/app"
@@ -29,28 +28,26 @@ func latestAppRelease(releases []appmodel.Release) (appmodel.Release, bool) {
 	if len(releases) == 0 {
 		return appmodel.Release{}, false
 	}
-	sorted := append([]appmodel.Release(nil), releases...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) {
-			return sorted[i].ID < sorted[j].ID
+	latest := releases[0]
+	for _, release := range releases[1:] {
+		if release.CreatedAt.After(latest.CreatedAt) || release.CreatedAt.Equal(latest.CreatedAt) && release.ID > latest.ID {
+			latest = release
 		}
-		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
-	})
-	return sorted[len(sorted)-1], true
+	}
+	return latest, true
 }
 
 func latestAppDeployment(deployments []appmodel.Deployment) (appmodel.Deployment, bool) {
 	if len(deployments) == 0 {
 		return appmodel.Deployment{}, false
 	}
-	sorted := append([]appmodel.Deployment(nil), deployments...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].StartedAt.Equal(sorted[j].StartedAt) {
-			return sorted[i].ID < sorted[j].ID
+	latest := deployments[0]
+	for _, deployment := range deployments[1:] {
+		if deployment.StartedAt.After(latest.StartedAt) || deployment.StartedAt.Equal(latest.StartedAt) && deployment.ID > latest.ID {
+			latest = deployment
 		}
-		return sorted[i].StartedAt.Before(sorted[j].StartedAt)
-	})
-	return sorted[len(sorted)-1], true
+	}
+	return latest, true
 }
 
 func eventID(subjectID string, suffix string) string {

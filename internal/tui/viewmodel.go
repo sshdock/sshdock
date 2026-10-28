@@ -59,11 +59,10 @@ type DomainView struct {
 }
 
 type ReleaseView struct {
-	ID          string
-	CommitSHA   string
-	ComposePath string
-	Status      string
-	CreatedAt   time.Time
+	ID        string
+	CommitSHA string
+	Status    string
+	CreatedAt time.Time
 }
 
 type DeploymentView struct {
@@ -73,9 +72,7 @@ type DeploymentView struct {
 	Trigger       string
 	Status        string
 	StartedAt     time.Time
-	FinishedAt    time.Time
 	FailureStage  string
-	FailureDetail string
 	RetryGuidance string
 	ErrorMessage  string
 }
@@ -178,11 +175,10 @@ func newReleaseViews(releases []app.Release) []ReleaseView {
 	views := make([]ReleaseView, 0, len(releases))
 	for _, release := range releases {
 		views = append(views, ReleaseView{
-			ID:          release.ID,
-			CommitSHA:   release.CommitSHA,
-			ComposePath: release.ComposePath,
-			Status:      string(release.Status),
-			CreatedAt:   release.CreatedAt,
+			ID:        release.ID,
+			CommitSHA: release.CommitSHA,
+			Status:    string(release.Status),
+			CreatedAt: release.CreatedAt,
 		})
 	}
 	return views
@@ -198,9 +194,7 @@ func newDeploymentViews(deployments []app.Deployment) []DeploymentView {
 			Trigger:       string(deployment.Trigger),
 			Status:        string(deployment.Status),
 			StartedAt:     deployment.StartedAt,
-			FinishedAt:    deployment.FinishedAt,
 			FailureStage:  deployment.FailureStage,
-			FailureDetail: deployment.FailureDetail,
 			RetryGuidance: deployment.RetryGuidance,
 			ErrorMessage:  deployment.ErrorMessage,
 		})

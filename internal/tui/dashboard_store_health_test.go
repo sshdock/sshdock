@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,9 @@ func TestDashboardWithStoreHealthKeepsRedactedHistoryWhenCheckoutHEADIsInvalid(t
 	selected, found := snapshot.AppsByID[model.ID]
 	if !found || len(selected.Detail.LatestDeployments(5)) != 1 || len(selected.Detail.Events) != 2 {
 		t.Fatalf("snapshot lost app history: %#v", snapshot)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", selected.Detail.Deployments), secret) {
+		t.Fatal("dashboard snapshot leaked encrypted config value")
 	}
 	warned := false
 	for _, check := range selected.Detail.Health.Checks {

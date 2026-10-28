@@ -176,7 +176,7 @@ func TestNewAppDetailViewExposesDeploymentAttemptHistory(t *testing.T) {
 		t.Fatalf("deployments = %#v", view.Deployments)
 	}
 	got := view.Deployments[0]
-	if got.CommitSHA != deployment.CommitSHA || got.Trigger != string(deployment.Trigger) || got.FailureStage != deployment.FailureStage || got.FailureDetail != deployment.FailureDetail || got.RetryGuidance != deployment.RetryGuidance {
+	if got.CommitSHA != deployment.CommitSHA || got.Trigger != string(deployment.Trigger) || got.FailureStage != deployment.FailureStage || got.RetryGuidance != deployment.RetryGuidance {
 		t.Fatalf("deployment view = %#v", got)
 	}
 }

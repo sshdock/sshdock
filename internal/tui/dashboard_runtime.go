@@ -67,7 +67,6 @@ func redactDeployments(deployments []app.Deployment, values map[string]string) [
 	}
 	redacted := append([]app.Deployment(nil), deployments...)
 	for i := range redacted {
-		redacted[i].FailureDetail = compose.RedactValues(redacted[i].FailureDetail, values)
 		redacted[i].ErrorMessage = compose.RedactValues(redacted[i].ErrorMessage, values)
 	}
 	return redacted

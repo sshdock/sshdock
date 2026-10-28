@@ -66,13 +66,11 @@ type Store interface {
 	ListApps(ctx context.Context) ([]app.App, error)
 	UpdateAppStatus(ctx context.Context, id string, status app.AppStatus, updatedAt time.Time) error
 	CreateRelease(ctx context.Context, model app.Release) error
-	GetRelease(ctx context.Context, id string) (app.Release, error)
 	GetReleaseByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Release, error)
 	ListReleasesByApp(ctx context.Context, appID string) ([]app.Release, error)
 	UpdateReleaseStatus(ctx context.Context, id string, status app.ReleaseStatus, updatedAt time.Time) error
 	MarkReleaseDeployingUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
 	MarkReleaseFailedUnlessSucceeded(ctx context.Context, id string, updatedAt time.Time) error
-	CreateDeployment(ctx context.Context, model app.Deployment) error
 	QueueDeployment(ctx context.Context, model app.Deployment, expectedCurrentCommit string) error
 	QueueRedeployment(ctx context.Context, model app.Deployment) error
 	FindDeploymentByAppCommit(ctx context.Context, appID string, commitSHA string) (app.Deployment, error)
